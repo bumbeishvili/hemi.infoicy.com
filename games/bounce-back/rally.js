@@ -4,9 +4,11 @@
 // The child's open hand hits the ball back over the net. A hand that's missing, or not open, never does.
 // A point is over when the ball bounces twice on one side, and the other side has it, except that a child
 // who was resting never loses one: if their hand wasn't open at any time while the ball was coming, the
-// ball floats back up and waits for them, however long they take. On Gentle, playing the computer, it
-// always waits, so the game can't be lost. The computer aims for wherever the child's hand is, and misses
-// one of the child's shots after a few, more of them as the levels go up.
+// ball floats back up and waits for them, however long they take. On Medium, as it comes, and on Tough, a
+// ball the child tried for and missed is the computer's point, so the computer can win. On Gentle, playing
+// the computer, it always waits, so the game can't be lost. The computer aims for wherever the child's hand
+// is, a little way off on the harder settings, and misses one of the child's shots after a few, fewer of
+// them as the levels go up.
 //
 // With a friend on their own computer, the game of whoever made it runs this, and the friend's game sends
 // where their racket is and their hits: see applyHit. The friend's game shows the ball with follow.js.
@@ -56,7 +58,7 @@ export class Rally {
     Object.assign(this, { level, pace, hard, goal, mode, random, events, extras });
     this.team = Boolean(team) && mode === 'host';
     this.wonAt = Infinity;
-    const plan = courtLevel(level);
+    const plan = courtLevel(level, hard);
     // With a friend, it's the plain game at this level's speed, the same for both.
     this.plan = extras ? plan : { ...plan, stars: false, bubble: false, flags: 0, bigRacket: false, castles: 0, rainbow: false, breeze: 0, bird: false, golden: false, specials: [] };
     this.players = {
@@ -106,7 +108,7 @@ export class Rally {
 
   /** How the ball moves, at this moment: gravity for its kind, and the breeze. */
   envFor(kind) {
-    return { gravity: gravityFor(crossingSeconds(this.pace, this.level, kind)), wind: this.wind };
+    return { gravity: gravityFor(crossingSeconds(this.pace, this.level, kind, this.hard)), wind: this.wind };
   }
 
   startPoint() {
@@ -371,7 +373,7 @@ export class Rally {
     const player = this.players[receiver];
     if (player.kind === 'computer') return landingOn(receiver, this.castles, this.random);
     // Together, a long rally is the whole idea, so shots don't drift further off the hand as it goes on.
-    return aimAt(receiver, player.racket, spreadFor(this.hard, this.team ? 0 : this.rallyHits, this.mode === 'host'), this.random);
+    return aimAt(receiver, player.racket, spreadFor(this.hard, this.team ? 0 : this.rallyHits, this.mode === 'host', this.level), this.random);
   }
 
   /** A hit from this side. given is a friend's own hit, as their game worked it out: { vu, vh }. */
@@ -379,7 +381,7 @@ export class Rally {
     const { ball } = this;
     let shot = given;
     if (!shot) {
-      shot = shotTo(ball, this.targetFor(side), crossingSeconds(this.pace, this.level, ball.kind), this.envFor(ball.kind));
+      shot = shotTo(ball, this.targetFor(side), crossingSeconds(this.pace, this.level, ball.kind, this.hard), this.envFor(ball.kind));
       ball.u = shot.from.u;
       ball.h = shot.from.h;
     }

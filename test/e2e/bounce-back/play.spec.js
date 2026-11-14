@@ -34,7 +34,7 @@ test('an open hand hits the ball back over the net, and a point won goes up on t
 for (const [name, scene] of [['closed', FIST], ['missing', NO_HAND]]) {
   test(`a ${name} hand never hits the ball: it waits for as long as it takes, until an open hand comes to it`, async ({ page }) => {
     test.setTimeout(180_000);
-    await startPlaying(page, { bounceLevel: 'tough' });
+    await startPlaying(page, { bounceHard: 'tough' });
     await show(page, ...scene);
     await page.waitForTimeout(9000);
     const waited = await rally(page);
@@ -51,7 +51,7 @@ for (const [name, scene] of [['closed', FIST], ['missing', NO_HAND]]) {
 
 test('on Gentle a child who tries and misses never loses a point: the ball floats back up and waits for them', async ({ page }) => {
   test.setTimeout(240_000);
-  await startPlaying(page, { bounceLevel: 'gentle' });
+  await startPlaying(page, { bounceHard: 'gentle' });
   await steerHand(page, { target: 'dodge' });
   await expectSoon(async () => (await rally(page)).ball.state, { timeout: 60_000 }).toBe('waiting');
   const waiting = await rally(page);
@@ -65,7 +65,7 @@ test('on Gentle a child who tries and misses never loses a point: the ball float
 
 test('on Medium a child who tries and misses gives the computer the point, and one who rests never does', async ({ page }) => {
   test.setTimeout(240_000);
-  await startPlaying(page, { bounceLevel: 'medium' });
+  await startPlaying(page, { bounceHard: 'medium' });
   await steerHand(page, { target: 'dodge' });
   await expectSoon(async () => (await rally(page)).scores.B, { timeout: 90_000 }).toBeGreaterThanOrEqual(1);
   await expect(page.locator('.score-player:not(.is-mine) .score-value')).toHaveText(/^[1-9]/);
@@ -112,7 +112,7 @@ test('the first to the points chosen wins, and the finish card has the score, th
 
 test('a game lost on Medium is "So close!", and the same level comes round again', async ({ page }) => {
   test.setTimeout(300_000);
-  await startPlaying(page, { bounceLevel: 'medium', levels: { [GAME]: 3 } });
+  await startPlaying(page, { bounceHard: 'medium', levels: { [GAME]: 3 } });
   await page.evaluate(() => {
     window.__game.rally.scores.B = 4;
   });
@@ -121,8 +121,20 @@ test('a game lost on Medium is "So close!", and the same level comes round again
   await stopHand(page);
   await expect(page.locator('#screen-finish h2')).toHaveText('So close!');
   await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 3 again!');
+  // The computer's player won this one, and the big button is Try again, with no confetti.
+  const them = await page.evaluate(() => window.__game.game.opponent.name);
+  await expect(page.locator('#finish-lost')).toHaveText(new RegExp(`^${them} won this one, 5 to \\d+\\. Have another go!$`));
+  await expect(page.locator('#play-again')).toHaveText('Try again');
+  await expect.poll(() => page.evaluate(() => window.__game.session.hud.confetti.running)).toBe(false);
   expect(await page.evaluate(() => window.__game.session.levels.current)).toBe(3);
+  await page.waitForTimeout(500);
   await shot(page, 'bounce-so-close');
+  // Trying again is the same level, and a game won after it has no word of losing.
+  await show(page, ...OPEN);
+  await page.locator('#play-again').click();
+  await waitForScreen(page, 'playing');
+  expect(await page.evaluate(() => window.__game.rally.level)).toBe(3);
+  await expect(page.locator('#finish-lost')).toBeHidden();
 });
 
 test('the child is asked to open their hand only when the ball is theirs to hit, and told that resting is fine', async ({ page }) => {
@@ -226,7 +238,8 @@ test('with reduced motion, the clouds keep still and the ball still plays', asyn
 test('the grown-ups\' panel has how hard, the ball speed, reach help, the points and who plays, and a way back', async ({ page }) => {
   await openGame(page, {}, GAME);
   await page.locator('#open-panel').click();
-  await expect(page.locator('input[name="bounceLevel"][value="gentle"]')).toBeChecked();
+  // Medium is how it comes, so the computer can win: Gentle is the game as it was.
+  await expect(page.locator('input[name="bounceHard"][value="medium"]')).toBeChecked();
   await expect(page.locator('input[name="bouncePace"][value="slow"]')).toBeChecked();
   await expect(page.locator('input[name="bounceHelp"][value="little"]')).toBeChecked();
   await expect(page.locator('input[name="bouncePoints"][value="5"]')).toBeChecked();

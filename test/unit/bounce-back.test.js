@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { BallFollower } from '../../games/bounce-back/follow.js';
 import { Rally } from '../../games/bounce-back/rally.js';
 import {
-  advanceBall, AIM, aimAt, APEX, ballFor, BALLS, bounceNewAt, COURT, courtLevel, crossingSeconds, EXTRAS,
+  advanceBall, AIM, aimAt, aimAtLevel, APEX, ballFor, BALLS, bounceNewAt, COURT, courtLevel, crossingSeconds, EXTRAS,
   gravityFor, heightAtNet, HELP, keepOnSide, LABELS, missAfterRange, modeWord, NET_CLEARANCE, NEWS, newsIsOn, OFF_THE_NET,
   PACES, RACKET, readMode, shotTo, solveShot, spreadFor, teamHits, touches,
 } from '../../games/bounce-back/rules.js';
@@ -66,7 +66,7 @@ function friendWhoPlays(rally, hand = { visible: true, open: true, u: 0.6, h: 0.
     // A ball that's waiting for them, they go and get.
     const at = theirs && ball.state === 'waiting' ? { ...hand, u: ball.u, h: ball.h } : hand;
     if (theirs && touches(ball, at)) {
-      const shot = shotTo(ball, aimAt('A', rally.players.A.racket, spreadFor(rally.hard, 0, true)), crossingSeconds(rally.pace, rally.level, ball.kind), rally.envFor(ball.kind));
+      const shot = shotTo(ball, aimAt('A', rally.players.A.racket, spreadFor(rally.hard, 0, true, rally.level)), crossingSeconds(rally.pace, rally.level, ball.kind, rally.hard), rally.envFor(ball.kind));
       rally.applyHit('B', { k: ball.stroke, u: shot.from.u, h: shot.from.h, vu: shot.vu, vh: shot.vh, elapsed: 0 });
     }
     return at;
@@ -97,7 +97,7 @@ test('level 1 is the plain game, and every level from 2 to 10 brings something n
   assert.deepEqual(Object.keys(NEWS).map(Number), LEVELS.slice(1));
 });
 
-test('even at level 10, a crossing takes more than 70% of the time it did at level 1, at every speed', () => {
+test('on Gentle, even at level 10, a crossing takes more than 70% of the time it did at level 1, at every speed', () => {
   for (const pace of Object.keys(PACES)) {
     const first = crossingSeconds(pace, 1);
     const last = crossingSeconds(pace, 10);
@@ -108,6 +108,73 @@ test('even at level 10, a crossing takes more than 70% of the time it did at lev
   }
   assert.ok(crossingSeconds('fast', 10) > 1.3, 'even the quickest is slow');
 });
+
+test('on Medium and Tough the ball gets quicker as the levels go up, to half the time at level 10 on Medium', () => {
+  for (const pace of Object.keys(PACES)) {
+    for (const hard of ['medium', 'tough']) {
+      assert.equal(crossingSeconds(pace, 1, 'beach', hard), crossingSeconds(pace, 1), `${pace} ${hard}: level 1 as it always was`);
+      for (const level of LEVELS.slice(1)) assert.ok(crossingSeconds(pace, level, 'beach', hard) < crossingSeconds(pace, level - 1, 'beach', hard));
+      assert.ok(crossingSeconds(pace, 10, 'beach', hard) < crossingSeconds(pace, 10), `${pace} ${hard}: quicker than Gentle`);
+    }
+    assert.ok(Math.abs(crossingSeconds(pace, 10, 'beach', 'medium') / crossingSeconds(pace, 1, 'beach', 'medium') - 0.5) < 1e-9);
+    assert.ok(crossingSeconds(pace, 10, 'beach', 'tough') >= crossingSeconds(pace, 1) * 0.45, `${pace}: never under 45% of the time`);
+  }
+  // And the computer aims further off the hand, and misses less, level by level.
+  for (const hard of ['medium', 'tough']) {
+    for (const level of LEVELS.slice(1)) assert.ok(aimAtLevel(hard, level) > aimAtLevel(hard, level - 1), `${hard} ${level}`);
+    assert.equal(aimAtLevel(hard, 1), AIM[hard]);
+  }
+  assert.ok(LEVELS.every((level) => aimAtLevel('gentle', level) === 0), 'right at the hand on Gentle, at every level');
+  assert.deepEqual([missAfterRange('medium', 1), missAfterRange('medium', 10)], [[2, 4], [4, 9]]);
+  assert.deepEqual([missAfterRange('gentle', 1), missAfterRange('gentle', 10)], [[1, 3], [2, 5]], 'Gentle as it was');
+});
+
+/**
+ * A pretend child who chases the ball: they see it this long after it was there, their hand moves this fast,
+ * in court units a second, and it's open for so long out of every cycle of so many seconds.
+ */
+function chaser({ delay, speed, open }) {
+  const hand = { u: -0.6, h: 0.45 };
+  const seen = [];
+  let t = 0;
+  return (ball) => {
+    t += 1 / 60;
+    seen.push({ u: ball.u, h: ball.h });
+    const was = seen[Math.max(0, seen.length - 1 - Math.round(delay * 60))];
+    const target = was.u < 0 ? was : { u: -0.6, h: 0.45 };
+    const du = target.u - hand.u;
+    const dh = target.h - hand.h;
+    const gap = Math.hypot(du, dh);
+    const move = Math.min(gap, speed / 60);
+    if (gap > 0) {
+      hand.u += (du / gap) * move;
+      hand.h += (dh / gap) * move;
+    }
+    return { visible: true, open: t % open[1] < open[0], u: hand.u, h: hand.h, ...HELPED };
+  };
+}
+
+test('as it comes, on Medium, a child new to it wins at level 1, and at level 10 the computer wins', () => {
+  const newChild = { delay: 0.6, speed: 0.5, open: [1.2, 2] };
+  const matches = (level) => [1, 2, 3, 4, 5, 6].map((seed) => {
+    const rally = game({ level, hard: 'medium', goal: 5, random: seeded(seed) });
+    play(rally, chaser(newChild), 900);
+    return rally;
+  });
+  const first = matches(1);
+  const last = matches(10);
+  const computer = (rallies) => rallies.reduce((sum, { scores }) => sum + scores.B, 0);
+  assert.ok(first.every(({ winner }) => winner === 'A'), `level 1: ${first.map(({ winner }) => winner)}`);
+  assert.ok(last.filter(({ winner }) => winner === 'B').length >= 2, `level 10: ${last.map(({ winner }) => winner)}`);
+  assert.ok(computer(last) > computer(first) * 3 + 6, `the computer's points: ${computer(first)} at level 1, ${computer(last)} at level 10`);
+  // On Gentle it's the game as it was: however the child plays, the computer never scores.
+  for (const seed of [1, 2, 3]) {
+    const rally = game({ level: 10, hard: 'gentle', goal: 5, random: seeded(seed) });
+    play(rally, chaser(newChild), 900);
+    assert.equal(rally.scores.B, 0);
+  }
+});
+
 
 test('every shot goes over the net, not too high, and gets where it was aimed', () => {
   const random = seeded(3);

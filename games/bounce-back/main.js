@@ -82,12 +82,12 @@ class BounceGame {
     this.goAt = 0;
     this.praised = 0;
     this.restFor = 0;
-    byId('finish-hero')?.closest('.finish-hero')?.insertAdjacentHTML('afterend', '<p id="finish-score" class="finish-score"></p><p id="finish-prizes" class="finish-prizes"></p>');
+    byId('finish-hero')?.closest('.finish-hero')?.insertAdjacentHTML('afterend', '<p id="finish-score" class="finish-score"></p><p id="finish-lost" class="finish-lost" hidden></p><p id="finish-prizes" class="finish-prizes"></p>');
     this.friends = new FriendsPanel({
       game: 'bounce-back',
       linkKey: 'bounce',
       words: BOUNCE_WORDS,
-      hello: () => ({ driver: this.myCharacter().id, level: session.levels.current, length: settings.bouncePoints, mode: modeWord(settings.bounceLevel, settings.bouncePace) }),
+      hello: () => ({ driver: this.myCharacter().id, level: session.levels.current, length: settings.bouncePoints, mode: modeWord(settings.bounceHard, settings.bouncePace) }),
       screen: () => session.screen,
       portraits: () => session.portraits,
       onMove: (id, message) => this.fromFriend(id, message),
@@ -218,7 +218,7 @@ class BounceGame {
   settingChanged(change) {
     // A new character, how hard, how quick and how many points all start with the next game.
     if ('fighter' in change && this.session.screen !== 'playing' && this.session.screen !== 'countdown') this.setUpScene(this.session.level);
-    if ('fighter' in change || 'bouncePoints' in change || 'bounceLevel' in change || 'bouncePace' in change || 'bounceFriends' in change) {
+    if ('fighter' in change || 'bouncePoints' in change || 'bounceHard' in change || 'bouncePace' in change || 'bounceFriends' in change) {
       if (this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
     }
     if ('bounceFriends' in change) this.friends.showTeams();
@@ -245,7 +245,7 @@ class BounceGame {
     this.mode = friend ? (friendly.hosting ? 'host' : 'guest') : 'solo';
     this.mine = this.mode === 'guest' ? 'B' : 'A';
     const playLevel = friendly?.level ?? level;
-    const { hard, pace } = friendly ? readMode(friendly.mode) : { hard: settings.bounceLevel, pace: settings.bouncePace };
+    const { hard, pace } = friendly ? readMode(friendly.mode) : { hard: settings.bounceHard, pace: settings.bouncePace };
     this.hard = HARD.includes(hard) ? hard : 'gentle';
     this.pace = PACE_NAMES.includes(pace) ? pace : 'slow';
     const points = friendly ? (POINTS.includes(friendly.length) ? friendly.length : 5) : (POINTS.includes(settings.bouncePoints) ? settings.bouncePoints : 5);
@@ -453,7 +453,7 @@ class BounceGame {
   /** The ball as the friend's game sends it, and the child here hitting it, which shows at once. */
   updateGuest(dt, mine) {
     const now = performance.now();
-    const envFor = (kind) => ({ gravity: gravityFor(crossingSeconds(this.pace, this.playLevel, kind)), wind: 0 });
+    const envFor = (kind) => ({ gravity: gravityFor(crossingSeconds(this.pace, this.playLevel, kind, this.hard)), wind: 0 });
     const ball = this.follower.ballAt(now, envFor);
     this.guestBall = ball;
     this.guestRacket = mine;
@@ -463,8 +463,8 @@ class BounceGame {
     const forMe = side === this.mine && ((ball.state === 'flying' && ball.by !== this.mine) || ball.state === 'waiting' || (ball.state === 'held' && score?.server === this.mine));
     if (forMe && !this.follower.waitingForHit && !score?.over && touches(ball, mine)) {
       // Together, a long rally is the whole idea, so shots don't drift off the friend's hand as it goes on.
-      const target = aimAt(otherSide(this.mine), this.friendRacket(now), spreadFor(this.hard, this.team ? 0 : score?.rally ?? 0, true));
-      const shot = shotTo(ball, target, crossingSeconds(this.pace, this.playLevel, ball.kind), envFor(ball.kind));
+      const target = aimAt(otherSide(this.mine), this.friendRacket(now), spreadFor(this.hard, this.team ? 0 : score?.rally ?? 0, true, this.playLevel));
+      const shot = shotTo(ball, target, crossingSeconds(this.pace, this.playLevel, ball.kind, this.hard), envFor(ball.kind));
       const hit = { u: shot.from.u, h: shot.from.h, vu: shot.vu, vh: shot.vh, kind: ball.kind, by: this.mine };
       this.follower.hitHere(hit, ball.stroke, now);
       this.sayNow('shot', { k: ball.stroke, x: round3(hit.u), y: round3(hit.h), vx: round3(hit.vu), vy: round3(hit.vh) });
@@ -714,6 +714,16 @@ class BounceGame {
     // With friends, the results say who won. On their own, the title says how it went.
     this.friends.showResults();
     if (solo) document.querySelector('#screen-finish h2').textContent = won ? 'You won!' : 'So close!';
+    // A game lost to the computer: its player won this one, and it's the same level again, without confetti.
+    byId('finish-lost').hidden = !solo || won;
+    if (solo && !won) {
+      byId('finish-lost').textContent = `${this.opponent.name} won this one, ${scores[other]} to ${scores[this.mine]}. Have another go!`;
+      setTimeout(() => {
+        this.session.hud.confetti.stop();
+        const again = document.querySelector('#screen-finish .finish-actions .big-button');
+        if (again) again.textContent = 'Try again';
+      }, 0);
+    }
     const portraits = this.session.portraits ?? {};
     const scoreLine = byId('finish-score');
     scoreLine.replaceChildren();
@@ -795,9 +805,9 @@ new GameSession({
     panelSettings: `
       <fieldset class="choice">
         <legend>How hard</legend>
-        ${choice('bounceLevel', 'gentle', 'Gentle: the ball always waits for the child, so it can’t be lost')}
-        ${choice('bounceLevel', 'medium', 'Medium: the ball can be missed, and the computer aims a little way off the hand')}
-        ${choice('bounceLevel', 'tough', 'Tough: the computer aims further off, and misses fewer')}
+        ${choice('bounceHard', 'medium', 'Medium: a ball the child tries for and misses is the computer’s point, so the computer can win, and it plays better level by level')}
+        ${choice('bounceHard', 'tough', 'Tough: the computer aims further off the hand, and misses fewer')}
+        ${choice('bounceHard', 'gentle', 'Gentle: the ball always waits for the child, so the computer can never score')}
       </fieldset>
       <fieldset class="choice">
         <legend>Ball speed</legend>
@@ -827,8 +837,10 @@ new GameSession({
         ${characterChoices}
       </fieldset>`,
   },
-  defaults: { bounceLevel: 'gentle', bouncePace: 'slow', bounceHelp: 'little', bouncePoints: 5, bounceFriends: 'together', fighter: ROSTER[0].id },
-  choices: { bounceLevel: String, bouncePace: String, bounceHelp: String, bouncePoints: Number, bounceFriends: String, fighter: String },
+  // How hard is bounceHard, which came in when Medium became how the game comes: the old bounceLevel, saved
+  // when Gentle was how it came, is left behind, so that the game as it comes now reaches everyone.
+  defaults: { bounceHard: 'medium', bouncePace: 'slow', bounceHelp: 'little', bouncePoints: 5, bounceFriends: 'together', fighter: ROSTER[0].id },
+  choices: { bounceHard: String, bouncePace: String, bounceHelp: String, bouncePoints: Number, bounceFriends: String, fighter: String },
   tagline: (side) => `Hit the big ball back over the net with your open ${side} hand!`,
   finishLine: 'Great job!',
   portraits: () => renderPortraits(ROSTER),
