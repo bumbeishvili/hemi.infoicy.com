@@ -1,8 +1,10 @@
 // Gobble and Grow's rules: a little creature in a soup of things to eat. Things smaller than it drift by, and
 // opening the mouth wide while one is in reach gobbles it: a gulp as it goes in, and a chomp as the mouth shuts,
-// which is when it counts, and the creature grows a little. Things bigger than it can't be eaten yet: they only
-// nudge it gently aside, and later it's big enough for them. Nothing ever eats the child's creature, nothing is
-// ever lost, and the things to eat keep coming for as long as it takes.
+// which is when it counts, and the creature grows a little. Things bigger than it can't be eaten yet, and they can
+// catch it: one that swims right into the creature catches it, and caught LIVES times, it's gobbled up, which ends
+// the world. From level 2 the bigger things come after it a little, more at each level. Later it's big enough for
+// them. With the gentle choice, and with friends, and when the creature swims by itself, bigger things only nudge it
+// gently aside, nothing is ever lost, and the things to eat keep coming for as long as it takes.
 //
 // There's no screen, camera or sound in this file, so all of it runs in test/unit/gobble-grow.test.js. Places are
 // in heights of the field, which is as wide as a 16:9 screen, so that friends see the same things in the same
@@ -55,6 +57,17 @@ const MOST_PUSH = 0.2;
 // a child playing with the mouth alone can't steer back to it.
 const MOST_PUSH_ALONE = 0.045;
 const TOO_BIG_AGAIN_AFTER = 1.2;
+// How many times a bigger thing can catch the creature in a world before it's gobbled up.
+export const LIVES = 3;
+// How much a bigger thing has to overlap the creature to catch it: their middles this close, in their sizes.
+const CATCH_OVERLAP = 0.72;
+// After being caught, and after the face has been missing, nothing can catch the creature for this long.
+export const SAFE_SECONDS = 2.5;
+const SAFE_AFTER_AWAY = 1.5;
+// A bigger thing only comes after the creature from this far off, in field heights.
+const HUNT_RANGE = 0.55;
+// Caught, the creature is pushed this far from what caught it, in field heights.
+const CAUGHT_PUSH = 0.18;
 // The soup is already going when the game begins: this share of a crossing has gone by, so there's food about.
 const LEAD = 0.55;
 // Which kind each thing is, in turn, round and round: half or more are always the smallest, so there's always
@@ -65,18 +78,24 @@ const BUSY = [0, 1, 0, 2, 0, 1, 0, 2];
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const lerp = (from, to, share) => from + (to - from) * share;
 
-/** What a level is like: its world, how quickly things drift across, how often they come and how much they sway. */
-export function soupLevel(level) {
+/**
+ * What a level is like: its world, how quickly things drift across, how often they come and how much they sway, and
+ * how hard the bigger things come after the creature. gentle is the soup as it always was, with the gentler climb.
+ */
+export function soupLevel(level, { gentle = false } = {}) {
   const at = clampLevel(level);
   return {
     level: at,
     world: worldAt(at),
-    // Seconds for a thing to drift across the field: at level 10, still more than three quarters of level 1's.
-    cross: ramp(at, 15, 11.5),
+    // Seconds for a thing to drift across the field: at level 10, two thirds of level 1's, or three quarters gently.
+    cross: ramp(at, 15, gentle ? 11.5 : 10),
     // Seconds between one thing arriving and the next: eight or nine in the soup at once, at any level.
-    gap: ramp(at, 1.7, 1.4),
+    gap: ramp(at, 1.7, gentle ? 1.4 : 1.2),
     sway: ramp(at, 0.02, 0.045),
     pattern: at <= 4 ? EASY : BUSY,
+    // How fast a bigger thing nearby comes after the creature, in field heights a second: not at all at level 1, and
+    // at level 10 about half as fast as things drift. Never, gently.
+    hunt: gentle ? 0 : ramp(at, 0, 0.07),
   };
 }
 
@@ -156,8 +175,10 @@ export class Soup {
    * move otherwise. team is how many are playing together, eating from the same soup and growing as one, or 0.
    * onEvent hears what happens, each as { type, ... }: spawn, gulp, chomp, grew, unlock, bump, toobig, taken, won.
    */
-  constructor({ level = 1, bites = 12, seed = 1, auto = false, head = 'medium', team = 0, onEvent = () => {} } = {}) {
-    this.plan = soupLevel(level);
+  constructor({ level = 1, bites = 12, seed = 1, auto = false, head = 'medium', team = 0, gentle = false, onEvent = () => {} } = {}) {
+    // Bigger things only catch a creature the child steers, on their own. Swimming by itself, it can't get away.
+    this.danger = !gentle && !auto && team === 0;
+    this.plan = soupLevel(level, { gentle: !this.danger });
     this.level = this.plan.level;
     this.seed = seed >>> 0;
     this.auto = auto;
@@ -183,7 +204,10 @@ export class Soup {
     this.waitedFor = 0; // How long something has been in reach of a mouth that's shut.
     this.chasing = null;
     this.lastTooBig = -Infinity;
-    this.stats = { gulps: 0, autoChomps: 0, bumps: 0, tooBig: 0, byKind: [0, 0, 0], seconds: 0 };
+    this.lives = this.danger ? LIVES : Infinity;
+    this.safeFor = SAFE_SECONDS; // Nothing catches the creature in the first moments.
+    this.eatenBy = null; // What gobbled the creature up, which ends the world.
+    this.stats = { gulps: 0, autoChomps: 0, bumps: 0, tooBig: 0, byKind: [0, 0, 0], seconds: 0, caught: 0 };
     this.spawnDue();
   }
 
@@ -197,6 +221,11 @@ export class Soup {
 
   get won() {
     return this.phase === 'won';
+  }
+
+  /** Whether the creature was gobbled up by something bigger, which ends the world. */
+  get gobbled() {
+    return this.phase === 'eaten';
   }
 
   canEat(food) {
@@ -225,18 +254,43 @@ export class Soup {
     this.time = clock === null ? this.time + dt : clock + this.lead;
     this.stats.seconds += dt;
     this.spawnDue();
-    this.moveFoods();
+    // A child who has gone, or whose face the tracker has lost, is never caught for it, nor just after coming back.
+    if (!input.seen) this.safeFor = Math.max(this.safeFor, SAFE_AFTER_AWAY);
+    else this.safeFor = Math.max(0, this.safeFor - dt);
+    this.moveFoods(dt, input);
     this.moveCreature(dt, input);
     if (this.phase === 'play') this.eat(dt, input);
     else this.target = null;
+    if (this.phase === 'play') this.watchOut();
     this.wasOpen = input.open;
   }
 
-  moveFoods() {
+  /** Whether a bigger thing is coming after the creature, and can catch it. */
+  get hunting() {
+    return this.danger && this.phase === 'play';
+  }
+
+  moveFoods(dt = 0, input = { seen: true }) {
     const { creature, time } = this;
+    // Not while the creature is safe: in the first moments, just after it was caught, or as the face comes back.
+    const hunt = this.hunting && input.seen && this.safeFor <= 0 ? this.plan.hunt : 0;
     for (const food of this.foods) {
       if (food.state === 'drift') {
         Object.assign(food, foodPlace(food, time));
+        // A bigger thing nearby comes after the creature a little, off its path, and stays off it after.
+        if (hunt > 0 && !this.canEat(food) && !food.caughtYou) {
+          const [dx, dy] = [creature.x - food.x, creature.y - food.y];
+          const far = Math.hypot(dx, dy);
+          if (far < HUNT_RANGE && far > 0.0001) {
+            food.chase ??= { x: 0, y: 0 };
+            food.chase.x += (dx / far) * hunt * dt;
+            food.chase.y += (dy / far) * hunt * dt;
+          }
+        }
+        if (food.chase) {
+          food.x += food.chase.x;
+          food.y += food.chase.y;
+        }
         if (time >= food.born + food.life) food.state = 'left';
       } else if (food.state === 'gulped') {
         // Into the mouth, from where it was.
@@ -303,10 +357,11 @@ export class Soup {
     home.x = clamp(home.x, ROAM.left, ROAM.right);
     home.y = clamp(home.y, ROAM.top, ROAM.bottom);
 
-    // A thing that's too big to eat nudges the creature gently out of its way, and it drifts back after.
+    // A thing that's too big to eat nudges the creature gently out of its way, and it drifts back after. Where bigger
+    // things can catch it, they don't: it's for the child to keep out of their way.
     let pushed = false;
     for (const food of this.foods) {
-      if (food.state !== 'drift' || this.canEat(food)) continue;
+      if (food.state !== 'drift' || this.canEat(food) || this.hunting) continue;
       const [dx, dy] = [creature.x - food.x, creature.y - food.y];
       const far = Math.hypot(dx, dy) || 0.0001;
       const overlap = creature.r + food.r * 0.85 - far;
@@ -340,6 +395,42 @@ export class Soup {
     const looking = this.target ?? this.chasing;
     if (looking && Math.abs(looking.x - creature.x) > creature.r * 0.3) creature.facing = Math.sign(looking.x - creature.x);
     else if (!looking && Math.abs(creature.x - before) > 0.0015) creature.facing = Math.sign(creature.x - before);
+  }
+
+  /**
+   * A bigger thing right on the creature catches it: it's pushed away, and nothing catches it again for a moment.
+   * Caught for the last time, it's gobbled up, and that's the end of the world.
+   */
+  watchOut() {
+    if (!this.hunting || this.safeFor > 0) return;
+    const { creature } = this;
+    for (const food of this.foods) {
+      if (food.state !== 'drift' || this.canEat(food) || food.caughtYou) continue;
+      const [dx, dy] = [creature.x - food.x, creature.y - food.y];
+      const far = Math.hypot(dx, dy);
+      if (far > (creature.r + food.r) * CATCH_OVERLAP) continue;
+      food.caughtYou = true;
+      this.lives -= 1;
+      this.stats.caught += 1;
+      this.safeFor = SAFE_SECONDS;
+      if (this.lives <= 0) {
+        this.phase = 'eaten';
+        this.eatenBy = food;
+        this.eatenAt = this.time;
+        // Whatever was in the creature's mouth goes with it.
+        if (creature.holding) {
+          this.foods = this.foods.filter((each) => each !== creature.holding);
+          creature.holding = null;
+        }
+        this.emit('eaten', { food });
+        return;
+      }
+      const away = far > 0.0001 ? { x: dx / far, y: dy / far } : { x: 0, y: -1 };
+      this.push.x += away.x * CAUGHT_PUSH;
+      this.push.y += away.y * CAUGHT_PUSH;
+      this.emit('caught', { food, lives: this.lives });
+      return;
+    }
   }
 
   /** The nearest thing in reach that can be eaten, and the nearest that's too big, each with how far it is. */

@@ -26,6 +26,10 @@ const OTHER_HAND = 'Hold up your other hand, for the bow!';
 const TOGETHER_DONE = 'You did it together!';
 const YOU_WON = 'You won the contest!';
 const GREAT_SHOOTING = 'Great shooting!';
+// When the quiver was empty before enough targets were hit. It's only on the card: the voice says the same kind word
+// as any finish.
+const OUT_OF_ARROWS = 'Out of arrows! So close!';
+const LOST_LINE = 'Great job!';
 const PRAISE = ['Nice one!', 'Way to go!', 'Great job!'];
 const PRAISE_EVERY = 3; // Hits between one word of praise and the next.
 const FILM_SECONDS = 30; // The little film of what to do shows until the first hit, or this long.
@@ -174,7 +178,12 @@ class ArcherGame {
   }
 
   helpChosen() {
-    return HELP_NAMES.includes(this.settings.arrowHelp) ? this.settings.arrowHelp : 'little';
+    return HELP_NAMES.includes(this.settings.arrowHelp) ? this.settings.arrowHelp : 'off';
+  }
+
+  /** As many arrows as it takes, targets that wait, and nothing lost, as the contest always was, if a grown-up chose it. */
+  get gentle() {
+    return this.settings.arrowQuiver === 'gentle';
   }
 
   /**
@@ -183,7 +192,7 @@ class ArcherGame {
    */
   newMeadow(level, friendly = null) {
     const common = { help: this.helpChosen(), onEvent: (event) => this.onMeadow(event) };
-    if (!friendly) return new Meadow({ ...common, level, goal: this.goalChosen() });
+    if (!friendly) return new Meadow({ ...common, level, goal: this.goalChosen(), gentle: this.gentle });
     const each = GOALS.includes(friendly.length) ? friendly.length : 10;
     const me = this.friends.room.you;
     if (friendly.team) {
@@ -219,7 +228,7 @@ class ArcherGame {
     if ('arrowReach' in change) this.bow.setReach(change.arrowReach);
     if ('arrowHelp' in change) this.meadow.help = this.helpChosen();
     // A new number of targets starts with the next contest, and the title shows it now.
-    if ('arrowGoal' in change && screen !== 'playing' && screen !== 'countdown') {
+    if (('arrowGoal' in change || 'arrowQuiver' in change) && screen !== 'playing' && screen !== 'countdown') {
       this.meadow = this.newMeadow(this.session.level);
       this.showProgress();
     }
@@ -364,6 +373,16 @@ class ArcherGame {
         view.burst(at.x, at.y, '#ffd23f');
         view.prize('trophy', event.at.x, event.at.y);
         break;
+      case 'leave':
+        // A target that has stood long enough goes, softly, and another comes.
+        sound.play('rustle', { gain: 0.18, rate: 0.9 });
+        break;
+      case 'out':
+        // The quiver is empty and the contest isn't won: it's over, to try again.
+        sound.play('flap', { gain: 0.3, rate: 0.8 });
+        this.story.hide();
+        this.showProgress();
+        break;
       case 'won':
         sound.play('cheer', { gain: 0.45 });
         view.party(PARTY_SECONDS);
@@ -409,7 +428,8 @@ class ArcherGame {
         this.restFor = 0;
       }
     }
-    meadow.update(dt);
+    // A target only stands for so long while both hands are in the picture.
+    meadow.update(dt, { present: hands.both });
     // The bird's gift is named once it's over the meadow, which is a while after it sets out.
     if (meadow.bird?.gift.state === 'up') this.introduce(meadow.bird.gift);
     view.update(dt, { bow: hands, wind: meadow.wind });
@@ -589,6 +609,10 @@ class ArcherGame {
     const { meadow } = this;
     byId('chip-targets').textContent = `${Math.min(meadow.total, meadow.goal)} of ${meadow.goal}`;
     byId('chip-stars').textContent = String(meadow.stats.stars);
+    // The arrows left in the quiver, where there are only so many.
+    const counted = Number.isFinite(meadow.arrowsLeft);
+    byId('chip-quiver-box').hidden = !counted;
+    if (counted) byId('chip-quiver').textContent = String(meadow.arrowsLeft);
     if (this.mode !== 'solo') this.showScores();
   }
 
@@ -605,8 +629,8 @@ class ArcherGame {
 
   prompt(snapshot, dt) {
     const needed = this.session.handsPrompt(snapshot, dt);
-    // Once the contest is won there's nothing to ask for.
-    if (this.meadow.phase === 'won') return null;
+    // Once the contest is won, or the quiver is empty, there's nothing to ask for.
+    if (this.meadow.phase === 'won' || this.meadow.lost) return null;
     // A string hand that isn't open is holding the string here, not a hand to be opened.
     if (needed && !needed.key.startsWith('closed')) {
       this.lastPromptKey = null;
@@ -623,6 +647,8 @@ class ArcherGame {
   }
 
   finished() {
+    // What the voice says at the end: the same kind word as any finish, when the quiver ran out.
+    if (this.mode === 'solo') this.session.finishLine = this.meadow.lost ? LOST_LINE : FINISH;
     this.session.sound.stopLoop('birds');
     this.story.hide();
     // With friends, how many targets this child hit, which every computer has counted the same.
@@ -634,12 +660,18 @@ class ArcherGame {
     const hand = this.session.settings.hands;
     const row = (value) => ({ left: hand === 'left' ? value : '', right: hand === 'right' ? value : '' });
     this.friends.showResults();
+    const lost = this.meadow.lost && this.mode === 'solo';
+    if (this.mode === 'solo') document.querySelector('#screen-finish h2').textContent = lost ? OUT_OF_ARROWS : FINISH;
+    // The card's big button is to try the same level again. The levels' own words are put on it first.
+    if (lost) queueMicrotask(() => {
+      byId('play-again').textContent = 'Try again';
+    });
     return {
       hero: stats.hits,
       noun: 'contest',
       rows: { hits: row(`${stats.hits} of ${stats.shots}`), run: row(stats.bestRun), full: row(stats.full), stars: row(stats.trophy ? `${stats.stars} 🏆` : stats.stars) },
-      // Nobody can lose: the contest is won by targets hit, however many arrows it takes.
-      won: true,
+      // An empty quiver before enough targets means trying the same level again. Gently, nobody can lose.
+      won: !lost,
       // A game with friends is on the host's level, so it doesn't move the child's own level on.
       countsForLevel: !this.friends.current,
     };
@@ -663,6 +695,7 @@ new GameSession({
       <div class="arrow-hud">
         <div class="chip chip-targets"><span id="chip-targets-label" class="chip-label">Targets</span><span id="chip-targets" class="chip-value">0 of 10</span></div>
         <div id="chip-stars-box" class="chip chip-stars" hidden><span class="chip-label">Stars</span><span id="chip-stars" class="chip-value">0</span></div>
+        <div id="chip-quiver-box" class="chip chip-quiver" hidden><span class="chip-label">Arrows</span><span id="chip-quiver" class="chip-value">25</span></div>
         <ol id="arrow-scores" class="arrow-scores" aria-label="How many targets each one has hit" hidden></ol>
       </div>
       ${STORY_BOX}
@@ -708,6 +741,11 @@ new GameSession({
         ${choice('arrowHelp', 'lots', 'A lot')}
       </fieldset>
       <fieldset class="choice">
+        <legend>Arrows in the quiver</legend>
+        ${choice('arrowQuiver', 'quiver', 'As many as the level gives: an empty quiver before enough targets loses the contest, and targets don’t wait for ever')}
+        ${choice('arrowQuiver', 'gentle', 'Gentle: as many as it takes, the targets wait, and nothing can be lost')}
+      </fieldset>
+      <fieldset class="choice">
         <legend>Targets to win (together with friends, that many for each of you. Against each other, the first to them)</legend>
         ${GOALS.map((goal) => choice('arrowGoal', String(goal), String(goal))).join('')}
       </fieldset>
@@ -717,8 +755,8 @@ new GameSession({
         ${choice('arrowFriends', 'against', 'Against each other: the same targets each, and the first to enough wins')}
       </fieldset>`,
   },
-  defaults: { arrowReach: 'small', arrowHelp: 'little', arrowGoal: 10, arrowFriends: 'together' },
-  choices: { arrowReach: String, arrowHelp: String, arrowGoal: Number, arrowFriends: String },
+  defaults: { arrowReach: 'small', arrowHelp: 'off', arrowQuiver: 'quiver', arrowGoal: 10, arrowFriends: 'together' },
+  choices: { arrowReach: String, arrowHelp: String, arrowQuiver: String, arrowGoal: Number, arrowFriends: String },
   tagline: (side) => `Giraffe needs an archer! One hand holds the bow up. Close your ${side} hand on the string, pull it back, and open your hand to let the arrow fly.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

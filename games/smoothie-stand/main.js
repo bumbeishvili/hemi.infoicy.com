@@ -18,6 +18,10 @@ const HOW = 'Swipe through the fruit!';
 const STICKY = 'Yuck! Keep your hand open to shake it off!';
 const OPEN_TO_SLICE = { left: 'Open your left hand to slice!', right: 'Open your right hand to slice!' };
 const WON = 'You won the Golden Cup!';
+// When a customer couldn't wait. It's only on the card: the voice says the same kind word as for any finish.
+const WALKED_OFF = (name) => `${name} couldn’t wait, and went home!`;
+const LOST_LINE = 'Great job!';
+const AFTER_WALKED_OFF_SECONDS = 1.4; // A moment to see the customer go, before the card.
 
 const NEXT_CUSTOMER_SECONDS = 1; // The fruit keeps flying, so nobody's waiting for this.
 const LAST_THANKS_SECONDS = 2.8;
@@ -187,7 +191,6 @@ class SmoothieGame {
     document.body.toggleAttribute('data-friends-race', Boolean(friendly));
     const playing = friendly ? friendly.level : level;
     this.applySettings();
-    this.field.setLevel(playing);
     this.field.reset();
     this.field.fresh = new Set(friendly ? [] : newAt(level).map(({ key }) => key));
     this.story.hide();
@@ -204,8 +207,13 @@ class SmoothieGame {
       short: (friendly ? friendly.length : this.session.settings.customers) === 3,
       level: playing,
       plain: Boolean(friendly),
+      // Customers who wait as long as it takes, as the stand always had them, if a grown-up chose it.
+      gentle: this.session.settings.patience === 'gentle',
       onEvent: (event) => this.onStandEvent(event),
     });
+    this.field.level = this.stand.level;
+    this.walkedOff = null;
+    this.showPatience();
     this.field.nextFruit = () => this.stand.nextFruit();
     this.field.nextThrow = () => this.stand.nextThrow();
     this.field.powerOn = (kind) => this.stand.isOn(kind);
@@ -268,6 +276,7 @@ class SmoothieGame {
       'day-over': () => this.session.finish(),
       coins: () => this.showProgress(),
       'power-out': () => this.field.throwBubble(event.kind),
+      'walked-off': () => this.onWalkedOff(event),
       bee: () => this.field.startBee(),
     };
     handlers[event.type]?.();
@@ -278,6 +287,38 @@ class SmoothieGame {
     this.story.say(customer.who, customer.hello);
     this.showOrder();
     this.showProgress();
+  }
+
+  /**
+   * A customer couldn't wait any longer, which ends the fair: the fruit stops, the ticket greys, and the card
+   * says who went home. The level stays where it is, to try again.
+   */
+  onWalkedOff({ customer }) {
+    this.walkedOff = customer;
+    this.field.throwing = false;
+    this.standOpen = false;
+    byId('order').classList.add('is-gone');
+    this.showPatience();
+    this.later(AFTER_WALKED_OFF_SECONDS, () => this.session.finish());
+  }
+
+  /** The bar, kept hold of, as it goes in and out of the ticket with each customer. */
+  get patienceBar() {
+    this.bar ??= byId('patience');
+    return this.bar;
+  }
+
+  /** How long this customer will still wait, as a bar under their ticket. Customers who wait have none. */
+  showPatience() {
+    const bar = this.patienceBar;
+    const stand = this.stand;
+    const shown = Boolean(stand?.customer) && !stand.waits;
+    bar.hidden = !shown;
+    if (!shown) return;
+    const share = stand.orderDone ? 1 : stand.patienceShare;
+    bar.firstElementChild.style.width = `${(share * 100).toFixed(1)}%`;
+    bar.dataset.low = share < 0.3 ? 'yes' : 'no';
+    if (bar.parentElement !== byId('order')) byId('order').append(bar);
   }
 
   /** The ticket: a picture of each fruit that's wanted, and how many more. */
@@ -301,7 +342,8 @@ class SmoothieGame {
       item.append(picture, count);
       return item;
     });
-    ticket.replaceChildren(...items);
+    ticket.replaceChildren(...items, this.patienceBar);
+    ticket.classList.toggle('is-gone', Boolean(this.walkedOff));
     const box = ticket.getBoundingClientRect();
     field.tokenTarget = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
     const wanted = Object.values(order).reduce((sum, count) => sum + count, 0);
@@ -363,7 +405,9 @@ class SmoothieGame {
     this.idleFor += dt;
     // Power-ups only count down while the hand is open in the picture, so resting never uses them up.
     const glove = this.field.gloves[this.field.side];
-    if (this.field.throwing) this.stand.tick(dt, { seen: glove.visible && glove.status === 'open' });
+    // A customer's patience only runs down while the hand in play is in the picture, open or not.
+    if (this.field.throwing) this.stand.tick(dt, { seen: glove.visible && glove.status === 'open', present: glove.visible });
+    if (!this.friendly) this.showPatience();
     this.field.update(dt, snapshot, { aspect: this.session.camera.aspect, slicing: true, showHands: true });
     // Until the child has sliced something on the order.
     const filming = this.session.playSeconds < FILM_SECONDS && (this.friendly ? this.wantedHere : this.stand.stats.wanted) === 0;
@@ -418,6 +462,8 @@ class SmoothieGame {
   }
 
   finished() {
+    // What the voice says at the end: the same kind word as any finish, when a customer couldn't wait.
+    this.session.finishLine = this.walkedOff && !this.friendly ? LOST_LINE : WON;
     this.story.hide();
     this.field.throwing = false;
     this.field.labels = [];
@@ -433,6 +479,13 @@ class SmoothieGame {
 
   summary() {
     const { smoothies, rotten } = this.stand.stats;
+    const lost = Boolean(this.walkedOff) && !this.friendly;
+    const name = lost ? (characterWithId(this.walkedOff.who)?.name ?? 'The customer') : '';
+    if (!this.friendly) document.querySelector('#screen-finish h2').textContent = lost ? WALKED_OFF(name) : WON;
+    // The card's big button is to try the same level again. The levels' own words are put on it first.
+    if (lost) queueMicrotask(() => {
+      byId('play-again').textContent = 'Try again';
+    });
     const { hands } = this.session.settings;
     const mine = (value) => ({ left: hands === 'left' ? value : 0, right: hands === 'right' ? value : 0 });
     this.friends.showResults();
@@ -446,6 +499,8 @@ class SmoothieGame {
         rotten: mine(this.friendly ? this.rottenHere : rotten),
         coins: mine(this.stand.coins),
       },
+      // A customer who walked off means trying the same level again.
+      won: !lost,
       // A game with friends is on the host's level, so it doesn't move the child's own level on.
       countsForLevel: !this.friends.current,
     };
@@ -779,6 +834,7 @@ new GameSession({
       </div>
       ${STORY_BOX}
       <div id="order" class="order" aria-hidden="true"></div>
+      <div id="patience" class="patience" aria-hidden="true" hidden><span id="patience-fill" class="patience-fill"></span></div>
       <div class="film" aria-hidden="true">
         <svg viewBox="0 0 220 220">
           <g class="film-apple">
@@ -809,13 +865,18 @@ new GameSession({
         <label><input type="radio" name="pace" value="fast"> Fast</label>
       </fieldset>
       <fieldset class="choice">
+        <legend>Customers’ patience</legend>
+        <label><input type="radio" name="patience" value="hurry"> They won’t wait forever: a customer whose order isn’t made in time goes home, and that ends the fair</label>
+        <label><input type="radio" name="patience" value="gentle"> Gentle: they wait as long as it takes, and nothing can be lost</label>
+      </fieldset>
+      <fieldset class="choice">
         <legend>Customers</legend>
         <label><input type="radio" name="customers" value="3"> Three</label>
         <label><input type="radio" name="customers" value="6"> All six</label>
       </fieldset>`,
   },
-  defaults: { pace: 'slow', slicing: 'swipe', customers: 6 },
-  choices: { pace: String, slicing: String, customers: Number },
+  defaults: { pace: 'medium', slicing: 'swipe', customers: 6, patience: 'hurry' },
+  choices: { pace: String, slicing: String, customers: Number, patience: String },
   tagline: (side) => `It’s the Harvest Fair! Slice what the customers order, with your open ${side} hand.`,
   finishLine: WON,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

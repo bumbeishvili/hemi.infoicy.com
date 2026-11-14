@@ -1,8 +1,8 @@
 // Spider Catcher at the higher levels, with real photos going through the real tracker: spiders on the
 // move, a swaying web, shy spiders and twins, and nothing flashing at level 1 or level 10.
 import { expect, shot, test, waitForScreen } from '../helpers.js';
-import { atLevel, judgeBrightness, moveGloveTo, startPlaying, stopMoving, storyIs, watchBrightness } from '../story-games/helpers.js';
-import { GAME, GLOVE, garden, handIs, openOnSpider } from './helpers.js';
+import { atLevel, judgeBrightness, moveGloveTo, stopMoving, storyIs, watchBrightness } from '../story-games/helpers.js';
+import { GAME, GLOVE, garden, handIs, openOnSpider, startPlaying } from './helpers.js';
 const CANVASES = ['backdrop', 'giraffe-stage', 'game'];
 
 /**

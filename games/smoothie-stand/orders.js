@@ -68,16 +68,31 @@ export function newAt(level) {
 }
 
 /**
+ * How long a customer waits for their smoothie, in seconds of the hand in play being seen, unless a
+ * grown-up has chosen customers who wait as long as it takes: a little while for the stand, and a
+ * little more for each fruit on the order. At level 1 it's 14 seconds and 4 for each fruit, 30 for
+ * four apples, and by level 10 it's half that. Slicing a rotten fruit puts a customer off a little.
+ */
+export const PATIENCE = { base: [14, 7], perFruit: [4, 2], rottenCost: 3 };
+
+/** How many seconds this customer waits, at this level. */
+export function patienceFor(customer, level) {
+  const fruit = Object.values(customer?.order ?? {}).reduce((sum, count) => sum + count, 0);
+  return ramp(level, ...PATIENCE.base) + ramp(level, ...PATIENCE.perFruit) * fruit;
+}
+
+/**
  * What each level of the fair brings, from 1 to 10. Level 1 is the fair as it always was. The orders
  * are what the customers say, so they stay the same, and so do the grown-ups' choices: how fast the
- * fruit flies, how to slice, and how many customers. A level only goes on top of those.
+ * fruit flies, how to slice, and how many customers. A level only goes on top of those. gentle is the
+ * fair as it was before customers stopped waiting, with the gentler climb from level to level.
  */
-export function fairAt(level) {
+export function fairAt(level, { gentle = false } = {}) {
   return {
-    // Fruit falls back a little quicker: gravity times this. At level 10 it's still in the air 88% as long.
-    gravity: ramp(level, 1, 1.3),
-    // Throws come a little more often: the time between them, times this.
-    every: ramp(level, 1, 0.8),
+    // Fruit falls back quicker: gravity times this. At level 10 it's in the air 83% as long, or 88% gently.
+    gravity: ramp(level, 1, gentle ? 1.3 : 1.45),
+    // Throws come more often: the time between them, times this.
+    every: ramp(level, 1, gentle ? 0.8 : 0.72),
     // More in a throw, from level 3: one more at most.
     volley: stepsAt(level, { 1: 0, 3: 1 }),
     // And more up at once.
@@ -117,7 +132,8 @@ export function fairAt(level) {
  * level's.
  */
 export function plainFairAt(level) {
-  return { ...fairAt(level), across: 0, pairs: 0, tough: 0, tips: 0, bonus: [], powers: [], bee: false };
+  // The gentle climb, whatever each child's grown-up chose, as it always was with friends.
+  return { ...fairAt(level, { gentle: true }), across: 0, pairs: 0, tough: 0, tips: 0, bonus: [], powers: [], bee: false };
 }
 
 // With friends, each fruit is a point for whoever sliced it, one on the order two, and a rotten one nothing.
@@ -125,10 +141,20 @@ export const FRIENDS_POINTS = { wanted: 2, extra: 1, rotten: 0 };
 export const pointsFor = (verdict) => FRIENDS_POINTS[verdict] ?? 0;
 
 export class Stand {
-  /** short is a shorter day, with only three customers. plain is the plain fair, for friends: see plainFairAt. */
-  constructor({ short = false, level = 1, plain = false, random = Math.random, onEvent = () => {} } = {}) {
+  /**
+   * short is a shorter day, with only three customers. plain is the plain fair, for friends: see plainFairAt.
+   * gentle is the fair as it always was, where customers wait as long as it takes: otherwise each one waits
+   * as long as patienceFor says, and a customer who walks off ends the fair.
+   */
+  constructor({ short = false, level = 1, plain = false, gentle = false, random = Math.random, onEvent = () => {} } = {}) {
     this.customers = short ? DAY.filter(({ who }) => SHORT_DAY.includes(who)) : DAY;
-    this.level = plain ? plainFairAt(level) : fairAt(level);
+    this.level = plain ? plainFairAt(level) : fairAt(level, { gentle });
+    this.levelNumber = level;
+    // With friends it's the plain fair, where nobody walks off: see plainFairAt.
+    this.waits = gentle || plain;
+    this.patience = Infinity; // Seconds this customer will still wait.
+    this.patienceFull = Infinity;
+    this.walkedOff = null; // The customer who couldn't wait, which ends the fair.
     this.random = random;
     this.onEvent = onEvent;
     this.index = -1;
@@ -199,6 +225,8 @@ export class Stand {
       return;
     }
     this.left = { ...this.customer.order };
+    this.patienceFull = this.waits ? Infinity : patienceFor(this.customer, this.levelNumber);
+    this.patience = this.patienceFull;
     this.specialIn = this.special ? POWER_AFTER_SECONDS : Infinity;
     this.others = 0;
     this.bonusThrown = false;
@@ -223,11 +251,19 @@ export class Stand {
     return bonus.length ? bonus[this.index % bonus.length] : null;
   }
 
+  /** How much of this customer's patience is left, from 1 down to 0, or 1 for a customer who waits. */
+  get patienceShare() {
+    return Number.isFinite(this.patienceFull) ? Math.max(0, this.patience / this.patienceFull) : 1;
+  }
+
   /**
    * Every frame while fruit is flying. seen says the hand is open in the picture: power-ups only
-   * count down then, so resting never uses them up.
+   * count down then, so resting never uses them up. present says the hand in play is in the picture,
+   * open or not: the customer only waits less then, so a child who goes, or whose hand the camera
+   * loses, is never let down for it.
    */
-  tick(dt, { seen = true } = {}) {
+  tick(dt, { seen = true, present = seen } = {}) {
+    if (present && this.customer && !this.orderDone && !this.walkedOff) this.losePatience(dt);
     if (seen) for (const key of Object.keys(this.active)) this.active[key] = Math.max(0, this.active[key] - dt);
     if (this.specialIn === Infinity || !this.customer) return;
     this.specialIn -= dt;
@@ -236,6 +272,15 @@ export class Stand {
     const special = this.special;
     if (special === 'bee') this.emit('bee');
     else this.emit('power-out', { kind: special });
+  }
+
+  /** The customer waits this many seconds less, and walks off if that was all their patience. */
+  losePatience(seconds) {
+    if (this.waits || this.walkedOff || !this.customer) return;
+    this.patience = Math.max(0, this.patience - seconds);
+    if (this.patience > 0) return;
+    this.walkedOff = this.customer;
+    this.emit('walked-off', { customer: this.customer });
   }
 
   /** A power-up picked up: a bubble popped, or the bee's honey. */
@@ -322,6 +367,7 @@ export class Stand {
     if (kind === 'rotten') {
       this.stats.rotten += 1;
       this.emit('rotten');
+      if (this.customer && !this.orderDone) this.losePatience(PATIENCE.rottenCost);
       return 'rotten';
     }
     if (!(this.left[kind] > 0)) {

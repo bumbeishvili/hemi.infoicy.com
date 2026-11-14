@@ -31,18 +31,26 @@ const BUTTERFLY_AT = ['gate', 'honey', 'house'];
 const CHEST_AT = ['carrots', 'pond'];
 
 /**
- * What each level brings, from 1 to 10. Nothing here has a time limit, and nothing can be lost: a
- * spider let go of anywhere but its web just scuttles back to playing, at no cost. How far there is to
- * reach is the grown-ups' choice, under How far to reach, and no level changes it.
+ * What each level brings, from 1 to 10. Spiders nobody plays with wander off: when no spider has been
+ * caught or brought home for awayAfter seconds of the hand being in the picture, one heads for the edge of
+ * the garden, and one that gets there has got away. GET_AWAY_MOST getting away ends the game. gentle is the
+ * garden as it always was, where nothing has a time limit and nothing can be lost, with the gentler climb
+ * from level to level. A spider let go of anywhere but its web just scuttles back to playing, at no cost,
+ * either way. How far there is to reach is the grown-ups' choice, under How far to reach, and no level
+ * changes it.
  */
-export function gardenAt(level) {
+export function gardenAt(level, { gentle = false } = {}) {
   return {
     // Places with one more spider to bring home: none at level 1, then one, then two.
     more: stepsAt(level, { 1: 0, 3: 1, 8: 2 }),
     // How many are out playing at once, while there are that many still to bring home.
     atOnce: stepsAt(level, { 1: 2, 3: 3, 6: 4 }),
-    // The fastest a spider ever goes, in screen heights a second. At most 1.35 times level 1's.
-    speed: ramp(level, 0.07, 0.094),
+    // The fastest a spider ever goes, in screen heights a second. At most 1.7 times level 1's, or 1.35 gently.
+    speed: ramp(level, 0.07, gentle ? 0.094 : 0.12),
+    // Seconds of play without a spider caught or brought home, before one heads off to get away. Never, gently.
+    awayAfter: gentle ? Infinity : ramp(level, 24, 12),
+    // How long one heading off takes to get to the edge of the garden. It can be caught all the way there.
+    awayRun: gentle ? Infinity : ramp(level, 5, 3),
     // How far a scuttling spider goes either side of the middle of its path.
     wander: ramp(level, 0.09, 0.13),
     // How far a spider on its thread swings up and down, either side of the middle.
@@ -86,7 +94,8 @@ export function gardenAt(level) {
  */
 export function friendsGardenAt(level) {
   return {
-    ...gardenAt(level),
+    // The gentle climb, and nobody getting away, so that it's the same garden whatever each child's grown-up chose.
+    ...gardenAt(level, { gentle: true }),
     webSway: 0,
     shy: 0,
     pairs: 0,
@@ -169,8 +178,8 @@ export const WEB_SWAY_SECONDS = 10;
  * running about on the leaves, and 'dangle' for one swinging on its thread from the branch above.
  * Paths are smooth loops, and the speed is set so that nowhere on one is faster than the level's speed.
  */
-export function pathFor({ kind, centre, phase = 0, level }) {
-  const { wander, swing, twist, speed } = gardenAt(level);
+export function pathFor({ kind, centre, phase = 0, level, at = gardenAt(level) }) {
+  const { wander, swing, twist, speed } = at;
   // A dangling spider's thread slides along the branch slowly while it swings up and down.
   const [ax, ay] = kind === 'dangle' ? [wander * 0.45, swing] : [wander, wander * 0.6];
   const k = kind === 'dangle' ? Math.min(twist, 2) : twist;
@@ -284,6 +293,53 @@ export const spotFor = (index) => {
   const [x, y] = SPOTS[index % SPOTS.length];
   return { x, y };
 };
+
+// How many spiders getting away ends the game, unless a grown-up has chosen the gentle garden.
+export const GET_AWAY_MOST = 3;
+// How long one that got away stays out of sight before it comes back to play, in seconds.
+export const AWAY_SECONDS = 2;
+
+/**
+ * Spiders wandering off. Every frame of play, tick says whether one heads off now: once the hand in play has been in
+ * the picture for after seconds with no spider caught or brought home. Catching one or bringing one home settles
+ * them, and so does a new place. A hand that has gone, or that the camera has lost, keeps them where they are. One
+ * that gets all the way to the edge has got away, and most of those ends the game.
+ */
+export class Wandering {
+  constructor({ after = Infinity, most = GET_AWAY_MOST } = {}) {
+    this.after = after;
+    this.most = most;
+    this.since = 0;
+    this.away = 0;
+  }
+
+  get on() {
+    return Number.isFinite(this.after);
+  }
+
+  tick(dt, { seen }) {
+    if (!this.on || !seen || this.lost) return false;
+    this.since += dt;
+    if (this.since < this.after) return false;
+    this.since = 0;
+    return true;
+  }
+
+  /** A spider caught or brought home, or a new place: nobody is about to wander off. */
+  settle() {
+    this.since = 0;
+  }
+
+  /** One got away. Returns whether that was the last there could be, which ends the game. */
+  gotAway() {
+    this.away += 1;
+    return this.lost;
+  }
+
+  get lost() {
+    return this.away >= this.most;
+  }
+}
 
 /** The whole game: from one place in the garden to the next, until every spider is home. */
 export class Gathering {

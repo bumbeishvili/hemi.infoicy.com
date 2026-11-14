@@ -13,12 +13,16 @@ import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { catchKey } from './friends.js';
 import { Garden } from './garden.js';
-import { Gathering, PLACES, placesAt, spiderNewAt } from './spiders.js';
+import { GET_AWAY_MOST, Gathering, PLACES, placesAt, spiderNewAt } from './spiders.js';
 
 const CLOSE_ON_ONE = 'Close your hand on a spider!';
 const OPEN_ON_WEB = 'Bring it to the web, and open your hand!';
 const TO_THE_FLOWER = ['Take her to the flower!', 'ყვავილთან მიიყვანე!'];
 const ALL_HOME = 'Every spider is home!';
+// When too many got away. It's only on the card: the voice says the same kind word as for any finish.
+const GOT_AWAY = 'Three little spiders got away!';
+const LOST_LINE = 'Great job!';
+const AFTER_GOT_AWAY_SECONDS = 1.2; // A moment to see the garden, before the card.
 
 const LAST_WORDS_SECONDS = 2.4;
 const HINT_AFTER_SECONDS = 4;
@@ -88,6 +92,9 @@ class SpiderGame {
       onWake: () => session.sound.play('rustle', { gain: 0.35, rate: 0.9 }),
       onStash: () => session.sound.play('tick', { gain: 0.4 }),
       onLeave: () => this.leave(),
+      // A spider nobody played with heads off, and one that gets to the edge of the garden has got away.
+      onHeadOff: () => session.sound.play('rustle', { gain: 0.45, rate: 0.8 }),
+      onGotAway: (last) => this.onGotAway(last),
       onMoved: () => this.gathering.nextPlace(),
     });
     this.garden.language = () => session.settings.language;
@@ -135,9 +142,11 @@ class SpiderGame {
   }
 
   applySettings() {
-    const { hands, reach } = this.session.settings;
+    const { hands, reach, spiderAway } = this.session.settings;
     this.garden.side = hands;
     this.garden.reach = reach;
+    // Spiders who play as long as it takes, as the garden always had them, if a grown-up chose it. From the next game.
+    this.garden.gentle = spiderAway === 'gentle';
     document.body.dataset.side = hands;
   }
 
@@ -198,6 +207,8 @@ class SpiderGame {
     this.garden.labels = [];
     this.garden.introduced = new Set();
     this.garden.setLevel(played);
+    this.lost = false;
+    this.showAway();
     // Berries only come from level 2, so there's no tally before then, and none with friends.
     document.body.dataset.prizes = this.garden.level.berries ? 'on' : 'off';
     this.showBerries();
@@ -273,6 +284,22 @@ class SpiderGame {
   /** What each level brings that's new: see spiderNewAt in spiders.js. */
   newAt(level) {
     return spiderNewAt(level);
+  }
+
+  /** A spider got away. The last there can be ends the game, at the same level, to try again. */
+  onGotAway(last) {
+    this.session.sound.play('rustle', { gain: 0.5, rate: 0.7 });
+    this.showAway();
+    if (!last || this.lost) return;
+    this.lost = true;
+    this.later(AFTER_GOT_AWAY_SECONDS, () => this.session.finish());
+  }
+
+  /** How many have got away, of how many can, while that can happen. */
+  showAway() {
+    const { wandering } = this.garden;
+    byId('chip-away-box').hidden = !wandering.on;
+    byId('chip-away').textContent = `${wandering.away} of ${GET_AWAY_MOST}`;
   }
 
   /** The berry tally, which grows a little for a moment when a berry lands in it. */
@@ -481,6 +508,8 @@ class SpiderGame {
   }
 
   finished() {
+    // What the voice says at the end: the same kind word as any finish, when too many got away.
+    this.session.finishLine = this.lost ? LOST_LINE : ALL_HOME;
     this.session.sound.stopLoop('birds');
     this.story.hide();
     this.giraffe.hide();
@@ -495,10 +524,17 @@ class SpiderGame {
     const birds = ladybirds.left + ladybirds.right;
     byId('finish-prizes').textContent = [berryTotal ? `🍓 ${berryTotal}` : '', birds ? `🐞 ${birds}` : ''].filter(Boolean).join('   ');
     this.friends.showResults();
+    if (!this.friends.current) document.querySelector('#screen-finish h2').textContent = this.lost ? GOT_AWAY : ALL_HOME;
+    // The card's big button is to try the same level again. The levels' own words are put on it first.
+    if (this.lost) queueMicrotask(() => {
+      byId('play-again').textContent = 'Try again';
+    });
     return {
       hero: this.broughtHome,
       noun: 'game',
       rows: { home: this.garden.home, berries: picked },
+      // Too many getting away means trying the same level again.
+      won: !this.lost,
       // A game with friends is on the host's level, so it doesn't move the child's own level on.
       countsForLevel: !this.friends.current,
     };
@@ -523,6 +559,7 @@ new GameSession({
         <div class="chips">
           <div class="chip"><span class="chip-label">Home</span><span id="chip-home" class="chip-value">0 of ${total}</span></div>
           <div class="chip chip-berries"><span class="chip-label">Berries</span><span id="chip-berries" class="chip-value">0</span></div>
+          <div id="chip-away-box" class="chip chip-away" hidden><span class="chip-label">Got away</span><span id="chip-away" class="chip-value">0 of ${GET_AWAY_MOST}</span></div>
           <ol id="spider-scores" class="spider-scores" hidden></ol>
         </div>
       </div>
@@ -556,10 +593,15 @@ new GameSession({
         <label><input type="radio" name="reach" value="none"> Far</label>
         <label><input type="radio" name="reach" value="little"> Medium</label>
         <label><input type="radio" name="reach" value="lots"> Close</label>
+      </fieldset>
+      <fieldset class="choice">
+        <legend>Spiders getting away</legend>
+        <label><input type="radio" name="spiderAway" value="away"> Left alone too long, a spider runs off: three getting away ends the game</label>
+        <label><input type="radio" name="spiderAway" value="gentle"> Gentle: they play for as long as it takes, and nothing can be lost</label>
       </fieldset>`,
   },
-  defaults: { reach: 'little' },
-  choices: { reach: String },
+  defaults: { reach: 'little', spiderAway: 'away' },
+  choices: { reach: String, spiderAway: String },
   tagline: (side) => `Giraffe’s little spiders ran off! Close your ${side} hand on one, carry it to its web, and open your hand to put it home.`,
   finishLine: ALL_HOME,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

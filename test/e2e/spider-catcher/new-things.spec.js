@@ -2,8 +2,8 @@
 // left where a spider was caught, the ladybird and her flower, sleepy spiders, the butterfly, the basket
 // for two, treasure chests, two webs, leaf boats and the golden spider, the berry tally and the "New:" chips.
 import { expect, openGame, screenName, shot, show, test, waitForScreen } from '../helpers.js';
-import { atLevel, moveGloveTo, startPlaying, stopMoving, storyIs } from '../story-games/helpers.js';
-import { GAME, GLOVE, garden, handIs, holdStill } from './helpers.js';
+import { atLevel, moveGloveTo, stopMoving, storyIs } from '../story-games/helpers.js';
+import { GAME, GLOVE, garden, handIs, holdStill, startPlaying } from './helpers.js';
 
 const extras = (page) => page.evaluate(() => {
   const { garden: place } = window.__game;

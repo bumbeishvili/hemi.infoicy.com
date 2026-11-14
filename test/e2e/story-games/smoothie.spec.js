@@ -1,6 +1,12 @@
 // Giraffe's Smoothie Stand, with real photos going through the real tracker.
 import { expect, hands, shot, show, test, waitForScreen } from '../helpers.js';
-import { startPlaying, storyIs } from './helpers.js';
+import { startPlaying as startStand, storyIs } from './helpers.js';
+
+// These are the stand as it always was: customers who wait as long as it takes, the gentle choice under
+// "Customers' patience", and the slow pace that was the default then. The customers who won't wait are in
+// smoothie-patience.spec.js.
+const AS_IT_WAS = { patience: 'gentle', pace: 'slow' };
+const startPlaying = (page, game, settings = {}, ...rest) => startStand(page, game, { ...AS_IT_WAS, ...settings }, ...rest);
 
 const GAME = 'smoothie-stand';
 const stand = (page) => page.evaluate(() => {

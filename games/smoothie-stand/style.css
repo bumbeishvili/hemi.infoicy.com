@@ -125,3 +125,27 @@ body[data-screen='playing'] .order { display: flex; }
 @media (prefers-reduced-motion: reduce) {
   .film-apple, .film-half-a, .film-half-b, .film-swipe, .film-hand { animation-duration: 4.5s; }
 }
+
+/* How long this customer will still wait: a bar under their ticket that slowly shortens. It goes from green to
+   orange as it runs low, and never blinks. */
+.patience {
+  flex-basis: 100%;
+  min-width: clamp(110px, 14vw, 200px);
+  height: 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.patience[hidden] { display: none; }
+.patience-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 999px;
+  background: #3ddc84;
+  transition: background-color 1.2s linear;
+}
+.patience[data-low='yes'] .patience-fill { background: #f5a524; }
+/* A customer who couldn't wait: their ticket greys as they go. */
+.order.is-gone { opacity: 0.45; transition: opacity 1s linear; }

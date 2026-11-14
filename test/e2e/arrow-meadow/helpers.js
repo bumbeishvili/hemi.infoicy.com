@@ -39,9 +39,16 @@ export const hands = (page, { apart = 4, lift = 0, string = 'fist', bow = 'open'
   return side === 'right' ? show(page, bow, string, scene) : show(page, string, bow, scene);
 };
 
+/**
+ * The contest as it always was, which these tests were written for: as many arrows as it takes and targets that wait,
+ * the gentle choice under "Arrows in the quiver", with a little help with aiming, which was the default then. The
+ * quiver, as the game comes, is in quiver.spec.js.
+ */
+export const AS_IT_WAS = { arrowQuiver: 'gentle', arrowHelp: 'little' };
+
 /** Gets through the hand check, with the hand in play open, and on into play, with both hands up and nothing held. */
 export async function startPlaying(page, settings = {}, { side = 'right', hash = '' } = {}) {
-  await openGame(page, settings, GAME, hash);
+  await openGame(page, { ...AS_IT_WAS, ...settings }, GAME, hash);
   await hands(page, { string: 'open', side });
   await page.locator('#start').click();
   await waitForScreen(page, 'playing');

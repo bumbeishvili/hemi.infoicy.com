@@ -1,9 +1,16 @@
 // Getting at Spider Catcher in the tests: what's in the garden, and a real hand onto a spider.
 import { expect, hands } from '../helpers.js';
-import { moveGloveTo } from '../story-games/helpers.js';
+import { moveGloveTo, startPlaying as startGarden } from '../story-games/helpers.js';
 
 export const GAME = 'spider-catcher';
 export const GLOVE = ['garden', 'gloves', 'right'];
+
+/**
+ * Starts the garden as it always was, where nobody gets away: the gentle choice under "Spiders getting away". The
+ * spiders that do get away are in away.spec.js, which starts the game as it comes.
+ */
+export const AS_IT_WAS = { spiderAway: 'gentle' };
+export const startPlaying = (page, game, settings = {}, ...rest) => startGarden(page, game, { ...AS_IT_WAS, ...settings }, ...rest);
 
 export const garden = (page) => page.evaluate(() => {
   const { gathering, garden: place } = window.__game;

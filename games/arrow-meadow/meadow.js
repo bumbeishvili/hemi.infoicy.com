@@ -8,9 +8,13 @@
 // are in screen heights, x from the edge behind the archer and y down from the top, so the meadow is WORLD.wide
 // across and 1 high, whatever the screen: view.js fits it in, and turns it round for the hand in play.
 //
-// Nothing here can be lost, and nothing is taken away. An arrow that misses costs nothing, the next one is ready at
-// once, and nothing waits for a child who's resting: every target is still there when they come back. A plain straw
-// target always stands near, whatever else the level has brought, and after a few misses in a row it grows.
+// On their own, the contest comes with a quiver of so many arrows, a few more than there are targets to hit, fewer
+// at each level. Every arrow let go takes one, so a miss costs an arrow, and an empty quiver before enough targets are
+// hit loses the contest. A target only stands for a while before it's taken away and another comes, though that
+// clock waits while the hands are out of the picture. A plain straw target always stands near, whatever else the
+// level has brought. gentle is the contest as it always was: nothing can be lost, an arrow that misses costs nothing,
+// every target waits for as long as it takes, after a few misses in a row the plain target grows, and the castle's
+// golden target is given anyway. With friends it's always gentle.
 //
 // With friends, each on their own computer: together, everyone has the same targets, laid out the same from one
 // seed, and each game claims the ones its own arrows hit. The server says whose each one is (claimed), the first to
@@ -45,6 +49,13 @@ const FLIGHT_MOST = 5; // Seconds, after which an arrow has gone.
 const DOT_EVERY = 3; // The dotted line has a dot for every so many steps.
 const SHOWN = { hit: 0.8, stuck: 3, fell: 1.6 }; // Seconds a target that's been hit, and an arrow that's landed, still show.
 const GAPS = { plain: 0.35, special: 1.2, first: 1.4 }; // Seconds before the next target comes, and the first special one.
+const LEAVING_SECONDS = 0.5; // A target that has stood long enough shrinks away over this long.
+const OUT_SECONDS = 1.2; // With the last arrow landed and the contest not won, a moment before it's over.
+/** How many arrows are in the quiver for a contest of so many targets, at a level, or Infinity gently. */
+export const quiverFor = (goal, level, { gentle = false } = {}) => {
+  const each = meadowLevel(level, { gentle }).quiver;
+  return Number.isFinite(each) ? Math.ceil(goal * each) : Infinity;
+};
 export const PARTY_SECONDS = 2.4; // The cheering once the contest is won, before the finish card.
 // After misses in a row, the plain target grows: from so many, every other miss, by this much, up to so many times.
 export const MERCY = { from: 3, every: 2, by: 0.15, most: 3 };
@@ -92,12 +103,22 @@ export const FRIEND_ZONES = [
 /** How many targets are up at once for so many playing together: one more than there are players, up to four. */
 export const teamSlots = (players) => clamp(Math.round(players) + 1, 2, FRIEND_ZONES.length);
 
-/** What changes from level 1 to 10. Each level from 2 brings something new: see NEWS. */
-export function meadowLevel(level) {
+/**
+ * What changes from level 1 to 10. Each level from 2 brings something new: see NEWS. gentle is the contest as it
+ * always was, with the gentler climb.
+ */
+export function meadowLevel(level, { gentle = false } = {}) {
   const at = clampLevel(level);
   return {
-    // The plain target is a little smaller each level, and can stand a little further off.
-    size: ramp(at, 0.1, 0.076),
+    // The plain target is smaller each level, and can stand a little further off: at level 10 it's 65% of level 1's
+    // size, or 76% gently.
+    size: ramp(at, 0.1, gentle ? 0.076 : 0.065),
+    // Arrows in the quiver, for each target to hit: two and a half at level 1, and 1.4 at level 10. Gently, as many as
+    // it takes.
+    quiver: gentle ? Infinity : ramp(at, 2.5, 1.4),
+    // Seconds a target stands, while the hands are in the picture, before it's taken away and another comes: 20 at
+    // level 1 and 8 at level 10. Gently, for as long as it takes.
+    stays: gentle ? Infinity : ramp(at, 20, 8),
     near: ramp(at, NEAR.to[0], NEAR.to[1]),
     // From level 2, a balloon to pop, up in the air, and a star for it, and for every target the levels bring.
     balloon: at >= 2,
@@ -199,7 +220,7 @@ export function friendTarget(seed, k, level = 1, slots = 1) {
   const zone = FRIEND_ZONES[(slots > 1 ? k % slots : k) % FRIEND_ZONES.length];
   const x = mix(zone.x[0], zone.x[1], random());
   const y = mix(zone.y[0], zone.y[1], random());
-  const r = zone.kind === 'butt' ? meadowLevel(level).size : EXTRAS[zone.kind].r;
+  const r = zone.kind === 'butt' ? meadowLevel(level, { gentle: true }).size : EXTRAS[zone.kind].r;
   return { k, kind: zone.kind, x, y, r };
 }
 
@@ -225,17 +246,23 @@ export class Meadow {
    * shared with them, and race { seed } for a lane of one's own with the same targets as theirs: both are the plain
    * meadow, without what the levels bring. me is this child's id among them.
    */
-  constructor({ level = 1, goal = 10, help = 'little', team = null, race = null, me = 'me', random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ level = 1, goal = 10, help = 'little', team = null, race = null, gentle = false, me = 'me', random = Math.random, onEvent = () => {} } = {}) {
     Object.assign(this, { random, onEvent, me });
     this.level = clampLevel(level);
     this.mode = team ? 'team' : race ? 'race' : 'solo';
-    const full = meadowLevel(level);
+    // With friends it's always the contest as it was: nothing lost, and nothing taken away.
+    this.gentle = gentle || this.mode !== 'solo';
+    const full = meadowLevel(level, { gentle: this.gentle });
     this.plan = this.mode === 'solo' ? full : { ...full, balloon: false, far: false, roller: false, wind: 0, wall: false, bell: false, mill: false, bird: false, castle: false };
     this.stars = this.mode === 'solo' && this.level >= 2;
     this.goal = Math.max(1, Math.round(goal));
+    // Every arrow let go takes one from the quiver. Empty before the contest is won, it's lost.
+    this.quiver = quiverFor(this.goal, this.level, { gentle: this.gentle });
+    this.arrowsLeft = this.quiver;
+    this.outFor = 0;
     this.help = HELP_NAMES.includes(help) ? help : 'little';
     this.time = 0;
-    this.phase = 'play'; // Then 'castle', at level 10, and 'won'.
+    this.phase = 'play'; // Then 'castle', at level 10, and 'won', or 'lost' with the quiver empty.
     this.done = false;
     this.targets = [];
     this.arrows = [];
@@ -273,6 +300,11 @@ export class Meadow {
     this.targets.push(made);
     this.onEvent({ type: 'spawn', target: made });
     return made;
+  }
+
+  /** Whether the contest was lost, with the quiver empty before enough targets were hit. */
+  get lost() {
+    return this.phase === 'lost';
   }
 
   /** The targets that can be hit now. */
@@ -477,7 +509,11 @@ export class Meadow {
    * ghost is a friend's arrow, shown as it flies on their computer, which hits nothing here.
    */
   loose(angle, draw, { ghost = false, by = this.me } = {}) {
-    if (this.done) return null;
+    if (this.done || this.phase === 'lost') return null;
+    // An empty quiver has nothing to let go. The castle's golden target, once the contest is won, takes none.
+    const counted = !ghost && this.phase === 'play';
+    if (counted && this.arrowsLeft <= 0) return null;
+    if (counted && Number.isFinite(this.arrowsLeft)) this.arrowsLeft -= 1;
     const shot = shotFor(angle, draw, ghost ? 0 : this.wind);
     const arrow = { id: this.nextId, by, ghost, shot, t: 0, at: this.time, state: 'flying', x: shot.x0, y: shot.y0, dx: shot.vx, dy: -shot.vy, since: 0, in: null, scored: false };
     this.nextId += 1;
@@ -626,11 +662,15 @@ export class Meadow {
     return this.mode === 'team' ? this.owners.size : this.stats.hits;
   }
 
-  /** An arrow that hit no target. It costs nothing, and after a few in a row the plain target grows. */
+  /**
+   * An arrow that hit no target. It has cost an arrow from the quiver, and gently it costs nothing, and after a few in
+   * a row the plain target grows.
+   */
   missed() {
     this.stats.misses += 1;
     this.stats.run = 0;
     this.missRun += 1;
+    if (!this.gentle) return;
     const plain = this.live.find((target) => target.slot === 'plain');
     const due = this.missRun >= MERCY.from && (this.missRun - MERCY.from) % MERCY.every === 0;
     if (plain && due && plain.grown < MERCY.most) {
@@ -681,7 +721,11 @@ export class Meadow {
 
   /* ---------- each frame ---------- */
 
-  update(dt) {
+  /**
+   * present says the hands are in the picture: a target only stands for so long while they are, so a child who goes,
+   * or whose hands the camera loses, finds it still there when they come back.
+   */
+  update(dt, { present = true } = {}) {
     if (this.done) return;
     this.time += dt;
     for (const arrow of this.arrows) this.fly(arrow, dt);
@@ -689,6 +733,7 @@ export class Meadow {
 
     for (const target of this.targets) {
       target.since += dt;
+      if (target.state === 'up' && present) this.standing(target, dt);
       // A claim the server hasn't answered, as when the connection dropped, is made again.
       if (target.state === 'asked' && this.time - target.asked >= ASK_AGAIN_SECONDS) {
         target.asked = this.time;
@@ -700,13 +745,44 @@ export class Meadow {
       else this.fillShared(dt);
       if (this.plan.bird) this.flyBird(dt);
     }
-    // One that's been hit shows for a moment, with the arrow in it, and then it's gone.
-    this.targets = this.targets.filter((target) => !(target.state === 'hit' && target.since >= SHOWN.hit) && target.state !== 'gone');
+    // One that's been hit shows for a moment, with the arrow in it, and then it's gone, as is one that has shrunk away.
+    this.targets = this.targets.filter((target) => !(target.state === 'hit' && target.since >= SHOWN.hit) && !(target.state === 'leaving' && target.since >= LEAVING_SECONDS) && target.state !== 'gone');
+    if (this.phase === 'play') this.checkQuiver(dt);
+    if (this.phase === 'lost') {
+      this.outFor += dt;
+      if (this.outFor >= OUT_SECONDS) this.done = true;
+    }
     if (this.phase === 'castle') this.waitAtCastle(dt);
     if (this.phase === 'won') {
       this.partyLeft -= dt;
       if (this.partyLeft <= 0) this.done = true;
     }
+  }
+
+  /**
+   * A target that has stood as long as the level lets it is taken away, shrinking, and another comes in its place. A
+   * gift goes with its bird, and the castle's golden target waits as long as it waits.
+   */
+  standing(target, dt) {
+    if (!Number.isFinite(this.plan.stays) || (target.slot !== 'plain' && target.slot !== 'special')) return;
+    target.stood = (target.stood ?? 0) + dt;
+    if (target.stood < this.plan.stays) return;
+    target.state = 'leaving';
+    target.since = 0;
+    this.waits[target.slot] = GAPS[target.slot];
+    // A new plain target has a new wind, as when one is hit.
+    if (target.slot === 'plain' && this.plan.wind) this.turnWind();
+    this.onEvent({ type: 'leave', target });
+  }
+
+  /** The quiver is empty, the last arrow has landed, and the contest isn't won: it's lost, after a moment. */
+  checkQuiver() {
+    if (this.arrowsLeft > 0 || this.arrows.some((arrow) => !arrow.ghost && arrow.state === 'flying')) return;
+    this.phase = 'lost';
+    this.outFor = 0;
+    for (const target of this.targets) if (target.state === 'up') Object.assign(target, { state: 'leaving', since: 0 });
+    this.bird = null;
+    this.onEvent({ type: 'out' });
   }
 
   /** On their own: a plain target is always up, or on its way, and from level 2 one of what the levels bring. */
@@ -768,12 +844,21 @@ export class Meadow {
     this.celebrate();
   }
 
-  /** The golden target waits to be hit. It's never lost: after a good while, the trophy is given anyway. */
+  /**
+   * The golden target waits to be hit. After a good while it goes down again, and the contest is still won, without
+   * the trophy. Gently, the trophy is given anyway then. An empty quiver here costs nothing, as the contest is won.
+   */
   waitAtCastle(dt) {
     this.castleFor += dt;
     if (this.castleFor < EXTRAS.castle.waits || this.castle.state !== 'up') return;
-    this.castle.state = 'hit';
     this.castle.since = 0;
+    if (!this.gentle) {
+      this.castle.state = 'leaving';
+      this.onEvent({ type: 'leave', target: this.castle });
+      this.celebrate();
+      return;
+    }
+    this.castle.state = 'hit';
     this.stats.trophy = true;
     this.onEvent({ type: 'trophy', at: this.whereAt(this.castle), given: true });
     this.celebrate();
