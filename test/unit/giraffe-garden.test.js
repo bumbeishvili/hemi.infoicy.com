@@ -1,10 +1,12 @@
-// Giraffe's Garden: plants that grow with water and flower, where the water lands, what each level brings, and that
-// resting costs nothing. Everything here runs without a screen, with a pretend child moving the can and tipping it.
+// Giraffe's Garden: plants that grow with water and flower, where the water lands, what each level brings, the sun
+// drying the garden, and, in the gentle garden, that resting costs nothing. Everything here runs without a screen,
+// with a pretend child moving the can and tipping it. The tests of the old kind rules play the gentle garden, as
+// makeGarden does unless a test says otherwise.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  BASKET_Y, EXTRAS, Garden, gardenLevel, gardenNewAt, GROUND, LABELS, NEWS, newsIsOn, PLANT_COUNTS, SPREAD_NAMES,
+  BASKET_Y, DRYING, EXTRAS, Garden, gardenLevel, gardenNewAt, GROUND, LABELS, NEWS, newsIsOn, PLANT_COUNTS, SPREAD_NAMES,
   SPREADS, STAGES, STREAM, TALL, TOUCH,
 } from '../../games/giraffe-garden/garden.js';
 import { cleanCan, MAX_RACERS, mostIn, RaceRoom } from '../../server/race-room.js';
@@ -14,7 +16,7 @@ const LEVELS = Array.from({ length: 10 }, (_, index) => index + 1);
 
 function makeGarden(options = {}) {
   const log = [];
-  const garden = new Garden({ random: () => 0.5, onEvent: (event) => log.push(event), ...options });
+  const garden = new Garden({ random: () => 0.5, sun: 'gentle', onEvent: (event) => log.push(event), ...options });
   garden.log = log;
   return garden;
 }
@@ -460,4 +462,119 @@ test('the garden\'s rooms are known to both servers, and a friend\'s can is pass
   }
   const friends = readFileSync(new URL('../../core/friends.js', import.meta.url), 'utf8');
   assert.match(friends, /'can'[^\]]*\]\.includes\(message\.t\)/);
+});
+
+/* ---------- the sun drying the garden ---------- */
+
+const sunny = (options = {}) => makeGarden({ sun: 'dries', ...options });
+
+/**
+ * A pretend child for a garden the sun dries: moves the can at speed screens a second, takes settle seconds to turn
+ * the hand over once it's there, and, minding the plants, first goes to splash one that's getting too thirsty.
+ */
+function carer(garden, { speed = 1.5, settle = 0.3, mindful = true } = {}) {
+  const can = { x: 0.5, y: 0.5 };
+  let there = 0;
+  let target = null;
+  let topUp = false;
+  return () => {
+    if (!target || target.bloomed || (topUp && target.thirst < 0.05)) {
+      const parched = mindful ? garden.thirsty.filter((plant) => plant.thirst > 0.75).sort((a, b) => b.thirst - a.thirst)[0] : null;
+      topUp = Boolean(parched);
+      target = parched ?? garden.nextPlant(can.x);
+    }
+    if (!target) return { can: { ...can }, water: null };
+    const aim = garden.aimFor(target);
+    const gap = Math.hypot(aim.x - can.x, aim.y - can.y);
+    const step = Math.min(gap, speed * FRAME);
+    if (gap > 0) {
+      can.x += ((aim.x - can.x) / gap) * step;
+      can.y += ((aim.y - can.y) / gap) * step;
+    }
+    there = gap < 0.01 ? there + FRAME : 0;
+    return { can: { ...can }, water: there > settle ? { ...can, flow: 1 } : null };
+  };
+}
+
+function careFor(garden, options = {}, seconds = 300) {
+  const child = carer(garden, options);
+  let t = 0;
+  for (; t < seconds && !garden.done; t += FRAME) garden.update(FRAME, child());
+  return t;
+}
+
+test('on their own the sun dries every plant not in flower, while the hand is in the picture, and a splash puts it right', () => {
+  const garden = sunny({ plants: 4 });
+  assert.equal(garden.drying, true);
+  const [first, second] = garden.plants;
+  // No hand: nothing dries, however long it's away.
+  run(garden, 120, { can: null, water: null });
+  assert.ok(garden.plants.every((plant) => plant.thirst === 0));
+  // A hand in the picture, holding the can or not: they all get thirstier.
+  run(garden, 10, { can: { x: 0.5, y: 0.5 }, water: null });
+  for (const plant of garden.plants) assert.ok(Math.abs(plant.thirst - 10 / gardenLevel(1).wilt) < 0.01, `${plant.thirst}`);
+  // Water on one puts it right, quickly, and the others go on drying.
+  run(garden, DRYING.fresh, pourAt(garden.aimFor(first)));
+  assert.ok(first.thirst < 0.001, `${first.thirst}`);
+  assert.ok(second.thirst > 10 / gardenLevel(1).wilt);
+  // A plant in flower is safe from the sun.
+  run(garden, first.need, pourAt(garden.aimFor(first)));
+  assert.ok(first.bloomed);
+  const flowered = first.thirst;
+  run(garden, 5, { can: { x: 0.5, y: 0.5 }, water: null });
+  assert.equal(first.thirst, flowered);
+});
+
+test('a plant left too long wilts, and a moment later the garden is over, lost', () => {
+  const garden = sunny({ plants: 4 });
+  const wilt = gardenLevel(1).wilt;
+  let t = 0;
+  for (; t < 200 && !garden.wilted; t += FRAME) garden.update(FRAME, { can: { x: 0.5, y: 0.5 }, water: null });
+  assert.ok(Math.abs(t - wilt) < 0.05, `wilted after ${t} s`);
+  assert.equal(said(garden, 'wilted').length, 1);
+  assert.equal(said(garden, 'wilted')[0].plant, garden.wilted);
+  assert.deepEqual([garden.lost, garden.done], [true, false]);
+  // Nothing more grows, and then it's over.
+  run(garden, DRYING.wiltedSeconds - 0.1, pourAt(garden.aimFor(garden.plants[1])));
+  assert.equal(garden.plants[1].water, 0);
+  run(garden, 0.2, { can: null, water: null });
+  assert.equal(garden.done, true);
+  assert.equal(said(garden, 'all-bloomed').length, 0);
+});
+
+test('a quick child who minds the plants grows every one at every level, and one who only goes along loses the highest levels', () => {
+  for (const level of LEVELS) {
+    const garden = sunny({ level });
+    careFor(garden);
+    assert.ok(garden.done && !garden.lost, `level ${level}: ${garden.lost ? 'a plant wilted' : 'not over'}`);
+  }
+  // A slow child who waters them one after another, and pays no mind to the others drying.
+  const slowly = { speed: 0.15, settle: 1.5, mindful: false };
+  const first = sunny({ level: 1 });
+  careFor(first, slowly);
+  assert.ok(first.done && !first.lost, 'level 1, slowly');
+  const last = sunny({ level: 10 });
+  careFor(last, slowly);
+  assert.equal(last.lost, true, 'level 10, slowly');
+  const along = sunny({ level: 10 });
+  careFor(along, { mindful: false });
+  assert.equal(along.lost, true, 'level 10, quickly, but only going along');
+  // The sun is quicker each level, and at level 10 takes about a third of level 1's time.
+  for (const level of LEVELS.slice(1)) assert.ok(gardenLevel(level).wilt < gardenLevel(level - 1).wilt);
+  assert.deepEqual([gardenLevel(1).wilt, gardenLevel(10).wilt], DRYING.wilt);
+});
+
+test('the gentle garden, and the garden with friends, never dry out', () => {
+  const gentle = makeGarden({ sun: 'gentle' });
+  run(gentle, 300, { can: { x: 0.5, y: 0.5 }, water: null });
+  assert.deepEqual([gentle.drying, gentle.lost, gentle.done], [false, false, false]);
+  assert.ok(gentle.plants.every((plant) => plant.thirst === 0));
+  const friends = new Garden({ sun: 'dries', plain: true, shared: { claim: () => {} }, me: 'a' });
+  assert.equal(friends.drying, false);
+});
+
+test('the grown-ups\' settings: the sun drying the garden comes first, and the gentle garden can be chosen', () => {
+  const source = readFileSync(new URL('../../games/giraffe-garden/main.js', import.meta.url), 'utf8');
+  assert.match(source, /defaults: \{ turn: 'little', spread: 'middle', plants: 6, gardenSun: 'dries' \}/);
+  assert.match(source, /choice\('gardenSun', 'gentle', 'Gentle: /);
 });

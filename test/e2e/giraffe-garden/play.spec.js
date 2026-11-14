@@ -1,7 +1,7 @@
 // Playing Giraffe's Garden: the open hand holds the watering can, turning the hand over pours, and the plant under the
 // water grows and flowers. With real photos of one right hand, its palm and its back, through the real tracker.
 import { openGame, shot } from '../helpers.js';
-import { BACK, expect, expectSoon, FIST, GAME, NO_HAND, PALM, show, startPlaying, state, stopHand, test, waitForScreen, waterHand } from './helpers.js';
+import { BACK, expect, expectSoon, FIST, GAME, GENTLE, judge, NO_HAND, PALM, show, startPlaying, state, stopHand, test, waitForScreen, waterHand, watchBrightness } from './helpers.js';
 
 test('the open palm holds the can, turning the hand over pours, the plant under it flowers, and every one in flower ends the garden', async ({ page }) => {
   test.setTimeout(240_000);
@@ -142,4 +142,55 @@ test('a hand check that now and then saw the hand a little wider: the hand held 
   await expectSoon(async () => (await state(page)).flow, { timeout: 1000, intervals: [50] }).toBe(0);
   await page.waitForTimeout(1500);
   expect((await state(page)).flow).toBe(0);
+});
+
+/* ---------- the sun drying the garden ---------- */
+
+test('the sun dries the plants while the hand is in the picture and not while it isn\'t, water puts one right, and one left too long wilts', async ({ page }) => {
+  test.setTimeout(180_000);
+  await startPlaying(page, { plants: 4 });
+  expect((await state(page)).drying).toBe(true);
+  // No hand: nothing dries.
+  await show(page, ...NO_HAND);
+  await page.waitForTimeout(1500);
+  const away = (await state(page)).plants.map((plant) => plant.thirst);
+  await page.waitForTimeout(3000);
+  expect((await state(page)).plants.map((plant) => plant.thirst)).toEqual(away);
+  // A hand in the picture, and they all get thirstier. Water on one puts it right.
+  await show(page, ...PALM);
+  await expectSoon(async () => (await state(page)).plants[0].thirst, { timeout: 10_000 }).toBeGreaterThan(away[0] + 0.02);
+  await waterHand(page, { target: '(garden) => garden.aimFor(garden.plants[0])' });
+  await expectSoon(async () => (await state(page)).plants[0].water, { timeout: 30_000 }).toBeGreaterThan(0.3);
+  const watered = await state(page);
+  expect(watered.plants[0].thirst).toBeLessThan(watered.plants[3].thirst);
+  await stopHand(page);
+  await show(page, ...PALM);
+  // The last plant nearly dry: its drop goes orange, and then it wilts, and the garden is over. Nothing flashes.
+  await page.evaluate(() => {
+    window.__game.garden.plants[3].thirst = 0.97;
+  });
+  await page.waitForTimeout(400);
+  await shot(page, 'garden-thirsty');
+  const wilting = judge(await watchBrightness(page, 260));
+  console.log('a plant wilting in the sun', JSON.stringify(wilting));
+  expect(wilting.biggestStep).toBeLessThan(4);
+  expect(wilting.flickeringShare).toBeLessThan(0.01);
+  await waitForScreen(page, 'finish');
+  const end = await state(page);
+  expect([end.lost, end.wilted]).toEqual([true, 3]);
+  await expect(page.locator('#screen-finish h2')).toHaveText('A plant wilted in the sun!');
+  await expect(page.locator('#play-again')).toHaveText('Try again');
+  await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 1 again!');
+  await page.waitForTimeout(800);
+  await shot(page, 'garden-wilted');
+});
+
+test('in the gentle garden nothing dries out, and the grown-ups\' panel can choose it', async ({ page }) => {
+  await startPlaying(page, GENTLE);
+  await page.waitForTimeout(3000);
+  const gentle = await state(page);
+  expect(gentle.drying).toBe(false);
+  expect(gentle.plants.every((plant) => plant.thirst === 0)).toBe(true);
+  await page.locator('#open-panel').click();
+  await expect(page.locator('input[name="gardenSun"][value="gentle"]')).toBeChecked();
 });

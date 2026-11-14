@@ -8,6 +8,8 @@ export const PALM = [null, 'palm', { scale: 0.62 }];
 export const BACK = [null, 'back', { scale: 0.62 }];
 export const FIST = [null, 'fist', { scale: 0.62 }];
 export const NO_HAND = [null, null, { scale: 0.62 }];
+// The gentle garden, which is the game as it always was: nothing dries out, and nobody can lose.
+export const GENTLE = { gardenSun: 'gentle' };
 
 /** Gets through the hand check with the palm to the camera, as a child would hold it up, and on into play. */
 export async function startPlaying(page, settings = {}, hash = '') {
@@ -23,7 +25,10 @@ export const state = (page) => page.evaluate(() => {
   return {
     level: garden.level,
     done: garden.done,
-    plants: garden.plants.map(({ id, look, kind, x, y, water, need, bloomed, hanging }) => ({ id, look, kind, x, y, water, need, bloomed, hanging })),
+    plants: garden.plants.map(({ id, look, kind, x, y, water, need, bloomed, hanging, thirst }) => ({ id, look, kind, x, y, water, need, bloomed, hanging, thirst })),
+    drying: garden.drying,
+    lost: garden.lost,
+    wilted: garden.wilted?.id ?? null,
     flowers: garden.stats.flowers,
     pours: garden.stats.pours,
     prizes: { ...garden.stats.prizes },
