@@ -17,7 +17,7 @@ import { Glove, INK } from '../../core/glove.js';
 import { acrossGardens, answerFor, catchKey, homeBits, placeRandom, readFriend, readKey } from './friends.js';
 import {
   BASKET_HOLDS, BERRY, BUTTERFLY, CATCH_REACH, CHEST_BERRIES, CHEST_SECONDS, Catching, DASH, GOLDEN_BERRIES, SLEEP_MOST,
-  SPIDER_SIZE, WAKE_SECONDS, WEB_REACH, friendsGardenAt, gardenAt, pathFor, spidersFor, spiderAt, spotFor, visitorsAt, webAt,
+  SPIDER_SIZE, WAKE_SECONDS, WEB_REACH, AWAY_SECONDS, Wandering, friendsGardenAt, gardenAt, pathFor, spidersFor, spiderAt, spotFor, visitorsAt, webAt,
 } from './spiders.js';
 
 const PALM_SHARE = 0.105;
@@ -67,6 +67,7 @@ const LABELS = {
   golden: ['Golden spider!', 'ოქროს ობობა!'],
   shy: ['Shy!', 'მორცხვია!'],
   twins: ['Holding hands!', 'ხელჩაკიდებულები!'],
+  away: ['Catch it before it gets away!', 'დაიჭირე, სანამ გაიქცევა!'],
 };
 
 // With friends, where a friend's glove is goes from their screen to this one through the garden a child playing with
@@ -288,6 +289,8 @@ export class Garden {
     this.catching = new Catching();
     this.level = gardenAt(1);
     this.levelNumber = 1;
+    this.gentle = false; // The garden as it always was, where no spider ever gets away: see gardenAt.
+    this.wandering = new Wandering();
     this.side = 'right';
     this.reach = 'little';
     this.aspect = 16 / 9;
@@ -388,7 +391,14 @@ export class Garden {
   /** What this level brings: see gardenAt in spiders.js. With friends, it's the plain garden at that level. */
   setLevel(level) {
     this.levelNumber = level;
-    this.level = this.shared ? friendsGardenAt(level) : gardenAt(level);
+    this.level = this.shared ? friendsGardenAt(level) : gardenAt(level, { gentle: this.gentle });
+    // A new game: nobody has got away yet.
+    this.wandering = new Wandering({ after: this.level.awayAfter });
+  }
+
+  /** How many spiders have got away this game. */
+  get gotAway() {
+    return this.wandering.away;
   }
 
   /**
@@ -446,6 +456,7 @@ export class Garden {
       butterfly: this.visitors.butterfly ? { state: 'coming', in: BUTTERFLY_AFTER, alpha: 0, t: 0, wait: 0 } : null,
     };
     this.slow = 1;
+    this.wandering.settle();
     this.letOut();
   }
 
@@ -480,7 +491,7 @@ export class Garden {
   makeSpider(plan, slot, leader = null) {
     const path = leader
       ? { ...leader, phase: leader.phase - BEHIND }
-      : pathFor({ kind: plan.kind === 'ladybird' ? 'scuttle' : plan.kind, centre: spotFor(slot), phase: plan.phase, level: this.levelNumber });
+      : pathFor({ kind: plan.kind === 'ladybird' ? 'scuttle' : plan.kind, centre: spotFor(slot), phase: plan.phase, level: this.levelNumber, at: this.level });
     const spider = {
       ...plan,
       slot,
@@ -538,9 +549,27 @@ export class Garden {
     spider.y = y;
   }
 
-  /** Whether a spider can be caught now: out playing, and not asleep, dashing off or scurrying back. */
+  /** Whether a spider can be caught now: out playing, or heading off, and not asleep, dashing off or scurrying back. */
   catchable(spider) {
-    return spider.state === 'playing' && spider.alpha >= 0.5;
+    return (spider.state === 'playing' || spider.state === 'leaving') && spider.alpha >= 0.5;
+  }
+
+  /**
+   * Nobody has played with the spiders for a while: the one furthest from the hand heads for the edge of the garden,
+   * away from the web. It can still be caught all the way there. Returns whether one went.
+   */
+  headOff() {
+    const glove = this.gloves[this.side];
+    const free = this.spiders.filter((spider) => spider.state === 'playing' && spider.alpha >= 1);
+    if (!free.length) return false;
+    const gap = (spider) => Math.hypot(spider.x - glove.x, spider.y - glove.y);
+    const spider = free.reduce((best, each) => (gap(each) > gap(best) ? each : best));
+    const edge = this.across(1) + this.way * this.spiderSize * 3;
+    spider.state = 'leaving';
+    spider.leave = { x: spider.x, y: spider.y, to: edge, t: 0, seconds: this.level.awayRun * (this.reducedMotion ? 1.2 : 1) };
+    this.introduce('away', spider);
+    this.events.onHeadOff?.(spider);
+    return true;
   }
 
   isNear(spider, glove, reach = this.catchReach) {
@@ -611,6 +640,12 @@ export class Garden {
     if (playing && this.moving === 0) {
       this.noticeHand();
       this.handleHand(dt, snapshot);
+      // Spiders nobody plays with wander off, but only while the hand is in the picture, and never between places.
+      const settled = this.holdFor > 0 || this.homeHere >= this.count;
+      if (!settled && this.wandering.tick(dt, { seen: this.gloves[this.side].visible }) && !this.headOff()) {
+        // None free to go just now, as when they're all asleep: the next that is goes.
+        this.wandering.since = this.wandering.after;
+      }
     }
   }
 
@@ -695,6 +730,28 @@ export class Garden {
     }
     if (spider.state === 'playing' || spider.state === 'dashing') {
       this.placeOnPath(spider);
+    } else if (spider.state === 'leaving') {
+      // Heading for the edge of the garden, at a steady scuttle. Out of sight there, it has got away.
+      const { leave } = spider;
+      leave.t += dt;
+      const share = Math.min(1, leave.t / leave.seconds);
+      spider.x = leave.x + (leave.to - leave.x) * share;
+      spider.y = leave.y + Math.sin(share * Math.PI) * this.spiderSize * 0.6;
+      if (leave.t >= leave.seconds) {
+        spider.state = 'away';
+        spider.awayFor = 0;
+        spider.leave = null;
+        this.events.onGotAway?.(this.wandering.gotAway());
+      }
+    } else if (spider.state === 'away') {
+      // Out of sight for a moment, and then back to playing on its own path, fading in.
+      spider.alpha = 0;
+      spider.awayFor += dt;
+      if (spider.awayFor >= AWAY_SECONDS) {
+        spider.state = 'playing';
+        spider.shift = { x: 0, y: 0 };
+        this.placeOnPath(spider);
+      }
     } else if (spider.state === 'returning') {
       const { back } = spider;
       back.t += dt;
@@ -754,7 +811,7 @@ export class Garden {
     const glove = this.gloves[this.side];
     if (!glove.visible) return;
     for (const spider of this.spiders) {
-      if (!spider.shy || spider.dashed || !this.catchable(spider) || this.holding === spider) continue;
+      if (!spider.shy || spider.dashed || spider.state !== 'playing' || !this.catchable(spider) || this.holding === spider) continue;
       if (!this.isNear(spider, glove, this.catchReach * SHY_REACH)) continue;
       const away = { x: spider.x - glove.x, y: spider.y - glove.y };
       const length = Math.hypot(away.x, away.y) || 1;
@@ -803,6 +860,8 @@ export class Garden {
     if (result === 'caught') {
       const spider = this.catching.held;
       spider.state = 'held';
+      spider.leave = null;
+      this.wandering.settle();
       if (this.shared) {
         // In this child's glove at once, and the server says whose it really is, if a friend closed on it too.
         Object.assign(spider, { holder: this.shared.me, pending: true });
@@ -812,6 +871,7 @@ export class Garden {
       if (this.level.berries) this.dropBerry(spider.x, spider.y + this.spiderSize * 1.4);
       this.events.onCatch?.();
     } else if (result === 'home') {
+      this.wandering.settle();
       for (const spider of this.catching.released) this.bringHome(spider);
     } else if (result === 'let-go') {
       for (const spider of this.catching.released) this.letGoOf(spider);
@@ -1466,7 +1526,7 @@ export class Garden {
     const { x, y } = spider;
     ctx.save();
     ctx.globalAlpha = alpha;
-    const out = spider.state === 'playing' || spider.state === 'dashing';
+    const out = spider.state === 'playing' || spider.state === 'dashing' || spider.state === 'leaving';
     if (spider.kind === 'boat' && out) {
       // Its leaf boat, rocking gently under it.
       ctx.save();

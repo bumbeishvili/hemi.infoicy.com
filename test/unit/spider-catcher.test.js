@@ -391,6 +391,7 @@ test('each level is a little harder than the one before, and nothing is easier',
   const harder = {
     more, atOnce: more, speed: more, wander: more, swing: more, twist: more, webSway: more, shy: more, pairs: more,
     berries: more, ladybird: more, sleepy: more, butterfly: more, basket: more, chest: more, webs: more, boats: more, golden: more,
+    awayAfter: less, awayRun: less,
   };
   for (const level of LEVELS.slice(1)) {
     const [before, now] = [gardenAt(level - 1), gardenAt(level)];
@@ -411,14 +412,16 @@ test('each level is a little harder than the one before, and nothing is easier',
 
 // How long there is to catch a spider going past a hand held still: across the catching circle, at the
 // fastest it goes. The palm is about 0.105 of the screen's height.
-const reactSeconds = (level) => (2 * (0.105 * CATCH_REACH + SPIDER_SIZE)) / gardenAt(level).speed;
+// These limits are for the gentle garden, as it always was: test/unit/spider-catcher-away.test.js has the default.
+const GENTLE = { gentle: true };
+const reactSeconds = (level, how = GENTLE) => (2 * (0.105 * CATCH_REACH + SPIDER_SIZE)) / gardenAt(level, how).speed;
 
 // A spider takes about 5 seconds to catch, carry and let in at level 1. Faster, twistier paths, a web that
 // sways and shy spiders each add a little, by these guesses, and more out at once and twins take a
 // little off, as there's always one nearer.
 function gardenLoad(level) {
-  const at = gardenAt(level);
-  const first = gardenAt(1);
+  const at = gardenAt(level, GENTLE);
+  const first = gardenAt(1, GENTLE);
   const spiderSeconds = 5
     + 1.2 * (at.speed / first.speed - 1)
     + 0.15 * (at.twist - 1)
@@ -441,13 +444,13 @@ function gardenLoad(level) {
   return { seconds, perMinute: (spiders / seconds) * 60, reactSeconds: reactSeconds(level) };
 }
 
-test('level 10 is still within reach: 70% of the time to react, not twice the moves, at most a third longer', () => {
+test('gentle: level 10 is still within reach: 70% of the time to react, not twice the moves, at most a third longer', () => {
   const [first, last] = [gardenLoad(1), gardenLoad(10)];
   assert.ok(last.reactSeconds >= first.reactSeconds * 0.7, `${last.reactSeconds} against ${first.reactSeconds}`);
   assert.ok(last.perMinute <= first.perMinute * 2);
   assert.ok(last.seconds <= first.seconds * 1.34, `${last.seconds} against ${first.seconds}`);
   // Nothing at any level is quicker than level 1 by more than that.
-  for (const level of LEVELS) assert.ok(gardenAt(level).speed <= gardenAt(1).speed / 0.7);
+  for (const level of LEVELS) assert.ok(gardenAt(level, GENTLE).speed <= gardenAt(1, GENTLE).speed / 0.7);
 });
 
 /* ---------- words and files ---------- */
@@ -482,7 +485,9 @@ test('the rules have no screen in them, so they can run here', () => {
 
 test('with friends, the garden is the plain one at the host\'s level: as many spiders, as quick, and nothing new', () => {
   for (const level of LEVELS) {
-    const [own, shared] = [gardenAt(level), friendsGardenAt(level)];
+    // The gentle climb, whatever each child's grown-up chose, so it's the same garden on every screen.
+    const [own, shared] = [gardenAt(level, { gentle: true }), friendsGardenAt(level)];
+    assert.equal(shared.awayAfter, Infinity);
     for (const key of ['more', 'atOnce', 'speed', 'wander', 'swing', 'twist']) assert.equal(shared[key], own[key], `${key} at level ${level}`);
     for (const key of ['berries', 'ladybird', 'butterfly', 'basket', 'chest', 'boats', 'golden']) assert.equal(shared[key], false, `${key} at level ${level}`);
     for (const key of ['shy', 'sleepy', 'pairs', 'webSway']) assert.equal(shared[key], 0, `${key} at level ${level}`);

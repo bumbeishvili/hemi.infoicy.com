@@ -1,8 +1,8 @@
 // Spider Catcher, with real photos going through the real tracker: catching a spider, carrying it,
 // and letting it into its web, and what doesn't count.
 import { expect, hands, shot, show, test, waitForScreen } from '../helpers.js';
-import { moveGloveTo, startPlaying, stopMoving, storyIs } from '../story-games/helpers.js';
-import { GAME, GLOVE, garden, handIs, holdStill, openOnSpider } from './helpers.js';
+import { moveGloveTo, stopMoving, storyIs } from '../story-games/helpers.js';
+import { GAME, GLOVE, garden, handIs, holdStill, openOnSpider, startPlaying } from './helpers.js';
 
 async function webPoint(page) {
   const { web, width, height } = await garden(page);
