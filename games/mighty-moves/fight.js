@@ -94,7 +94,7 @@ export class Fight {
     // round, as their computer says.
     this.npcMax = RULES.maxHp * (this.ally ? TEAM.health : 1);
     this.allyDealt = 0;
-    const rules = fightLevel(levelNumber);
+    const rules = fightLevel(levelNumber, level);
     // A friend isn't the champion, and there's no trophy for beating them. Gems are for getting out of the way
     // of the computer's moves, which a friend's fighter doesn't make. A shield bubble would stop a hit that only
     // this computer knew had been stopped, so it doesn't come.
@@ -386,7 +386,7 @@ export class Fight {
       return;
     }
     let damage = blocked ? 0 : (action.small ? RULES.smallHit : definition.damage) * action.times;
-    if (action.who === 'npc') damage *= this.level.damage;
+    if (action.who === 'npc') damage *= this.level.damage * (this.levelRules.hits ?? 1);
 
     // Small hits can only go so far. After that, the opponent just blocks them.
     if (action.small) {

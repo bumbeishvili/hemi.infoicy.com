@@ -148,6 +148,8 @@ body[data-screen='playing'][data-prizes='on'] .prompt { top: calc(10px + clamp(1
   background: var(--surface-soft);
 }
 .finish-score:empty { display: none; }
+.finish-lost { margin: 0; font-size: clamp(18px, 2.2vw, 24px); font-weight: 600; }
+.finish-lost[hidden] { display: none; }
 .finish-prizes { margin: 0; font-size: clamp(20px, 2.4vw, 28px); font-weight: 600; }
 .finish-prizes:empty { display: none; }
 body:not([data-prizes='on']) tr:has(#sum-left-prizes) { display: none; }

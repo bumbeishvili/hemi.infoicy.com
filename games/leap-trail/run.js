@@ -7,8 +7,10 @@
 // fighter just hangs in the air for longer. The trail has three lanes. Most obstacles go right across
 // and need a jump, but some only fill one or two lanes, and those can be passed by stepping into a
 // free lane as well as by jumping them, which is what makes moving across worth it. Lines of stars
-// are in one lane or another, often the free one. Nobody loses here. Missing a jump either stops the
-// fighter to wait for it, or costs a stumble, and a missed star costs nothing.
+// are in one lane or another, often the free one. Missing a jump either stops the fighter to wait for
+// it, or costs a stumble, and a missed star costs nothing. Each stumble also costs a heart, and a run
+// whose hearts are all gone is over there, unless a grown-up has chosen the gentle trail, where it
+// always runs on to the finish as it once did. A runner set to wait never runs into anything.
 //
 // Each level, from 1 to 10, is a little harder than the one before: see trailLevel below.
 //
@@ -96,19 +98,30 @@ export const newAt = (level, settings = {}) => newThingsAt(level, settings).map(
 export const LANES = [-1, 0, 1];
 export const GOLD_STARS = 5; // What a golden star is worth.
 
+// How each level 10 compares with level 1, on the trail as it comes and on the gentle trail, which is the
+// game as it was before a run could be lost.
+const TOP_LEVEL = {
+  challenge: { speed: 1.3, gaps: 0.72, early: 0.7 },
+  gentle: { speed: 1.12, gaps: 0.85, early: 0.85 },
+};
+
 /**
  * What a level changes. Level 1 is the game as it always was. The pace and the length a grown-up
- * chose stay theirs, and a level only goes a little beyond that pace. All the time a child gets is
- * still in seconds, and at level 10 it's never under 85% of level 1's.
+ * chose stay theirs, and a level goes beyond that pace. All the time a child gets is still in seconds.
+ * gentle is the gentle trail, which ramps as it always did and has no hearts to lose.
  */
-export function trailLevel(level = 1) {
+export function trailLevel(level = 1, { gentle = false } = {}) {
+  const top = TOP_LEVEL[gentle ? 'gentle' : 'challenge'];
   return {
-    // Running a little faster, up to 12% by level 10, which is most of what feels harder.
-    speed: ramp(level, 1, 1.12),
-    // Obstacles a little closer together in time, down to 85% of the pace's gaps by level 10.
-    gaps: ramp(level, 1, 0.85),
-    // The stretch where a jump counts, in seconds, down to 85% of the pace's by level 10.
-    early: ramp(level, 1, 0.85),
+    // Running faster, up to 30% by level 10 (12% on the gentle trail), which is most of what feels harder.
+    speed: ramp(level, 1, top.speed),
+    // Obstacles closer together in time, down to 72% of the pace's gaps by level 10 (85% when gentle).
+    gaps: ramp(level, 1, top.gaps),
+    // The stretch where a jump counts, in seconds, down to 70% of the pace's by level 10 (85% when gentle).
+    early: ramp(level, 1, top.early),
+    // How many stumbles a run has, as hearts: the last one gone and the run is over. Fewer as the levels
+    // go up. None on the gentle trail, where a stumble only costs the streak.
+    hearts: gentle ? null : stepsAt(level, { 1: 5, 3: 4, 6: 3, 9: 2 }),
     // How often a line of stars is in a different lane from the one before.
     laneMoves: ramp(level, 0.65, 0.85),
     // From level 3, a golden star over some obstacles, in one lane: jumping over in that lane catches
@@ -146,12 +159,13 @@ export function trailLevel(level = 1) {
 }
 
 /** A level, run with friends: the same obstacles, places and coins, without the extras that would need sharing. */
-export const withFriends = (rules) => ({ ...rules, gold: 0, spring: 0, gems: false, powers: [], powerEvery: 0, keyEvery: 0 });
+// Nor hearts: running with friends is a race for stars, and everyone runs on to the finish.
+export const withFriends = (rules) => ({ ...rules, gold: 0, spring: 0, gems: false, powers: [], powerEvery: 0, keyEvery: 0, hearts: null });
 
 /** A pace, as a level plays it. At level 1 it's the pace itself. */
-export function paceAt(pace, level = 1) {
+export function paceAt(pace, level = 1, { gentle = false } = {}) {
   const { speed, every, early } = PACES[pace];
-  const rules = trailLevel(level);
+  const rules = trailLevel(level, { gentle });
   return { speed: speed * rules.speed, every: every.map((seconds) => seconds * rules.gaps), early: early * rules.early };
 }
 
@@ -382,9 +396,11 @@ function layExtras(course, starLines, lanes, random, rules) {
  * Lays out a trail, at a level. Exported so the tests can look at one. whenMissed is the runner's, as a
  * power-up with nothing to do with these settings isn't laid: see powersFor.
  */
-export function layCourse({ obstacles, pace, lanes = true, whenMissed = 'stumble', random = Math.random, levelNumber = 1, friends = false }) {
-  const rules = friends ? withFriends(trailLevel(levelNumber)) : trailLevel(levelNumber);
-  const { speed, every } = paceAt(pace, levelNumber);
+export function layCourse({ obstacles, pace, lanes = true, whenMissed = 'stumble', random = Math.random, levelNumber = 1, friends = false, gentle = false }) {
+  // With friends, everyone's trail is laid the same, so it's always the trail as it comes.
+  const kind = { gentle: gentle && !friends };
+  const rules = friends ? withFriends(trailLevel(levelNumber)) : trailLevel(levelNumber, kind);
+  const { speed, every } = paceAt(pace, levelNumber, kind);
   const course = [];
   let at = speed * FIRST_OBSTACLE_SECONDS;
   for (let i = 0; i < obstacles; i += 1) {
@@ -443,7 +459,7 @@ export class Run {
    * move between lanes, or all stay in the middle. whenMissed is 'wait' to stop and wait for the
    * move, or 'stumble' to run into it. levelNumber is the level, from 1 to 10: see trailLevel. friends is
    * running with friends, on a trail from their shared random, where a star reached is asked for: see
-   * settleStar.
+   * settleStar. gentle is the gentle trail, the game as it was: no hearts, and the levels' old pace.
    */
   constructor({
     obstacles = 20,
@@ -453,15 +469,20 @@ export class Run {
     levelNumber = 1,
     random = Math.random,
     friends = false,
+    gentle = false,
     onEvent = () => {},
   } = {}) {
     this.levelNumber = levelNumber;
     this.friends = friends;
-    this.levelRules = friends ? withFriends(trailLevel(levelNumber)) : trailLevel(levelNumber);
-    this.settings = paceAt(pace, levelNumber);
+    const kind = { gentle: gentle && !friends };
+    this.levelRules = friends ? withFriends(trailLevel(levelNumber)) : trailLevel(levelNumber, kind);
+    this.settings = paceAt(pace, levelNumber, kind);
     this.whenMissed = whenMissed;
     this.onEvent = onEvent;
-    const { course, starLines, end, pickups, chests } = layCourse({ obstacles, pace, lanes, whenMissed, random, levelNumber, friends });
+    // Hearts left, or null when a run can't be lost: gentle, with friends, or waiting for every move.
+    this.hearts = whenMissed === 'stumble' ? this.levelRules.hearts : null;
+    this.lost = false; // Whether the hearts ran out before the finish.
+    const { course, starLines, end, pickups, chests } = layCourse({ obstacles, pace, lanes, whenMissed, random, levelNumber, friends, gentle });
     this.course = course;
     this.starLines = starLines;
     this.pickups = pickups; // Power-ups and keys, on the line of stars.
@@ -670,7 +691,8 @@ export class Run {
     stats.bumps += 1;
     stats.streak = 0;
     this.stumbleLeft = STUMBLE_SECONDS;
-    this.emit('bump', { obstacle });
+    if (this.hearts !== null) this.hearts = Math.max(0, this.hearts - 1);
+    this.emit('bump', { obstacle, hearts: this.hearts });
   }
 
   /** How far through its move the fighter is, from 0 to 1. */
@@ -874,10 +896,18 @@ export class Run {
       }
     }
 
+    // The last heart gone, the run is over there: the runner stumbles and slows to a stop.
+    if (this.hearts === 0) {
+      this.lost = true;
+      this.state = 'finished';
+      this.move = null;
+      this.emit('finished', { stats, lost: true });
+      return;
+    }
     if (this.distance >= this.end) {
       this.state = 'finished';
       this.move = null;
-      this.emit('finished', { stats });
+      this.emit('finished', { stats, lost: false });
     }
   }
 }

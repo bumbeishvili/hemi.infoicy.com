@@ -34,13 +34,16 @@ const COIN = '🟡'; // A gold coin in words, as the coin emoji isn't gold every
 const DEFAULTS = {
   moveSize: 'small',
   jumpWith: 'jump',
-  pace: 'slow',
+  pace: 'medium',
   obstacles: 20,
   onMissed: 'stumble',
   trailLanes: 'yes',
+  // Whether stumbles cost hearts, and a run whose hearts are gone is over: 'yes', or 'no' for the gentle
+  // trail, the game as it was, where every run gets to the finish and moves on a level.
+  trailHearts: 'yes',
   fighter: 'giraffe',
 };
-const CHOICES = { jumpWith: String, pace: String, obstacles: Number, onMissed: String, trailLanes: String };
+const CHOICES = { jumpWith: String, pace: String, obstacles: Number, onMissed: String, trailLanes: String, trailHearts: String };
 const LENGTHS = [10, 20, 40];
 
 // Running with friends, each on their own computer: see core/friends-ui.js for what each of these is.
@@ -262,7 +265,7 @@ class LeapTrail extends BodyGame {
     if ('moveSize' in change) this.reader.personal = { jump: null, squat: null, leg: null, hand: null };
     if ('jumpWith' in change || 'hands' in change) this.handUsed = false;
     // What the cards say is new depends on these.
-    if ('trailLanes' in change || 'onMissed' in change) this.levelUi.refresh();
+    if ('trailLanes' in change || 'onMissed' in change || 'trailHearts' in change) this.levelUi.refresh();
   }
 
   showChosen(spec) {
@@ -463,6 +466,7 @@ class LeapTrail extends BodyGame {
       pace: host?.pace ?? settings.pace,
       lanes: host ? host.lanes : this.hasLanes,
       whenMissed: settings.onMissed,
+      gentle: settings.trailHearts === 'no',
       levelNumber,
       random: friendly ? seededRandom(friendly.seed) : Math.random,
       friends: Boolean(friendly),
@@ -474,6 +478,7 @@ class LeapTrail extends BodyGame {
     world.setLane(0);
     this.lanes = null;
     document.body.dataset.coins = this.run.levelRules.coins ? 'yes' : 'no';
+    document.body.dataset.hearts = this.run.hearts === null ? 'no' : 'yes';
     this.newShown = new Set();
     this.newQueue = [];
     this.newLeft = 0;
@@ -780,6 +785,13 @@ class LeapTrail extends BodyGame {
       lastNumbers.streak = streak;
       byElementId('streak').textContent = String(streak);
     }
+    if (lastNumbers.hearts !== run.hearts) {
+      lastNumbers.hearts = run.hearts;
+      const full = run.hearts ?? 0;
+      const all = run.levelRules.hearts ?? 0;
+      byElementId('hearts').textContent = `${'♥'.repeat(full)}${'♡'.repeat(Math.max(0, all - full))}`;
+      byElementId('hearts').setAttribute('aria-label', `${full} of ${all}`);
+    }
     const left = run.course.filter(({ state }) => state === 'ahead' || state === 'passing').length;
     if (lastNumbers.left !== left) {
       lastNumbers.left = left;
@@ -951,6 +963,7 @@ class LeapTrail extends BodyGame {
 
   onFinished() {
     const { world, sound } = this;
+    const { lost } = this.run;
     // Friends' finish cards fill in with how this child did.
     if (this.friends.current) this.friends.finished(performance.now() - this.goAt, { w: 1, n: this.run.starTotal });
     world.setLive(null);
@@ -962,8 +975,12 @@ class LeapTrail extends BodyGame {
     this.setCount('');
     this.updateHud();
     sound.stopMusic();
-    sound.finish(SAY.madeIt);
-    world.celebrate();
+    // Out of hearts, the runner sits down for a rest, a little dizzy, and nothing is said.
+    if (lost) world.tumbledOut();
+    else {
+      sound.finish(SAY.madeIt);
+      world.celebrate();
+    }
     this.timer = AFTER_FINISH_SECONDS;
     this.setScreen('finishing');
   }
@@ -992,16 +1009,23 @@ class LeapTrail extends BodyGame {
       { name: 'streak', icon: 'starJump', label: 'Most in a row', value: stats.bestStreak },
     ].filter(({ name }) => this.hasLanes || name !== 'across');
     this.fillTallyCards(byElementId('finish-tally'), entries);
-    // Nobody fails a run, so every finished run moves on a level. Running with friends is on the host's
-    // level, so it doesn't move anyone's own level on.
+    // A run that gets to the finish moves on a level, and one whose hearts ran out stays on it. Running
+    // with friends is on the host's level, so it doesn't move anyone's own level on.
+    const { lost } = this.run;
     if (this.friends.current) {
       this.levels.last = null;
       this.levelUi.refresh();
     } else {
-      this.finishLevel(true);
+      this.finishLevel(!lost);
     }
     this.friends.showResults();
-    this.confetti.start();
+    if (lost) {
+      const left = course.filter(({ state }) => state === 'ahead' || state === 'passing').length;
+      byElementId('finish-title').textContent = 'Out of hearts!';
+      byElementId('finish-line').textContent = `${this.chosen.name} tripped ${stats.bumps} ${stats.bumps === 1 ? 'time' : 'times'}, with ${left} ${left === 1 ? 'obstacle' : 'obstacles'} still to go. Have another go, and see how far ${this.chosen.name} gets!`;
+      byElementId('run-again').textContent = 'Try again';
+    } else this.confetti.start();
+    document.body.dataset.runLost = lost ? 'yes' : 'no';
     this.setScreen('finish');
   }
 
@@ -1081,6 +1105,7 @@ mountBodyShell({
       <div class="chip"><span class="chip-label">Stars</span><span id="stars" class="chip-value">0</span></div>
       <div class="chip"><span class="chip-label">In a row</span><span id="streak" class="chip-value">0</span></div>
       <div class="chip"><span class="chip-label">Still to go</span><span id="obstacles-left" class="chip-value">0</span></div>
+      <div class="chip hearts-chip"><span class="chip-label">Hearts</span><span id="hearts" class="chip-value hearts-value"></span></div>
       <div class="chip coins-chip"><span class="chip-label">Coins</span><span class="chip-value"><span class="coin-mark" aria-hidden="true"></span><span id="coins">0</span></span></div>
     </div>
     <div class="trail-track" aria-hidden="true">
@@ -1117,6 +1142,11 @@ mountBodyShell({
       <legend>Moving from side to side</legend>
       <label><input type="radio" name="trailLanes" value="yes"> Yes: stepping to the side moves the runner into another lane, for stars</label>
       <label><input type="radio" name="trailLanes" value="no"> No: the runner stays in the middle lane, and so do the stars</label>
+    </fieldset>
+    <fieldset class="choice">
+      <legend>Running out of hearts</legend>
+      <label><input type="radio" name="trailHearts" value="yes"> Yes: each stumble costs a heart, and a run is over when they’re all gone</label>
+      <label><input type="radio" name="trailHearts" value="no"> Gentle: no hearts, every run gets to the finish and moves on a level</label>
     </fieldset>
     <fieldset class="choice">
       <legend>When a move is missed</legend>

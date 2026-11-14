@@ -71,7 +71,7 @@ test('two friends play against each other: the host\'s ball, each on their own s
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
   // Whoever makes the game has chosen against each other, under the gear icon.
-  await openGame(page, { bouncePoints: 5, bounceLevel: 'gentle', bounceFriends: 'against', levels: { [GAME]: 4 } }, GAME);
+  await openGame(page, { bouncePoints: 5, bounceHard: 'gentle', bounceFriends: 'against', levels: { [GAME]: 4 } }, GAME);
   const code = await makeGame(page, 'Ana');
   expect(page.url()).toContain(`#bounce=${code}`);
   await expect(page.locator('input[name="friends-team"][value="against"]')).toBeChecked();
@@ -79,7 +79,7 @@ test('two friends play against each other: the host\'s ball, each on their own s
 
   // The friend has their own points, how hard and character, but plays the host's game.
   const ben = await secondPlayer(browser);
-  await openGame(ben.page, { bouncePoints: 11, bounceLevel: 'tough', fighter: 'kit' }, GAME, `#bounce=${code}`);
+  await openGame(ben.page, { bouncePoints: 11, bounceHard: 'tough', fighter: 'kit' }, GAME, `#bounce=${code}`);
   await ben.page.locator('#friends-name').fill('Ben');
   await ben.page.locator('#friends-name').dispatchEvent('change');
   await expect(page.locator('#friends-here')).toContainText('Ben');
@@ -140,7 +140,7 @@ test('two friends play against each other: the host\'s ball, each on their own s
   expect((await view(page)).ownLevel).toBe(4);
   expect((await view(ben.page)).ownLevel).toBe(1);
   expect(await ben.page.evaluate(() => window.__game.session.settings.bouncePoints)).toBe(11);
-  expect(await ben.page.evaluate(() => window.__game.session.settings.bounceLevel)).toBe('tough');
+  expect(await ben.page.evaluate(() => window.__game.session.settings.bounceHard)).toBe('tough');
   expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/bounce-back/${code}?make=1`]);
   expect(ben.errors).toEqual([]);
   await ben.context.close();
@@ -149,7 +149,7 @@ test('two friends play against each other: the host\'s ball, each on their own s
 test('two friends play together: one rally between them, every hit is the team\'s, a miss costs nothing, and both win', async ({ page, browser }) => {
   test.setTimeout(420_000);
   // Together is how it comes, unless a grown-up chooses otherwise.
-  await openGame(page, { bouncePoints: 5, bounceLevel: 'tough' }, GAME);
+  await openGame(page, { bouncePoints: 5, bounceHard: 'tough' }, GAME);
   const code = await makeGame(page, 'Ana');
   await expect(page.locator('input[name="friends-team"][value="together"]')).toBeChecked();
   await expect(page.locator('#friends-how')).toContainText('keep the ball going between you');

@@ -1,9 +1,12 @@
 // Getting through Leap Trail, with footage of a real person in place of the webcam.
 import { expect, openGame, waitForScreen } from '../helpers.js';
 
-/** Most tests are about one obstacle at a time, so the runner waits for the move unless they say. */
+/**
+ * Most tests are about one obstacle at a time, so the runner waits for the move unless they say. They're
+ * about the game as it was, unless they say: the gentle trail, with no hearts to lose, at a slow pace.
+ */
 export async function openTrail(page, settings = {}) {
-  await openGame(page, { onMissed: 'wait', ...settings }, 'leap-trail');
+  await openGame(page, { onMissed: 'wait', trailHearts: 'no', pace: 'slow', ...settings }, 'leap-trail');
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
 }
 

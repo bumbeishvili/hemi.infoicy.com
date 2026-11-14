@@ -10,6 +10,9 @@ import { DEMOS } from '../../core/body/demos.js';
 import { ICONS } from '../../core/body/icons.js';
 import { ROSTER } from '../../core/body/roster.js';
 
+// How the computer's strength comes, read from the game's own defaults.
+const DEFAULT_STRENGTH = /fightStrength: '(\w+)'/.exec(readFileSync(new URL('../../games/mighty-moves/main.js', import.meta.url), 'utf8'))?.[1];
+
 const MEDIUM = { ...NPC_LEVELS.medium, mercy: 0 };
 
 function setup(options = {}) {
@@ -638,7 +641,9 @@ const seeded = (seed = 1) => {
 const atLevel = (levelNumber, options = {}, coachOptions = {}) => coached({ levelNumber, ...options }, { random: seeded(3), ...coachOptions });
 
 test('level 1 is the fight as it always was, at every strength', () => {
-  assert.deepEqual(fightLevel(1), { turnEvery: 1, warning: 1, afterMove: RULES.afterMove, defences: [], npcMoves: [], doubles: 0, mixed: false, twice: 0, prizes: [], powerUps: [], theme: 'day', champion: false });
+  for (const strength of Object.values(NPC_LEVELS)) {
+    assert.deepEqual(fightLevel(1, strength), { turnEvery: 1, warning: 1, hits: 1, afterMove: RULES.afterMove, defences: [], npcMoves: [], doubles: 0, mixed: false, twice: 0, prizes: [], powerUps: [], theme: 'day', champion: false });
+  }
   for (const strength of Object.values(NPC_LEVELS)) {
     const { coach, fight } = coached({ level: strength });
     assert.equal(fight.levelNumber, 1);
@@ -975,8 +980,12 @@ test('the champion, at level 10, picks any way out for its turns, so they can\'t
 
 test('on the higher levels the computer comes more often and with more moves, but never takes away its warning', () => {
   for (const strength of Object.values(NPC_LEVELS)) {
-    const { coach } = atLevel(10, { level: strength });
-    assert.ok(coach.level.warning >= strength.warning * 0.7, `${strength.name}: ${coach.level.warning} seconds of warning`);
+    const { coach, fight } = atLevel(10, { level: strength });
+    // On Gentle, the game as it was, at least 80% of the warning at level 10, and on Medium and Tough 60%.
+    const least = strength.mercy ? 0.8 : 0.6;
+    assert.ok(coach.level.warning >= strength.warning * least - 1e-9, `${strength.name}: ${coach.level.warning} seconds of warning`);
+    // On Medium and Tough it hits harder as the levels go up, and on Gentle never.
+    assert.equal(fight.levelRules.hits, strength.mercy ? 1 : 1.4, `${strength.name}: how much harder it hits at level 10`);
     assert.ok(coach.level.every < strength.every);
     assert.deepEqual(new Set(coach.level.defences), new Set(['block', 'lean', 'duck', 'catch']));
     assert.ok(coach.level.moves.length > strength.moves.length || strength.moves.length >= 7);
@@ -1253,7 +1262,7 @@ test('against a friend, there are no gems, as those are for getting out of the w
   assert.ok(fightLevel(10).prizes.includes('gem'));
   assert.deepEqual(champion.levelRules.prizes, fightLevel(10).prizes.filter((kind) => kind !== 'gem' && kind !== 'trophy'));
   assert.equal(champion.levelRules.champion, false);
-  assert.deepEqual(new Fight({ level: MEDIUM, levelNumber: 10 }).levelRules, fightLevel(10), 'against the computer, it\'s as it was');
+  assert.deepEqual(new Fight({ level: MEDIUM, levelNumber: 10 }).levelRules, fightLevel(10, MEDIUM), 'against the computer, it\'s as it was');
 });
 
 test('against a friend, a move missed while the connection was down is made up by the next', () => {
@@ -1452,4 +1461,96 @@ test('a squat stays on the floor, sinking deeper to slam it, and a toe touch sta
   assert.ok(touch.pose.pitch >= 0.9 && touch.pose.handLY <= -0.95 && touch.pose.handRY <= -0.95);
   const sweep = CLIPS.sweep.right.frames.find(({ t }) => Math.abs(t - MOVES.sweep.hitAt) < 0.02).pose;
   assert.ok(sweep.handLZ > 0.5 && sweep.handRZ > 0.5 && sweep.handLY < -0.8, 'the hands sweep low along the floor, at the other fighter');
+});
+
+/* ---------- the computer can win ---------- */
+
+/**
+ * A whole fight against the computer, with a scripted child: they do what's asked after moveAfter seconds, and
+ * get out of the way of the computer's turns dodge of the time, react seconds into the warning. Says who won.
+ */
+function scriptedFight(strength, levelNumber, { moveAfter, dodge, react }, seed) {
+  const random = seeded(seed);
+  const fight = new Fight({ rounds: 3, level: strength, levelNumber });
+  const reader = fakeReader({ moving: true });
+  const coach = new Coach({ fight, reader, random: seeded(seed + 100) });
+  let t = 0;
+  while (fight.state !== 'over' && t < 900) {
+    fight.beginRound();
+    coach.beginRound();
+    let asking = 0;
+    let defending = 0;
+    let willDodge = false;
+    while (fight.state === 'fighting' && t < 900) {
+      t += 0.02;
+      asking = coach.phase === 'asking' ? asking + 0.02 : 0;
+      if (asking >= moveAfter) {
+        coach.onMoves(whatsAsked(coach));
+        asking = 0;
+      }
+      if (coach.phase === 'defending') {
+        if (defending === 0) willDodge = random() < dodge;
+        defending += 0.02;
+        const doing = willDodge && defending >= react;
+        reader.guard = doing && coach.defence?.kind === 'block';
+        reader.dodge = doing && coach.defence?.kind === 'lean' ? 1 : 0;
+      } else {
+        defending = 0;
+        reader.guard = false;
+        reader.dodge = 0;
+      }
+      fight.noteActivity(0.02);
+      coach.update(0.02);
+      fight.update(0.02);
+    }
+  }
+  return fight.winner;
+}
+
+// A child new to the game: slow to do what's asked, and out of the way of only a third of the computer's turns.
+const NEW_CHILD = { moveAfter: 5, dodge: 0.3, react: 2 };
+
+test('as it comes, on Medium, the computer can win a fight: a child new to it wins at level 1, and loses at level 10', () => {
+  assert.equal(DEFAULT_STRENGTH, 'medium');
+  const wins = (strength, level) => [1, 2, 3, 4, 5, 6].filter((seed) => scriptedFight(strength, level, NEW_CHILD, seed) === 'player').length;
+  assert.ok(wins(NPC_LEVELS.medium, 1) >= 5, 'level 1 can be learnt');
+  assert.ok(wins(NPC_LEVELS.medium, 10) <= 1, 'at level 10 the computer wins');
+  assert.ok(wins(NPC_LEVELS.tough, 10) <= 1);
+});
+
+test('on Gentle, the game as it was, the computer never knocks a child out, at any level', () => {
+  for (const level of [1, 10]) {
+    for (const seed of [1, 2, 3]) assert.equal(scriptedFight(NPC_LEVELS.gentle, level, NEW_CHILD, seed), 'player', `level ${level}`);
+  }
+  const gentle = fightLevel(10, NPC_LEVELS.gentle);
+  const medium = fightLevel(10, NPC_LEVELS.medium);
+  assert.deepEqual([gentle.turnEvery, gentle.warning, gentle.hits], [0.8, 0.8, 1]);
+  assert.deepEqual([medium.turnEvery, medium.warning, medium.hits], [0.6, 0.6, 1.4]);
+});
+
+test('a child standing still is never hit, on Tough at level 10 too', () => {
+  const fight = new Fight({ rounds: 1, level: NPC_LEVELS.tough, levelNumber: 10 });
+  const reader = fakeReader({ moving: false });
+  const coach = new Coach({ fight, reader, random: seeded(4) });
+  fight.beginRound();
+  coach.beginRound();
+  for (let t = 0; t < 120; t += 0.02) {
+    coach.update(0.02);
+    fight.update(0.02);
+  }
+  assert.equal(fight.player.hp, RULES.maxHp);
+  assert.equal(fight.state, 'fighting');
+});
+
+test('on Medium the computer hits 1.4 times as hard at level 10 as at level 1, and on Gentle no harder', () => {
+  const hit = (strength, levelNumber) => {
+    const events = [];
+    const fight = new Fight({ rounds: 1, level: strength, levelNumber, onEvent: (event) => events.push(event) });
+    fight.beginRound();
+    fight.perform('npc', 'palm');
+    run(fight, 1);
+    return lastHit(events).damage;
+  };
+  assert.ok(Math.abs(hit(NPC_LEVELS.medium, 10) / hit(NPC_LEVELS.medium, 1) - 1.4) < 1e-9);
+  assert.equal(hit(NPC_LEVELS.gentle, 10), hit(NPC_LEVELS.gentle, 1));
 });

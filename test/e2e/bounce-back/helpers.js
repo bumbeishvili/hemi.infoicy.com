@@ -6,9 +6,12 @@ export const OPEN = [null, 'open', { scale: 0.7 }];
 export const FIST = [null, 'fist', { scale: 0.7 }];
 export const NO_HAND = [null, null, { scale: 0.7 }];
 
-/** Gets through the hand check with an open hand, as anyone would, and on into play. */
+/**
+ * Gets through the hand check with an open hand, as anyone would, and on into play. Unless a test says, it's
+ * the game as it was, on Gentle, where the computer can never score.
+ */
 export async function startPlaying(page, settings = {}, hash = '') {
-  await openGame(page, settings, GAME, hash);
+  await openGame(page, { bounceHard: 'gentle', ...settings }, GAME, hash);
   await show(page, ...(settings.hands === 'left' ? ['open', null, { scale: 0.7 }] : OPEN));
   await page.locator('#start').click();
   await waitForScreen(page, 'playing');

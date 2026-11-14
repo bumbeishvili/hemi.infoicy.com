@@ -154,7 +154,7 @@ test('level 8: a breeze blows the ball gently one way and then the other, and th
 
 test('level 9: the bluebird comes in a bubble, and bops a ball that would bounce twice back up to the hand', async ({ page }) => {
   test.setTimeout(240_000);
-  await startPlaying(page, { ...atLevel(9), bounceLevel: 'medium' });
+  await startPlaying(page, { ...atLevel(9), bounceHard: 'medium' });
   await page.evaluate(() => {
     window.__game.rally.powerIn = 0;
   });

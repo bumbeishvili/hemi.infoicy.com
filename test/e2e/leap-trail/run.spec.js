@@ -259,20 +259,24 @@ test('every character can run and jump, in every lane', async ({ page }) => {
   }
 });
 
-test('out of the box it\'s fast and never stops: stars to run through, and a missed move is only a stumble', async ({ page }) => {
+test('out of the box it\'s fast, at a medium pace, and a missed move is a stumble that costs a heart', async ({ page }) => {
   test.setTimeout(120_000);
   await page.addInitScript(() => localStorage.clear());
-  await reachRun(page, { onMissed: 'stumble' });
-  expect(await page.evaluate(() => window.__game.game.settings.pace)).toBe('slow');
-  await expect.poll(async () => (await runState(page)).speed, { timeout: 8000 }).toBeGreaterThan(12);
+  // The pace and hearts as they come, rather than the gentle trail most of these tests run.
+  await reachRun(page, { onMissed: 'stumble', pace: undefined, trailHearts: undefined });
+  expect(await page.evaluate(() => [window.__game.game.settings.pace, window.__game.game.settings.trailHearts])).toEqual(['medium', 'yes']);
+  await expect(page.locator('.hearts-chip')).toBeVisible();
+  await expect(page.locator('#hearts')).toHaveText('♥♥♥♥♥');
+  await expect.poll(async () => (await runState(page)).speed, { timeout: 8000 }).toBeGreaterThan(16);
   await expect.poll(() => page.evaluate(() => window.__game.run.stats.linedStars), { timeout: 4000 }).toBeGreaterThan(0);
   await page.waitForTimeout(300);
   await shot(page, 't30-fast');
   await expect(page.locator('#stars')).not.toHaveText('0');
   const paint = await page.evaluate(() => window.__game.world.streakLines.material.opacity);
   expect(paint).toBeGreaterThan(0.05);
-  // Nobody moves, and it keeps on going through what's in the way.
+  // Nobody moves, and it keeps on going through what's in the way, a heart less each time.
   await expect.poll(() => page.evaluate(() => window.__game.run.stats.bumps), { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
   await expect.poll(async () => (await runState(page)).speed, { timeout: 4000 }).toBeGreaterThan(10);
+  await expect(page.locator('#hearts')).toHaveText(/^♥{0,4}♡+$/);
   await shot(page, 't31-carried-on');
 });

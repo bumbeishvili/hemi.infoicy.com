@@ -47,9 +47,17 @@ export const HELP = {
   little: { size: 1.12, pull: 0.7 },
   lots: { size: 1.25, pull: 1.15 },
 };
-// How far from the child's hand the computer aims, in court units, on each setting of How hard. On Gentle
-// it's right at the hand.
-export const AIM = { gentle: 0, medium: 0.12, tough: 0.24 };
+// How far from the child's hand the computer aims, in court units, on each setting of How hard, at level 1
+// and at level 10: it aims further off as the levels go up. On Gentle it's always right at the hand.
+export const AIM = { gentle: 0, medium: 0.2, tough: 0.3 };
+export const AIM_TOP = { gentle: 0, medium: 0.7, tough: 0.85 };
+
+/** How far off the hand the computer aims, on a setting of How hard, at a level. */
+export const aimAtLevel = (hard, level = 1) => ramp(level, AIM[hard] ?? 0, AIM_TOP[hard] ?? 0);
+
+// How much quicker the ball is at level 10 than at level 1: on Gentle as it always was, and on Medium and
+// Tough quicker still, so that level 10 needs a quick hand.
+export const TOP_SPEED = { gentle: 1.3, medium: 2, tough: 2.2 };
 
 // The kinds of ball. slow is how much longer than usual each crossing takes, and prize what hitting it
 // back gives.
@@ -81,19 +89,20 @@ export const EXTRAS = {
 
 // The computer misses a return once the child has hit the ball this many times in a point: somewhere
 // between the two numbers, at level 1 and at level 10. Rallies grow as the levels go up, and on Gentle the
-// computer is kind.
+// computer is kind. On Medium and Tough it gets better as the levels go up, and misses much less at level 10.
 export const RALLIES = {
   gentle: { first: [1, 3], last: [2, 5] },
-  medium: { first: [2, 4], last: [3, 7] },
-  tough: { first: [3, 6], last: [5, 10] },
+  medium: { first: [2, 4], last: [4, 9] },
+  tough: { first: [3, 6], last: [6, 13] },
 };
 
-/** What changes from level 1 to 10. */
-export function courtLevel(level) {
+/** What changes from level 1 to 10, on a setting of How hard. */
+export function courtLevel(level, hard = 'gentle') {
   const at = clampLevel(level);
   return {
-    // The ball goes a little quicker each level: at level 10, a crossing takes 77% of the time it did.
-    speed: ramp(at, 1, 1.3),
+    // The ball goes quicker each level: at level 10, a crossing takes 62% of the time it did on Medium and
+    // Tough, and 77% on Gentle.
+    speed: ramp(at, 1, TOP_SPEED[hard] ?? TOP_SPEED.gentle),
     // From level 2, stars float down on the child's side, to catch with the glove.
     stars: at >= 2,
     // From level 3, now and then a bubble ball, which floats even more slowly.
@@ -196,9 +205,9 @@ export function missAfterRange(hard, level) {
   return [rampWhole(level, rally.first[0], rally.last[0]), rampWhole(level, rally.first[1], rally.last[1])];
 }
 
-/** Seconds for one crossing, at a speed, level and kind of ball. */
-export function crossingSeconds(pace, level, kind = 'beach') {
-  return ((PACES[pace] ?? PACES.slow) / courtLevel(level).speed) * (BALLS[kind]?.slow ?? 1);
+/** Seconds for one crossing, at a speed, level, kind of ball and How hard. */
+export function crossingSeconds(pace, level, kind = 'beach', hard = 'gentle') {
+  return ((PACES[pace] ?? PACES.slow) / courtLevel(level, hard).speed) * (BALLS[kind]?.slow ?? 1);
 }
 
 export const gravityFor = (crossing) => ARC / (crossing * crossing);
@@ -365,10 +374,13 @@ export function aimAt(side, racket, spread = 0, random = Math.random) {
 // long rally ends sometime: the computer misses on purpose instead.
 export const RALLY_GROWS_AFTER = 6;
 
-/** How far off a shot goes from the other player's hand: How hard's own, and more in a long rally with a friend. */
-export function spreadFor(hard, rally = 0, friends = false) {
+/**
+ * How far off a shot goes from the other player's hand: How hard's own at this level, and more in a long rally
+ * with a friend.
+ */
+export function spreadFor(hard, rally = 0, friends = false, level = 1) {
   const growing = friends ? clamp((rally - RALLY_GROWS_AFTER) * 0.03, 0, 0.25) : 0;
-  return (AIM[hard] ?? 0) + growing;
+  return aimAtLevel(hard, level) + growing;
 }
 
 /** Where the child's shot lands on the computer's side: on a sandcastle that's standing, now and then. */

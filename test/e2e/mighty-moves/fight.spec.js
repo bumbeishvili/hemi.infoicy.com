@@ -83,7 +83,7 @@ test('the child\'s fighter copies them, whatever they do: arms up, arms down, or
 
 test('real squats, jumps, star jumps and hand circles each make their own big move, when asked', async ({ page }) => {
   test.setTimeout(180_000);
-  await reachFight(page, { level: 'gentle' });
+  await reachFight(page, { fightStrength: 'gentle' });
   for (const [name, clip, from, seen, moveName] of [
     ['squat', 'squat', 0, 'You squatted!', 'Earthquake Stomp'],
     ['jump', 'jumps', 0, 'You jumped!', 'Flying Smash'],
@@ -154,7 +154,7 @@ test('real punches are small hits: they land, and do very little, and what was a
 
 test('with only small hits a round can\'t be won, and it\'s made clear what would work', async ({ page }) => {
   test.setTimeout(120_000);
-  await reachFight(page, { level: 'gentle' });
+  await reachFight(page, { fightStrength: 'gentle' });
   await page.evaluate(() => {
     const { fight, game } = window.__game;
     window.__coachNudges = 0;
@@ -202,7 +202,7 @@ test('a push has to be with an open hand: a fist is a small hit, and is asked to
 
 test('the computer warns, shows how to block, and hits hard if it isn\'t blocked', async ({ page }) => {
   test.setTimeout(120_000);
-  await reachFight(page, { level: 'medium' });
+  await reachFight(page, { fightStrength: 'medium' });
   await footage(page, 'strikes', { from: 1 });
   await page.evaluate(() => {
     const { reader, coach } = window.__game;
@@ -225,7 +225,7 @@ test('the computer warns, shows how to block, and hits hard if it isn\'t blocked
 
 test('hands up when the coach says so stops the computer\'s hit', async ({ page }) => {
   test.setTimeout(120_000);
-  await reachFight(page, { level: 'tough' });
+  await reachFight(page, { fightStrength: 'tough' });
   await page.evaluate(() => {
     const { reader, coach } = window.__game;
     reader.readGuardAndLean = () => {
@@ -304,7 +304,7 @@ test('choosing another fighter after a fight goes back to the choosing screen', 
 });
 
 test('stepping out of the picture pauses everything, so nobody loses by walking away', async ({ page }) => {
-  await reachFight(page, { level: 'tough' });
+  await reachFight(page, { fightStrength: 'tough' });
   await footage(page, 'strikes', { from: 1 });
   await page.waitForTimeout(1200);
 
@@ -324,7 +324,7 @@ test('stepping out of the picture pauses everything, so nobody loses by walking 
 
 test('standing still is resting: the computer waits and waves, even at its toughest', async ({ page }) => {
   test.setTimeout(120_000);
-  await reachFight(page, { level: 'tough' });
+  await reachFight(page, { fightStrength: 'tough' });
   await standInView(page);
   await expect.poll(async () => (await fightState(page)).resting, { timeout: 30_000 }).toBe(true);
   await page.waitForTimeout(500);
@@ -356,7 +356,7 @@ test('the grown-ups\' panel pauses the fight and remembers what it\'s told', asy
   await page.locator('input[name="moveSize"][value="small"]').check();
   await page.locator('input[name="hands"][value="left"]').check();
   await page.locator('input[name="jumps"][value="no"]').check();
-  await page.locator('input[name="level"][value="tough"]').check();
+  await page.locator('input[name="fightStrength"][value="tough"]').check();
   await page.locator('input[name="rounds"][value="1"]').check();
   // With a friend: together unless a grown-up says otherwise.
   await expect(page.locator('input[name="fightFriends"][value="together"]')).toBeChecked();
@@ -372,11 +372,11 @@ test('the grown-ups\' panel pauses the fight and remembers what it\'s told', asy
   await page.reload();
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
   await page.locator('#open-panel').click();
-  for (const [name, value] of [['moveSize', 'small'], ['hands', 'left'], ['jumps', 'no'], ['level', 'tough'], ['rounds', '1'], ['fightFriends', 'against']]) {
+  for (const [name, value] of [['moveSize', 'small'], ['hands', 'left'], ['jumps', 'no'], ['fightStrength', 'tough'], ['rounds', '1'], ['fightFriends', 'against']]) {
     await expect(page.locator(`input[name="${name}"][value="${value}"]`)).toBeChecked();
   }
   const stored = await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('camera-games-settings'))).sort());
-  expect(stored).toEqual(['fightFriends', 'fighter', 'hands', 'jumps', 'language', 'level', 'moveSize', 'rounds', 'sound', 'strictness', 'voice']);
+  expect(stored).toEqual(['fightFriends', 'fightStrength', 'fighter', 'hands', 'jumps', 'language', 'moveSize', 'rounds', 'sound', 'strictness', 'voice']);
 });
 
 test('fighters at either end of the mat stay on the mat, and every fighter can fight and show every move', async ({ page }) => {
@@ -413,7 +413,7 @@ test('fighters at either end of the mat stay on the mat, and every fighter can f
 
 test('a fight can be played by doing as the coach says, at every level of the computer', async ({ page }) => {
   test.setTimeout(240_000);
-  await reachFight(page, { level: 'medium', rounds: 1 });
+  await reachFight(page, { fightStrength: 'medium', rounds: 1 });
   await doWhatIsAsked(page);
   await waitForScreen(page, 'finish');
   await stopDoingIt(page);

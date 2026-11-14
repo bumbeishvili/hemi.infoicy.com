@@ -22,7 +22,7 @@ async function secondPlayer(browser) {
 }
 
 async function openFight(page, settings = {}, hash = '') {
-  await openGame(page, settings, GAME, hash);
+  await openGame(page, { fightStrength: 'gentle', ...settings }, GAME, hash);
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
   await standInView(page);
 }
@@ -171,7 +171,7 @@ test('two friends fight each other from their own computers, each one\'s moves l
 test('two friends fight together: side by side against the computer\'s fighter, each one\'s moves taking it down on both screens, and both win', async ({ page, browser }) => {
   test.setTimeout(300_000);
   // Together is how it comes. The computer is as strong as Ana's grown-up has set it, which is Tough.
-  await openFight(page, { rounds: 1, level: 'tough', levels: { 'mighty-moves': 3 } });
+  await openFight(page, { rounds: 1, fightStrength: 'tough', levels: { 'mighty-moves': 3 } });
   const code = await makeFight(page, 'Ana');
   await expect(page.locator('input[name="friends-team"][value="together"]')).toBeChecked();
   await expect(page.locator('#friends-how')).toContainText('fight the computer side by side');

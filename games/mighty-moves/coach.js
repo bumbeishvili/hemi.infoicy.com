@@ -55,7 +55,7 @@ export class Coach {
     this.putAside = new Set();
     // The way out of the way this level brings that's new, if it brings one: it's the computer's first
     // turn, so it comes early in a fight at that level, however quickly the child wins.
-    const before = fight.levelNumber > 1 ? fightLevel(fight.levelNumber - 1).defences : [];
+    const before = fight.levelNumber > 1 ? fightLevel(fight.levelNumber - 1, fight.level).defences : [];
     this.newWay = this.rules.defences.filter((way) => !before.includes(way) && !defences.includes(way)).at(-1) ?? null;
     // What counts for a squat comes down for a child who's trying, when ducking as when asked. It's one
     // for every duck in a fight, as a single warning is too short for it to come down in.

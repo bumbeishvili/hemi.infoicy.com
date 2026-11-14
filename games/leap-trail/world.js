@@ -1379,6 +1379,15 @@ export class World {
     this.burst(new THREE.Vector3(this.runnerX, 1.1, -0.2), { shapes: ['spark'], colours: ['#ffd23f', '#ffffff'], count: 3, speed: 1.6, size: 0.18, life: 0.3 });
   }
 
+  /** Out of hearts: the runner slows to a stop, a little dizzy. Nothing bursts or flashes. */
+  tumbledOut() {
+    this.bubble.visible = false;
+    this.magnetBadge.visible = false;
+    this.friendWanted = 0;
+    this.cue.visible = false;
+    this.runner.body.setExpression('dizzy', 3);
+  }
+
   celebrate() {
     // What was on the runner goes, as it turns round to celebrate.
     this.bubble.visible = false;

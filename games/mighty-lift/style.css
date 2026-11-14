@@ -297,3 +297,10 @@ body:not([data-screen='playing']):not([data-screen='countdown']):not([data-scree
 .lift-scores li.is-you { color: var(--accent); }
 .lift-scores[data-counts='freed'] strong::before { content: '♥ '; color: #e2513f; }
 .lift-scores[data-counts='lifts'] strong::before { content: '▲ '; color: #2fd16f; }
+
+/* ---------- the time before sunset ---------- */
+body:not([data-sunset='yes']) .sunset-chip { display: none; }
+.sunset-chip { position: relative; }
+.sunset-bar { display: block; height: 5px; margin-top: 3px; border-radius: 3px; background: rgba(0, 0, 0, 0.12); overflow: hidden; }
+.sunset-fill { display: block; height: 100%; width: 100%; background: #f4a32c; transition: width 0.3s linear; }
+.sunset-chip[data-waits='yes'] .sunset-fill { background: #9bb4c9; }
