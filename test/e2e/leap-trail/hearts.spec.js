@@ -107,17 +107,17 @@ test('stepping out of the picture costs no hearts, however long it lasts', async
   expect(await page.evaluate(() => ({ distance: window.__game.run.distance, hearts: window.__game.run.hearts }))).toEqual(stopped);
 });
 
-test('nothing flashes as the last heart goes and the runner slows to a stop', async ({ page }) => {
-  test.setTimeout(150_000);
-  await reachRun(page, { ...CHALLENGE, levels: { 'leap-trail': 10 } });
-  await nextInTheWay(page);
-  // The last heart left, and the next obstacle just ahead.
+/**
+ * The run with its last heart left and the next obstacle just ahead, played on five seconds with no jump: the
+ * biggest change in the whole picture's brightness from one frame to the next, and how it ended.
+ */
+const throughTheLastStumble = async (page) => {
   await page.evaluate(() => {
     const { run } = window.__game;
     run.hearts = 1;
     run.next.at = run.distance + 40;
   });
-  const reading = await page.evaluate(async () => {
+  return page.evaluate(async () => {
     const { world, game, run } = window.__game;
     const small = document.createElement('canvas');
     small.width = 64;
@@ -153,8 +153,35 @@ test('nothing flashes as the last heart goes and the runner slows to a stop', as
     }
     return { step: Math.max(...steps), flicker, lost: run.lost, speed: run.speed };
   });
+};
+
+test('nothing flashes as the last heart goes and the runner slows to a stop', async ({ page }) => {
+  test.setTimeout(150_000);
+  await reachRun(page, { ...CHALLENGE, levels: { 'leap-trail': 10 } });
+  await nextInTheWay(page);
+  const reading = await throughTheLastStumble(page);
   console.log('leap trail, out of hearts: biggest brightness step', reading.step.toFixed(2), 'flicker share', reading.flicker.toFixed(3));
   expect(reading.lost).toBe(true);
   expect(reading.speed).toBeLessThan(1);
+  expect(reading.step).toBeLessThan(4);
+});
+
+test('nothing flashes when the runner stumbles through a stream: the water stays where it is', async ({ page }) => {
+  test.setTimeout(150_000);
+  await reachRun(page, { ...CHALLENGE, levels: { 'leap-trail': 10 } });
+  // Every obstacle ahead is a stream. Knocked aside like a log, a stream stood up in front of the camera and
+  // darkened the picture by 8 to 12 in one frame: it happened once in fourteen runs of the test above.
+  await page.evaluate(() => {
+    const { run, world } = window.__game;
+    for (const obstacle of run.course) {
+      if (obstacle.state !== 'ahead') continue;
+      world.retire(obstacle);
+      obstacle.lanes = [-1, 0, 1];
+      obstacle.kind = 'stream';
+    }
+  });
+  const reading = await throughTheLastStumble(page);
+  console.log('leap trail, through a stream: biggest brightness step', reading.step.toFixed(2), 'flicker share', reading.flicker.toFixed(3));
+  expect(reading.lost).toBe(true);
   expect(reading.step).toBeLessThan(4);
 });

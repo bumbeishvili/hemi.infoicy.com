@@ -1533,8 +1533,12 @@ export class World {
         item.knocked = Math.min(1, item.knocked + dt * 2.2);
         const eased = item.knocked * (2 - item.knocked);
         const animals = obstacle.kind === 'sheep' || obstacle.kind === 'ducks';
-        item.model.position.x = eased * 7 * (obstacle.kind === 'ducks' ? ducksAway(obstacle) : 1);
-        item.model.rotation.z = animals ? 0 : -eased * 0.5;
+        // A stream stays where it is: the runner has splashed through it. Slid aside and tipped like a log, the
+        // whole band of water stood up in front of the camera, and darkened the picture all at once.
+        if (obstacle.kind !== 'stream') {
+          item.model.position.x = eased * 7 * (obstacle.kind === 'ducks' ? ducksAway(obstacle) : 1);
+          item.model.rotation.z = animals ? 0 : -eased * 0.5;
+        }
       }
       if (item.gold && !item.gold.done) {
         const { sprite } = item.gold;
