@@ -207,7 +207,7 @@ test('level 6: a splitting robot comes apart into two little ones, and the shiel
 
 test('level 7: the boing ball bounces from robot to robot, and a heart comes once one has been lost', async ({ page }) => {
   test.setTimeout(240_000);
-  await reachRescue(page, atLevel(7, { reach: 'lots', rescueLevel: 'medium' }));
+  await reachRescue(page, atLevel(7, { reach: 'lots', rescueGoo: 'medium' }));
   await startHunting(page);
   await page.evaluate(() => window.__game.mission.startPower('boing'));
   await expectSoon(() => page.evaluate(() => window.__game.mission.shots.some(({ kind, from }) => kind === 'boing' && from)), { timeout: 30_000 }).toBe(true);
@@ -386,7 +386,7 @@ test('with reduced motion the new things still work, and the bubbles, lids and f
 
 test('each prize flies to its own counter, a power-up to its own place among the power-ups, and a heart to the hearts', async ({ page }) => {
   test.setTimeout(240_000);
-  await reachRescue(page, atLevel(7, { reach: 'lots', rescueLevel: 'medium' }), NO_HAND);
+  await reachRescue(page, atLevel(7, { reach: 'lots', rescueGoo: 'medium' }), NO_HAND);
   await stayAwake(page);
   const landed = await page.evaluate(async () => {
     const { mission, stage } = window.__game;

@@ -3,10 +3,13 @@
 // whoever made the battle runs for both. Either way each game sails its own ship, decides its own hits and sends
 // them, and shows the friend's ship where it really is. Here they're two separate browsers, talking through the
 // race server on this computer (tools/race-server.mjs).
-import { expect, openGame, show, shot, test, waitForScreen } from '../helpers.js';
+import { expect, openGame as openAnyGame, show, shot, test, waitForScreen } from '../helpers.js';
 import { expectSoon, HAND_SCALE } from './helpers.js';
 
 const GAME = 'cannon-bay';
+// How hard is Gentle unless a test says otherwise, the game as it always was, so the tests of its kind rules play it
+// that way: the challenge, which is how it comes, has its own tests.
+const openGame = (page, settings = {}, ...rest) => openAnyGame(page, { bayPirates: 'gentle', ...settings }, ...rest);
 const OPEN = [null, 'open', { scale: HAND_SCALE }];
 const FIST = [null, 'fist', { scale: HAND_SCALE }];
 const NO_HAND = [null, null, { scale: HAND_SCALE }];
@@ -142,14 +145,14 @@ test('two friends battle ship against ship: each one\'s ship where it really is 
   test.setTimeout(420_000);
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
-  await openGame(page, { bayShips: 4, bayPace: 'slow', bayLevel: 'gentle', bayFriends: 'against', sound: true, levels: { [GAME]: 3 } }, GAME);
+  await openGame(page, { bayShips: 4, bayPace: 'slow', bayPirates: 'gentle', bayFriends: 'against', sound: true, levels: { [GAME]: 3 } }, GAME);
   const code = await makeGame(page, 'Ana');
   expect(page.url()).toContain(`#bay=${code}`);
   await expect(page.locator('input[name="friends-team"][value="against"]')).toBeChecked();
 
   // The friend has their own speed, how hard and ships to beat, and is someone else in the other games.
   const ben = await secondPlayer(browser);
-  await openGame(ben.page, { bayShips: 9, bayPace: 'fast', bayLevel: 'tough', fighter: 'kit' }, GAME, `#bay=${code}`);
+  await openGame(ben.page, { bayShips: 9, bayPace: 'fast', bayPirates: 'tough', fighter: 'kit' }, GAME, `#bay=${code}`);
   await nameIs(ben.page, 'Ben');
   await expect(page.locator('#friends-here')).toContainText('Ben');
   await expect(ben.page.locator('#friends-here')).toContainText('Ana');
@@ -271,7 +274,7 @@ test('two friends battle ship against ship: each one\'s ship where it really is 
   expect((await view(page)).ownLevel).toBe(3);
   expect((await view(ben.page)).ownLevel).toBe(1);
   const benSettings = await ben.page.evaluate(() => window.__game.session.settings);
-  expect([benSettings.bayShips, benSettings.bayPace, benSettings.bayLevel]).toEqual([9, 'fast', 'tough']);
+  expect([benSettings.bayShips, benSettings.bayPace, benSettings.bayPirates]).toEqual([9, 'fast', 'tough']);
   expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/cannon-bay/${code}?make=1`]);
   expect(ben.errors).toEqual([]);
   await ben.context.close();
@@ -340,8 +343,8 @@ test('two friends sail together against the pirates: the same pirate ships on bo
   test.setTimeout(480_000);
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
-  // Together is how it comes. Ana's own battles are on Tough, at level 3, which a battle together leaves alone.
-  await openGame(page, { bayShips: 4, bayPace: 'slow', bayLevel: 'tough', levels: { [GAME]: 3 } }, GAME);
+  // Together is how it comes. Ana's own battles are on Tough, at level 3: a battle together leaves the level alone.
+  await openGame(page, { bayShips: 4, bayPace: 'slow', bayPirates: 'tough', levels: { [GAME]: 3 } }, GAME);
   const code = await makeGame(page, 'Ana');
   await expect(page.locator('input[name="friends-team"][value="together"]')).toBeChecked();
   await expect(page.locator('#friends-how')).toContainText('drive the pirates off together');
@@ -349,7 +352,7 @@ test('two friends sail together against the pirates: the same pirate ships on bo
   // The friend has chosen against each other for the games they make, has their own speed and ships to beat, and
   // is someone else in the other games. They play the host's game, together.
   const ben = await secondPlayer(browser);
-  await openGame(ben.page, { bayShips: 9, bayPace: 'fast', bayLevel: 'gentle', fighter: 'kit', bayFriends: 'against' }, GAME, `#bay=${code}`);
+  await openGame(ben.page, { bayShips: 9, bayPace: 'fast', bayPirates: 'gentle', fighter: 'kit', bayFriends: 'against' }, GAME, `#bay=${code}`);
   await nameIs(ben.page, 'Ben');
   await expect(page.locator('#friends-here')).toContainText('Ben');
   await expect(ben.page.locator('input[name="friends-team"][value="together"]')).toBeChecked();
@@ -365,7 +368,8 @@ test('two friends sail together against the pirates: the same pirate ships on bo
   expect([ana.runs, his.runs, ana.slot, his.slot]).toEqual([true, false, 0, 1]);
   expect([ana.total, his.total, ana.level, his.level]).toEqual([4, 4, 1, 1]);
   expect([ana.pace, his.pace]).toEqual([24, 24]);
-  expect([ana.canLose, his.canLose]).toEqual([false, false]);
+  // Each child's own How hard says whether their ship can be sunk: Ana's Tough can, and Ben's Gentle can't.
+  expect([ana.canLose, his.canLose]).toEqual([true, false]);
   expect(his.reach).toBeGreaterThan(ana.reach);
   // The same captains, in the same order, on both screens, and four faces in the row along the top.
   expect(ana.captains).toHaveLength(4);
@@ -519,7 +523,7 @@ test('two friends sail together against the pirates: the same pirate ships on bo
   expect(hers.ownLevel).toBe(3);
   expect(ours.ownLevel).toBe(1);
   expect(await ben.page.evaluate(() => [window.__game.session.settings.bayShips, window.__game.session.settings.bayPace, window.__game.session.settings.bayFriends])).toEqual([9, 'fast', 'against']);
-  expect(await page.evaluate(() => window.__game.session.settings.bayLevel)).toBe('tough');
+  expect(await page.evaluate(() => window.__game.session.settings.bayPirates)).toBe('tough');
   expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/cannon-bay/${code}?make=1`]);
   expect(ben.errors).toEqual([]);
   await ben.context.close();
@@ -543,6 +547,32 @@ test('together, a friend who goes leaves whoever made the battle to finish it, w
   expect(alone.pirates.every(({ maxHits }) => maxHits <= 30)).toBe(true);
   await expect(page.locator('.mark[data-friend="yes"]')).toHaveCount(0);
   expect(await page.evaluate(() => window.__game.session.screen)).toBe('playing');
+});
+
+test('together on Medium, as it comes, the two can lose together: when the friend\'s ship is sunk, it ends on both screens', async ({ page, browser }) => {
+  test.setTimeout(300_000);
+  await openGame(page, { bayShips: 4, bayPirates: undefined }, GAME);
+  const code = await makeGame(page, 'Ana');
+  const ben = await secondPlayer(browser);
+  await openGame(ben.page, { bayPirates: undefined }, GAME, `#bay=${code}`);
+  await bothPlaying(page, ben.page);
+  expect(await ben.page.evaluate(() => window.__game.battle.level.canLose)).toBe(true);
+  // Ben's ship is hit five times over, on his own screen, which is where that's decided.
+  await ben.page.evaluate(() => {
+    const { battle } = window.__game;
+    for (let i = 0; i < 5; i += 1) battle.hurt({ to: { x: battle.x, z: battle.z } });
+  });
+  await waitForScreen(ben.page, 'finish');
+  await waitForScreen(page, 'finish');
+  for (const each of [page, ben.page]) {
+    await expect(each.locator('#screen-finish h2')).toHaveText('The pirates got the treasure this time!');
+    await expect(each.locator('#play-again')).toHaveText('Try again');
+    expect(await each.evaluate(() => window.__game.session.levels.current)).toBe(1);
+  }
+  await page.waitForTimeout(400);
+  await shot(page, 'c-lost-together');
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
 });
 
 test('together, if whoever made the battle goes, their friend\'s game takes the pirates over as they are, and they carry on', async ({ page, browser }) => {

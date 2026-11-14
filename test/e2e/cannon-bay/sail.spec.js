@@ -166,7 +166,7 @@ test('a cannonball that lands on the ship costs a heart, which shows, and comes 
 });
 
 test('on Gentle the child can\'t lose: hearts stop at one', async ({ page }) => {
-  await startPlaying(page, { bayShips: 4, bayLevel: 'gentle' });
+  await startPlaying(page, { bayShips: 4, bayPirates: 'gentle' });
   await page.evaluate(() => {
     const { battle } = window.__game;
     for (let i = 0; i < 8; i += 1) battle.hurt({ to: { x: battle.x, z: battle.z } });
@@ -177,15 +177,21 @@ test('on Gentle the child can\'t lose: hearts stop at one', async ({ page }) => 
   expect(await page.evaluate(() => window.__game.screen)).toBe('playing');
 });
 
-test('on the harder settings it ends kindly, with a way to go again straight away', async ({ page }) => {
-  await startPlaying(page, { bayShips: 4, bayLevel: 'medium' });
+test('as it comes, on Medium, the pirates can win: it ends kindly, with a way to go again straight away', async ({ page }) => {
+  // Without the test helpers' Gentle, as a child would find it.
+  await startPlaying(page, { bayShips: 4, bayPirates: undefined });
+  expect(await page.evaluate(() => [window.__game.session.settings.bayPirates, window.__game.battle.level.canLose])).toEqual(['medium', true]);
   await page.evaluate(() => {
     const { battle } = window.__game;
     for (let i = 0; i < 5; i += 1) battle.hurt({ to: { x: battle.x, z: battle.z } });
   });
   await waitForScreen(page, 'finish');
-  await expect(page.locator('#screen-finish h2')).toHaveText('So close! Sail again!');
+  // The card says what happened in the story, and the big button is to try again, at the same level.
+  await expect(page.locator('#screen-finish h2')).toHaveText('The pirates got the treasure this time!');
   await expect(page.locator('#play-again')).toHaveText('Try again');
+  await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 1 again!');
+  // No confetti for losing.
+  expect(await page.evaluate(() => window.__game.session.hud.confetti.running)).toBe(false);
   await page.waitForTimeout(500);
   await shot(page, 'c-so-close');
   await page.locator('#play-again').click();
@@ -406,14 +412,14 @@ test('the grown-ups\' panel has speed, cannons, how hard and how many ships, and
   await startPlaying(page, { bayShips: 4 });
   await page.locator('#open-panel').click();
   await expect(page.locator('#panel')).toBeVisible();
-  for (const name of ['bayPace', 'bayCannons', 'bayLevel', 'bayShips']) {
+  for (const name of ['bayPace', 'bayCannons', 'bayPirates', 'bayShips']) {
     await expect(page.locator(`input[name="${name}"]:checked`)).toHaveCount(1);
   }
   await expect(page.locator('#panel-all-games')).toHaveText('All games');
   await page.waitForTimeout(200);
   await shot(page, 'c-panel');
   await page.locator('input[name="bayCannons"][value="always"]').check();
-  await page.locator('input[name="bayLevel"][value="tough"]').check();
+  await page.locator('input[name="bayPirates"][value="tough"]').check();
   await page.locator('input[name="bayPace"][value="fast"]').check();
   await page.locator('#close-panel').click();
   const set = await page.evaluate(() => {

@@ -97,13 +97,15 @@ test('the cannons set to always still fire at level 10, with a closed hand', asy
 });
 
 test('being sunk on Medium tries the same level again', async ({ page }) => {
-  await startPlaying(page, atLevel(5, { bayShips: 4, bayLevel: 'medium' }));
+  await startPlaying(page, atLevel(5, { bayShips: 4, bayPirates: 'medium' }));
   await page.evaluate(() => {
     const { battle } = window.__game;
     for (let i = 0; i < 5; i += 1) battle.hurt({ to: { x: battle.x, z: battle.z } });
   });
   await waitForScreen(page, 'finish');
   await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 5 again!');
+  await expect(page.locator('#screen-finish h2')).toHaveText('The pirates got the treasure this time!');
+  await expect(page.locator('#play-again')).toHaveText('Try again');
   await show(page, null, 'open', { scale: 0.7 });
   await page.locator('#play-again').click();
   await waitForScreen(page, 'playing');

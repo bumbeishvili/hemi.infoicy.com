@@ -56,6 +56,26 @@ export function levelPlan(level = 1) {
 }
 
 /**
+ * How much harder each level is again on Medium and Tough, where the goo can win, on top of levelPlan.
+ * Gentle keeps the game exactly as it always was, so for Gentle every number here leaves things as they
+ * are. Level 1 is the same on every setting, so a child who has never played can learn it. By level 10
+ * goo comes about twice as often as at level 1 and takes a little over half as long to arrive, a third
+ * blob can be in the air, the robots wait for the shield to come down before they throw, and there's no
+ * quiet start at the first stop.
+ */
+export function challengePlan(level = 1, canLose = true) {
+  if (!canLose) return { throwEvery: 1, gooSeconds: 1, gooLeast: GOO_LEAST_SECONDS, gooInAir: 0, waitForShield: false, firstHold: true };
+  return {
+    throwEvery: ramp(level, 1, 0.7), // With levelPlan's, goo comes about twice as often at level 10.
+    gooSeconds: ramp(level, 1, 0.7), // With levelPlan's, it arrives in 57% of level 1's time.
+    gooLeast: CHALLENGE_GOO_LEAST_SECONDS,
+    gooInAir: stepsAt(level, { 1: 0, 8: 1 }), // One more blob of goo in the air from level 8.
+    waitForShield: level >= 4, // From level 4 the robots hold on to their goo while the shield is up.
+    firstHold: level === 1, // Only level 1 gives a quiet start at the first stop.
+  };
+}
+
+/**
  * What each level brings that's new, shown on the title card, under the countdown, and on the finish
  * card as what's coming up. key is what levelPlan switches on from that level. The first time each of a
  * level's new things turns up in a game, its name floats over it for a moment.
@@ -257,7 +277,8 @@ const AHEAD_START = 0.6; // How far along their way the first robots already are
 export const GOO_STOPS_AT = 2.4; // Metres in front of the tram, where the shield is.
 const GOO_FROM_EYE = 0.1; // How far below the eye it arrives.
 const GOO_LOB = 1.5; // How high its arc goes above a straight line.
-export const GOO_LEAST_SECONDS = 2; // However high the level, goo takes at least this long to arrive.
+export const GOO_LEAST_SECONDS = 2; // However high the level, goo takes at least this long to arrive on Gentle.
+export const CHALLENGE_GOO_LEAST_SECONDS = 1.25; // And this long on Medium and Tough.
 
 // What the higher levels bring: see levelPlan.
 // Swoops and hops are slow and low, as the crosshair follows what it's on, and a quick bob up and
@@ -498,7 +519,7 @@ export class Mission {
    * pace and level are the grown-up's choices from PACES and LEVELS, and levelNumber is the level being
    * played, from 1 to 10, which makes it harder within those choices: see levelPlan.
    */
-  constructor({ stops = PLACES.length, pace = 'slow', level = 'gentle', levelNumber = 1, reloading = true, random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ stops = PLACES.length, pace = 'slow', level = 'medium', levelNumber = 1, reloading = true, random = Math.random, onEvent = () => {} } = {}) {
     this.stops = stops >= PLACES.length ? PLACES : PLACES.filter(({ id }) => SHORT_RESCUE.includes(id));
     this.random = random;
     this.onEvent = onEvent;
@@ -541,7 +562,10 @@ export class Mission {
   /** Speed and difficulty can change in the middle of a game, from the panel. */
   configure({ pace, level, reloading }) {
     if (pace !== undefined) this.pace = PACES[pace] ?? PACES.slow;
-    if (level !== undefined) this.level = LEVELS[level] ?? LEVELS.gentle;
+    if (level !== undefined) {
+      this.level = LEVELS[level] ?? LEVELS.medium;
+      this.challenge = challengePlan(this.levelNumber, this.level.canLose);
+    }
     if (reloading !== undefined) {
       this.blaster.reloading = reloading;
       if (!reloading) {
@@ -571,16 +595,16 @@ export class Mission {
   }
 
   get throwEvery() {
-    return this.level.throwEvery * this.plan.throwEvery;
+    return this.level.throwEvery * this.plan.throwEvery * this.challenge.throwEvery;
   }
 
   get gooSeconds() {
     const { gooSeconds } = this.level;
-    return Math.max(gooSeconds * this.plan.gooSeconds, Math.min(gooSeconds, GOO_LEAST_SECONDS));
+    return Math.max(gooSeconds * this.plan.gooSeconds * this.challenge.gooSeconds, Math.min(gooSeconds, this.challenge.gooLeast));
   }
 
   get gooInAir() {
-    return this.level.gooInAir + this.plan.gooInAir;
+    return this.level.gooInAir + this.plan.gooInAir + this.challenge.gooInAir;
   }
 
   /* ---------- power-ups ---------- */
@@ -918,7 +942,7 @@ export class Mission {
     this.shots = [];
     this.spawnIn = 0;
     this.throwIn = this.level.firstThrow;
-    this.holdThrows = this.index === 0 ? FIRST_STOP_HOLD_SECONDS : 0;
+    this.holdThrows = this.index === 0 && this.challenge.firstHold ? FIRST_STOP_HOLD_SECONDS : 0;
     this.emit('place', { place: this.place, index: this.index, total: this.stops.length });
     this.spawnSome(AHEAD_START);
   }
@@ -1434,6 +1458,8 @@ export class Mission {
     this.throwIn -= dt;
     if (this.throwIn > 0) return;
     if (this.goo.length + this.inHand >= this.gooInAir) return;
+    // On Medium and Tough, from level 4, they wait for the shield to come down, and throw as it does.
+    if (this.challenge.waitForShield && this.shield) return;
     // Rollers are too busy rolling to throw anything, and so are little ones and drones carrying a friend.
     // A robot floating in a bubble can't.
     const able = this.robots.filter((robot) => robot.state === 'ready' && robot.throwing === 0 && !NEVER_THROW.has(robot.kind) && !(robot.bubbled > 0) && (robot.kind !== 'peeker' || robot.rise === 1));

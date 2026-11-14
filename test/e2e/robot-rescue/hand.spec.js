@@ -216,7 +216,7 @@ test('opening the panel stops everything, and has a way back to all the games', 
   await page.locator('#open-panel').click();
   await expect(page.locator('#panel')).toBeVisible();
   await expect(page.locator('#panel-all-games')).toHaveAttribute('href', '../../index.html');
-  for (const name of ['pace', 'reach', 'reloading', 'rescueLevel', 'stops']) {
+  for (const name of ['pace', 'reach', 'reloading', 'rescueGoo', 'stops']) {
     await expect(page.locator(`input[name="${name}"]:checked`), name).toHaveCount(1);
   }
   await page.locator('#panel').screenshot({ path: 'test-results/screens/x-panel.png' });
@@ -225,11 +225,11 @@ test('opening the panel stops everything, and has a way back to all the games', 
   await page.waitForTimeout(1200);
   expect(await clock()).toBe(before);
   await page.locator('input[name="reloading"][value="off"]').check();
-  await page.locator('input[name="rescueLevel"][value="tough"]').check();
+  await page.locator('input[name="rescueGoo"][value="tough"]').check();
   await page.locator('#close-panel').click();
   const changed = await page.evaluate(() => {
     const { mission, session } = window.__game;
-    return { reloading: mission.blaster.reloading, hearts: mission.level.hearts, saved: session.settings.rescueLevel };
+    return { reloading: mission.blaster.reloading, hearts: mission.level.hearts, saved: session.settings.rescueGoo };
   });
   expect(changed).toEqual({ reloading: false, hearts: 3, saved: 'tough' });
   await expect.poll(clock, { timeout: 5000 }).toBeGreaterThan(before);

@@ -304,3 +304,24 @@ test('it fits smaller screens, with everything that matters in view', async ({ p
     expect(fitted.game).toBe(width);
   }
 });
+
+test('nothing flashes on Medium at level 10 as the goo gets through, heart after heart, and stops the tram', async ({ page }) => {
+  test.setTimeout(240_000);
+  await reachRescue(page, { rescueGoo: 'medium', levels: { [GAME]: 10 } });
+  await stayAwake(page);
+  await waitForHand(page, 'open');
+  // Goo as thick and fast as level 10 on Medium makes it, and an open hand that never raises the shield.
+  await page.evaluate(() => {
+    const { mission } = window.__game;
+    mission.holdThrows = 0;
+    mission.throwIn = 0;
+    mission.level = { ...mission.level, throwEvery: 0.8 };
+  });
+  const result = judge(await watchBrightness(page, 240));
+  console.log('medium level 10 goo getting through', JSON.stringify(result));
+  expect(result.biggestStep).toBeLessThan(6);
+  expect(result.flickeringShare).toBeLessThan(0.05);
+  expect((await rescue(page)).stats.gooHits).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => window.__game.screen), { timeout: 60_000 }).toBe('finish');
+  await expect(page.locator('#screen-finish h2')).toHaveText('The goo stopped the tram!');
+});

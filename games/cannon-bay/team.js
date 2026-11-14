@@ -9,8 +9,11 @@
 // friend's game shows its own hits at once and tells the host's game (a 'tag'), which counts them
 // (friendTagged). Each game decides whether a pirate's ball lands on its own child's ship.
 //
-// It's the plain battle, with none of what the levels bring, and the pirates are as on Gentle, so nobody can be
-// sunk. Each child keeps their own firing zones and help with lining up. There are as many pirate ships as the
+// It's the plain battle, with none of what the levels bring. Each child keeps their own firing zones, help with
+// lining up and hearts, from their own How hard, and the host's How hard says how often the pirates fire and how
+// many of their balls are aimed true. On Medium and Tough a child whose hearts run out is sunk, and so is the team,
+// as their game says so to the other in the result it sends at the end. On Gentle hearts stop at one, so with both
+// on Gentle nobody can be sunk, as it always was. There are as many pirate ships as the
 // host chose, each taking twice the hits, as there are two ships firing at it, with one more about at a time.
 // Every other pirate goes for the friend's ship, and none goes for a child who's resting while the other sails
 // on: the pirates only sail in circles and wait when both children are resting. A friend who goes leaves the
@@ -50,7 +53,7 @@ export class TeamBattle extends Battle {
    * game runs the pirates, which is the host's. ships and pace are the host's number of pirate ships and speed,
    * so that the pirates can keep up with both. level and cannons are this child's own.
    */
-  constructor({ slot = 0, runs = true, ships = 6, pace = 'slow', level = 'gentle', cannons = 'open', random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ slot = 0, runs = true, ships = 6, pace = 'slow', level = 'medium', cannons = 'open', random = Math.random, onEvent = () => {} } = {}) {
     const mine = slot === 1 ? 1 : 0;
     // Level 1: nothing a level brings. A game that doesn't run the pirates has none of its own: they come from
     // the host's game.
@@ -76,14 +79,14 @@ export class TeamBattle extends Battle {
   }
 
   /**
-   * Each child's own firing zones and help with lining up, from their own How hard. The pirates are as on Gentle
-   * for both, so nobody can be sunk, and take twice the hits while there are two ships firing at them.
+   * Each child's own firing zones, help with lining up and hearts, from their own How hard. The pirate ships take
+   * as many hits as on Gentle, twice over while there are two ships firing at them.
    */
   setLevel(level) {
     super.setLevel(level);
     this.levelName = level;
-    const { shipHits, hitChance, fireEvery, balls, apart, healAfter } = LEVELS.gentle;
-    this.level = { ...this.level, shipHits: shipHits * (this.alone ? 1 : TEAM_HITS), hitChance, fireEvery, balls, apart, healAfter, canLose: false };
+    const { shipHits } = LEVELS.gentle;
+    this.level = { ...this.level, shipHits: shipHits * (this.alone ? 1 : TEAM_HITS) };
   }
 
   /* ---------- two ships for the pirates to go for ---------- */

@@ -1,5 +1,5 @@
 // The goo, the friends and the whole of the rescue, with real photos going through the real tracker.
-import { expect, shot, show, test, waitForHand, waitForScreen } from '../helpers.js';
+import { expect, openGame, shot, show, test, waitForHand, waitForScreen } from '../helpers.js';
 import { FIST, NO_HAND, OPEN, clearHere, expectSoon, reachRescue, rescue, startHunting, stayAwake, stopHunting, throwOneGoo } from './helpers.js';
 
 test('a real closed hand stops the goo, and it costs nothing', async ({ page }) => {
@@ -94,7 +94,7 @@ test('on Gentle a child can\'t lose, however much goo lands', async ({ page }) =
 
 test('on Tough, running out of hearts ends it kindly, and they can go again straight away', async ({ page }) => {
   test.setTimeout(240_000);
-  await reachRescue(page, { rescueLevel: 'tough' }, NO_HAND);
+  await reachRescue(page, { rescueGoo: 'tough' }, NO_HAND);
   await stayAwake(page);
   for (let i = 0; i < 3; i += 1) {
     await throwOneGoo(page);
@@ -107,7 +107,10 @@ test('on Tough, running out of hearts ends it kindly, and they can go again stra
     await expectSoon(async () => (await rescue(page)).hearts, { timeout: 15_000 }).toBe(before - 1);
   }
   await waitForScreen(page, 'finish');
-  await expect(page.locator('#screen-finish h2')).toHaveText('So close!');
+  // The card says what happened in the story, and the big button is to try again.
+  await expect(page.locator('#screen-finish h2')).toHaveText('The goo stopped the tram!');
+  await expect(page.locator('#play-again')).toHaveText('Try again');
+  await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 1 again!');
   // What's counted is what was done, not what wasn't.
   await expect(page.locator('.finish-hero')).toContainText(/robots? dropped/);
   await page.waitForTimeout(600);
@@ -122,9 +125,39 @@ test('on Tough, running out of hearts ends it kindly, and they can go again stra
   expect(again.stats.robots).toBe(0);
 });
 
+test('as it comes, the goo can win: five hits stop the tram at level 3, and level 3 comes round again', async ({ page }) => {
+  test.setTimeout(240_000);
+  // Without the test helpers' Gentle, as a child would find it.
+  await openGame(page, { levels: { 'robot-rescue': 3 } }, 'robot-rescue');
+  await show(page, ...OPEN);
+  await page.locator('#start').click();
+  await waitForScreen(page, 'playing');
+  await show(page, ...NO_HAND);
+  expect(await page.evaluate(() => [window.__game.session.settings.rescueGoo, window.__game.mission.level.canLose])).toEqual(['medium', true]);
+  await stayAwake(page);
+  for (let i = 0; i < 5; i += 1) {
+    await throwOneGoo(page);
+    const before = (await rescue(page)).hearts;
+    await page.evaluate(() => window.__game.mission.goo.forEach((goo) => { goo.t = 0.99; }));
+    await expectSoon(async () => (await rescue(page)).hearts, { timeout: 15_000 }).toBe(before - 1);
+  }
+  await waitForScreen(page, 'finish');
+  await expect(page.locator('#screen-finish h2')).toHaveText('The goo stopped the tram!');
+  await expect(page.locator('#play-again')).toHaveText('Try again');
+  await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 3 again!');
+  await page.waitForTimeout(600);
+  await shot(page, 'x-goo-won');
+  // No confetti for losing.
+  expect(await page.evaluate(() => window.__game.session.hud.confetti.running)).toBe(false);
+  await show(page, ...OPEN);
+  await page.locator('#play-again').click();
+  await waitForScreen(page, 'playing');
+  expect(await page.evaluate(() => window.__game.mission.levelNumber)).toBe(3);
+});
+
 test('resting stops the throwing, and the robots wave', async ({ page }) => {
   test.setTimeout(150_000);
-  await reachRescue(page, { rescueLevel: 'tough' }, NO_HAND);
+  await reachRescue(page, { rescueGoo: 'tough' }, NO_HAND);
   await page.evaluate(() => {
     const { mission } = window.__game;
     mission.holdThrows = 0;

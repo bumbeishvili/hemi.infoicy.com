@@ -5,7 +5,9 @@ import { expect, openGame, show, waitForScreen } from '../helpers.js';
 const GAME = 'tank-patrol';
 
 /** hash is anything after # in the address, as in a link from a friend to play with them. */
-export const openPatrol = (page, settings = {}, hash = '') => openGame(page, settings, GAME, hash);
+// How hard is Gentle unless a test says otherwise, the game as it always was, so the tests of its kind rules play it
+// that way: the challenge, which is how it comes, has its own tests.
+export const openPatrol = (page, settings = {}, hash = '') => openGame(page, { tankShells: 'gentle', ...settings }, GAME, hash);
 
 export async function startPatrol(page, settings = {}, scene = [null, 'open', { scale: 0.7 }]) {
   await openPatrol(page, settings);

@@ -58,6 +58,24 @@ export function levelPlan(level = 1) {
 }
 
 /**
+ * How much harder each level is again on Medium and Tough, where the pirates can sink the ship, on top of
+ * levelPlan. Gentle keeps the game exactly as it always was, so for Gentle every number here leaves things as
+ * they are. Level 1 is the same on every setting, so a child who has never played can learn it. By level 10
+ * pirates reload about twice as quickly as at level 1, more than twice as many of their balls are aimed true,
+ * the balls take 70% as long to come over, and hearts come back half as quickly.
+ */
+export function challengePlan(level = 1, canLose = true) {
+  if (!canLose) return { fireEvery: 1, apart: 1, hitChance: 1, ballSeconds: 1, healAfter: 1 };
+  return {
+    fireEvery: ramp(level, 1, 0.75), // With levelPlan's, about twice as quick to reload at level 10.
+    apart: ramp(level, 1, 0.75), // And broadsides come closer together.
+    hitChance: ramp(level, 1, 2.2), // More of their balls are aimed true.
+    ballSeconds: ramp(level, 1, 0.7), // The balls come over quicker, so there's less time to get out of the way.
+    healAfter: ramp(level, 1, 2), // A heart takes up to twice as long to come back.
+  };
+}
+
+/**
  * What each level brings that's new, for the title card, the countdown and the finish card. Each key is
  * switched on in levelPlan from that level on. Things that only get quicker or more frequent aren't here.
  */
@@ -307,7 +325,7 @@ export class Battle {
    * the child's ship starts, as { x, z, heading }: with a friend, see duel.js, there are no ships to beat, and
    * the friend's ship is added with addFriend.
    */
-  constructor({ ships = 6, pace = 'slow', level = 'gentle', levelNumber = 1, cannons = 'open', start = START, random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ ships = 6, pace = 'slow', level = 'medium', levelNumber = 1, cannons = 'open', start = START, random = Math.random, onEvent = () => {} } = {}) {
     this.random = random;
     this.onEvent = onEvent;
     this.total = ships;
@@ -372,7 +390,8 @@ export class Battle {
   }
 
   setLevel(level) {
-    this.level = LEVELS[level] ?? LEVELS.gentle;
+    this.level = LEVELS[level] ?? LEVELS.medium;
+    this.challenge = challengePlan(this.levelNumber, this.level.canLose);
   }
 
   emit(type, details = {}) {
@@ -764,8 +783,8 @@ export class Battle {
     pirate.burstLeft = Math.max(1, this.level.balls + this.plan.balls + SHIP_KINDS[pirate.kind].balls);
     pirate.burstIn = 0;
     pirate.burstSide = facing;
-    pirate.fireIn = between(this.random, this.level.fireEvery) * this.plan.fireEvery;
-    prey.broadsideIn = this.level.apart * this.plan.apart;
+    pirate.fireIn = between(this.random, this.level.fireEvery) * this.plan.fireEvery * this.challenge.fireEvery;
+    prey.broadsideIn = this.level.apart * this.plan.apart * this.challenge.apart;
   }
 
   carryOnFiring(pirate, dt) {
@@ -792,11 +811,11 @@ export class Battle {
     const dx = prey.x - from.x;
     const dz = prey.z - from.z;
     const away = Math.hypot(dx, dz);
-    const seconds = clamp(away / BALL.speed, BALL.shortest, BALL.longest);
+    const seconds = clamp(away / BALL.speed, BALL.shortest, BALL.longest) * this.challenge.ballSeconds;
     // Most land just beside the ship, near enough to see, and only some are aimed true.
     const mine = forwardOf(prey.heading);
     const across = rightOf(prey.heading);
-    const aimedTrue = random() < this.level.hitChance;
+    const aimedTrue = random() < this.level.hitChance * this.challenge.hitChance;
     const out = aimedTrue ? (random() - 0.5) * BALL.near : (HULL.beam + BALL.hitWiden + between(random, BALL.miss)) * (random() < 0.5 ? -1 : 1);
     const ahead = (random() - 0.5) * (aimedTrue ? BALL.near : BALL.missAlong) + prey.speed * seconds;
     const to = {
@@ -1645,7 +1664,7 @@ export class Battle {
     this.wasOpen = this.open;
     this.hurtLeft = Math.max(0, this.hurtLeft - dt);
     this.sinceHurt += dt;
-    if (this.hearts < HEARTS && this.sinceHurt >= this.level.healAfter) {
+    if (this.hearts < HEARTS && this.sinceHurt >= this.level.healAfter * this.challenge.healAfter) {
       this.hearts += 1;
       this.sinceHurt = 0;
       this.emit('healed', { hearts: this.hearts });

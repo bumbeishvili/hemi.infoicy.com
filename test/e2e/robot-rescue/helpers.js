@@ -6,9 +6,13 @@ export const OPEN = [null, 'open', { scale: 0.7 }];
 export const FIST = [null, 'fist', { scale: 0.7 }];
 export const NO_HAND = [null, null, { scale: 0.7 }];
 
-/** Gets through the hand check with an open hand, as anyone would, and then does what scene says. */
+/**
+ * Gets through the hand check with an open hand, as anyone would, and then does what scene says. The
+ * goo is Gentle unless a test says otherwise, the game as it always was, so that the tests of its kind
+ * rules play it that way: the challenge, which is how it comes, has its own tests.
+ */
 export async function reachRescue(page, settings = {}, scene = null) {
-  await openGame(page, settings, GAME);
+  await openGame(page, { rescueGoo: 'gentle', ...settings }, GAME);
   await show(page, ...(settings.hands === 'left' ? ['open', null, { scale: 0.7 }] : OPEN));
   await page.locator('#start').click();
   await waitForScreen(page, 'playing');

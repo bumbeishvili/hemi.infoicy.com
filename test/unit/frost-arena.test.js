@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { AIM_ASSIST, AWAY_AFTER, BASES, BLOCKS, BODY, CRATE_SPOTS, EYES, HEALTH, LEVELS, MAGAZINE, Match, NEWS, OUT_SECONDS, PLAYER, POWERS, RIFLES, TAGS_TO_WIN, TALL, WIDE, YARD, aimOf, clearLine, forwardOf, freeAt, headingTo, keptClear, levelPlan, newsAt, reachAlong, shotMeets, shotReach, stepTowards, turnBetween, wayTo } from '../../games/frost-arena/arena.js';
+import { AIM_ASSIST, AWAY_AFTER, BASES, BLOCKS, BODY, CRATE_SPOTS, EYES, HEALTH, LEVELS, MAGAZINE, MOST_LANDS, Match, challengePlan, NEWS, OUT_SECONDS, PLAYER, POWERS, RIFLES, TAGS_TO_WIN, TALL, WIDE, YARD, aimOf, clearLine, forwardOf, freeAt, headingTo, keptClear, levelPlan, newsAt, reachAlong, shotMeets, shotReach, stepTowards, turnBetween, wayTo } from '../../games/frost-arena/arena.js';
 
 const STEP = 1 / 60;
 const degrees = (radians) => (radians * 180) / Math.PI;
@@ -1108,4 +1108,120 @@ test('Frost Arena keeps its talking short, and everything it says has a voice in
     assert.ok(main.includes(text), `"${text}" is said somewhere`);
   }
   assert.equal(new Set(lines.map(({ id }) => id)).size, lines.length);
+});
+
+/* ---------- the other team: cleverer and more dangerous on Medium and Tough, level by level ---------- */
+
+test('Medium and Tough hit harder and sooner than they did, and Easy is just as it was', () => {
+  assert.deepEqual(LEVELS.gentle, { aim: 0.35, hit: 10, react: 1, burst: [3, 5], rest: [1, 1.6], canLose: false });
+  assert.deepEqual([LEVELS.medium.aim, LEVELS.medium.hit, LEVELS.medium.react], [0.68, 17, 0.6]);
+  assert.deepEqual([LEVELS.tough.aim, LEVELS.tough.hit, LEVELS.tough.react], [0.82, 20, 0.4]);
+  assert.equal(new Match().level, LEVELS.medium, 'it comes on Medium');
+  // Easy never ramps more than it did, and level 1 is the plain match on every setting.
+  assert.deepEqual(challengePlan(10, false), challengePlan(1, false));
+  assert.deepEqual(challengePlan(1, true), challengePlan(1, false));
+});
+
+test('on Medium and Tough the levels ramp more: by level 10 their shots land more, take more off and come sooner, and they take more hits', () => {
+  const first = start({ level: 'medium', levelNumber: 1 }).match;
+  const last = start({ level: 'medium', levelNumber: 10 }).match;
+  const easy = start({ level: 'gentle', levelNumber: 10 }).match;
+  const [red1, red10, redEasy] = [reds(first)[0], reds(last)[0], reds(easy)[0]];
+  for (const [match, red] of [[first, red1], [last, red10], [easy, redEasy]]) Object.assign(red, { x: 0, z: 0 });
+  const still = (match, red) => {
+    Object.assign(match.child, { x: 0, z: 6, speed: 0, sprinting: false });
+    return match.chanceOn(match.child, red);
+  };
+  assert.ok(still(last, red10) >= Math.min(MOST_LANDS, still(first, red1) * 1.6), 'lands more often');
+  assert.ok(still(last, red10) <= MOST_LANDS, 'though never every time');
+  assert.equal(still(easy, redEasy), Math.min(MOST_LANDS, LEVELS.gentle.aim * levelPlan(10).aim), 'Easy as it was');
+  assert.ok(last.botHit(red10, last.child) >= LEVELS.medium.hit * 1.15 - 1e-9);
+  assert.equal(easy.botHit(redEasy, easy.child), LEVELS.gentle.hit);
+  assert.ok(reds(last).filter(({ part }) => !part).every(({ most }) => most >= Math.round(HEALTH * levelPlan(10).health * 1.1)));
+  assert.ok(reds(easy).filter(({ part }) => !part).every(({ most }) => most < Math.round(HEALTH * levelPlan(10).health * 1.1 * 1.25)));
+  // They lead a player on the move: walking helps less at level 10 than at level 1. From far enough off that
+  // neither is as likely as it can be.
+  const walking = (match, red) => {
+    Object.assign(match.child, { x: 0, z: 20, speed: PLAYER.run, sprinting: false });
+    const moving = match.chanceOn(match.child, red);
+    Object.assign(match.child, { speed: 0 });
+    return moving / match.chanceOn(match.child, red);
+  };
+  assert.ok(walking(last, red10) > walking(first, red1) + 0.1, `${walking(last, red10)} against ${walking(first, red1)}`);
+});
+
+/** One of the other team, with Giraffe nearer to it than the player, both in plain sight. */
+function giraffeNearer(options) {
+  const { match } = start(options);
+  const [red, ...others] = reds(match);
+  const giraffe = match.troopers.find(({ who }) => who === 'giraffe');
+  for (const each of [...others, ...match.troopers.filter(({ team, bot, who }) => team === 0 && bot && who !== 'giraffe')]) Object.assign(each, { x: 20, z: 13.5, bot: false });
+  Object.assign(red, { x: -21, z: 0, heading: Math.PI, seen: null, safeLeft: 0 });
+  Object.assign(giraffe, { x: -21, z: 4, bot: false, safeLeft: 0 });
+  Object.assign(match.child, { x: -20, z: 9, heading: 0, safeLeft: 0 });
+  match.update(STEP, STILL);
+  return red.seen?.who ?? null;
+}
+
+test('from level 3 on Medium and Tough they go for the player first, rather than whoever is nearer', () => {
+  assert.equal(giraffeNearer({ level: 'medium', levelNumber: 2 }), 'giraffe');
+  assert.equal(giraffeNearer({ level: 'gentle', levelNumber: 10 }), 'giraffe');
+  assert.equal(giraffeNearer({ level: 'medium', levelNumber: 3 }), 'child');
+  assert.equal(giraffeNearer({ level: 'tough', levelNumber: 10 }), 'child');
+});
+
+test('from level 5 on Medium and Tough, one with nobody in sight goes where its team last saw the player', () => {
+  for (const [options, hunts] of [[{ level: 'medium', levelNumber: 5 }, true], [{ level: 'medium', levelNumber: 4 }, false], [{ level: 'gentle', levelNumber: 10 }, false]]) {
+    const { match } = start({ ...options, seed: 2 });
+    const [red] = reds(match);
+    for (const each of match.troopers.filter((one) => one !== red && one !== match.child)) Object.assign(each, { x: 20, z: 13.5, bot: false });
+    Object.assign(match.child, { x: 13, z: 10, heading: 0 });
+    Object.assign(red, { x: -20, z: -12, haunt: null, way: null });
+    match.spotted = { x: 13, z: 10, at: match.time };
+    match.update(STEP, STILL);
+    const goingFor = red.haunt && Math.hypot(red.haunt.x - 13, red.haunt.z - 10) < 0.01;
+    assert.equal(Boolean(goingFor), hunts, JSON.stringify(options));
+  }
+});
+
+test('a player who has been tagged out is no longer hunted where they were last seen', () => {
+  const { match } = start({ level: 'medium', levelNumber: 5, seed: 2 });
+  const [red] = reds(match);
+  match.spotted = { x: match.child.x, z: match.child.z, at: match.time };
+  match.hit(match.child, HEALTH * 10, red);
+  assert.equal(match.child.state, 'out');
+  assert.equal(match.spotted, null);
+});
+
+test('from level 7 on Medium and Tough they all side-step while they fire, and on Easy only a runner does', () => {
+  for (const [options, moves] of [[{ level: 'medium', levelNumber: 7 }, true], [{ level: 'medium', levelNumber: 6 }, false], [{ level: 'gentle', levelNumber: 7 }, false]]) {
+    const { match } = start({ ...options, seed: 9 });
+    const red = reds(match).find(({ part }) => !part);
+    for (const each of match.troopers.filter((one) => one !== red && one !== match.child)) Object.assign(each, { x: 20, z: 13.5, bot: false });
+    Object.assign(match.child, { x: -21, z: 13, heading: 0 });
+    Object.assign(red, { x: -21, z: 4, heading: Math.PI, haunt: null });
+    let moved = 0;
+    for (let t = 0; t < 3; t += STEP) {
+      const before = { x: red.x, z: red.z };
+      Object.assign(match.child, { health: HEALTH, sinceHit: 0 });
+      match.update(STEP, STILL);
+      moved += Math.hypot(red.x - before.x, red.z - before.z);
+    }
+    assert.equal(red.seen, match.child);
+    assert.equal(moved > 1, moves, `${JSON.stringify(options)}: moved ${moved.toFixed(2)}`);
+  }
+});
+
+test('losing is likelier now: one who can hardly aim mostly loses on Medium by level 5, and level 10 beats an ordinary player', () => {
+  const poor = { wobble: 0.1, reaction: 0.8, quick: 0.05 };
+  const results = (options, player = {}) => [1, 2, 3, 4, 5, 6].map((seed) => {
+    const { match } = start({ tags: 10, seed: seed + 20, ...options });
+    playOut(match, { seed, ...player });
+    return match.state;
+  });
+  // These made-up players won 5 and 5 of the 6 before.
+  assert.ok(results({ level: 'medium', levelNumber: 5 }, poor).filter((state) => state === 'lost').length >= 2);
+  assert.ok(results({ level: 'medium', levelNumber: 10 }).filter((state) => state === 'won').length <= 2);
+  // And Easy still can't be lost.
+  assert.ok(results({ level: 'gentle', levelNumber: 10 }, poor).every((state) => state === 'won'));
 });

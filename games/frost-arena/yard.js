@@ -30,6 +30,11 @@ const CLEAR_DAY = { near: 38, far: 120 };
 const SNOWING = { near: 14, far: 46 };
 const CRATE_COLOURS = { double: '#ffc21a', boots: '#4aa3ff' };
 // What comes off whatever a shot meets: snow off the snow, splinters off wood, and dust off steel and concrete.
+// Being tagged out and back at their own end moves the player's view right across the yard. So that's never a
+// flash, a soft snowy veil comes over the view in the last moment of sitting out, the view moves behind it, and it
+// clears again, each taking this long.
+const VEIL_SECONDS = 0.6;
+const VEIL_COLOUR = '#d5e2ec';
 const CHIPS = { snow: '#ffffff', crate: '#c9a473', crates: '#c9a473', fence: '#c9a473', container: '#cfd6dc', wall: '#c4c7cb' };
 export const TEAM_COLOURS = ['#2f6fed', '#e0533a'];
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -365,6 +370,13 @@ export class Yard {
     this.camera = new THREE.PerspectiveCamera(FOV, 1, 0.05, 220);
     this.camera.rotation.order = 'YXZ';
     this.scene.add(this.camera);
+    // In front of everything, the rifle too, and only there while it's showing at all: see VEIL_SECONDS.
+    this.veil = new THREE.Mesh(new THREE.PlaneGeometry(4, 4), new THREE.MeshBasicMaterial({ color: VEIL_COLOUR, transparent: true, opacity: 0, depthTest: false, depthWrite: false, fog: false }));
+    this.veil.position.set(0, 0, -0.1);
+    this.veil.renderOrder = 1000;
+    this.veil.visible = false;
+    this.veil.frustumCulled = false;
+    this.camera.add(this.veil);
     this.sparks = new Sparks(this.scene);
     this.blob = blobTexture();
     this.players = new Map();
@@ -602,6 +614,11 @@ export class Yard {
     const bob = Math.sin(this.sway * 2) * 0.03 * walking;
     const sat = child.state === 'out' ? 0.75 : 0;
     this.eye = snap ? EYES - sat : damp(this.eye ?? EYES, EYES - sat, 5, dt);
+    // The veil comes over in the last moment of sitting out, and clears once they're back, never faster than that.
+    const veiled = child.state === 'out' ? clamp(1 - (child.outLeft ?? 0) / VEIL_SECONDS, 0, 1) : 0;
+    const veil = snap ? 0 : clamp(veiled, this.veil.material.opacity - dt / VEIL_SECONDS, this.veil.material.opacity + dt / VEIL_SECONDS);
+    this.veil.material.opacity = veil;
+    this.veil.visible = veil > 0.001;
     camera.position.set(child.x, this.eye + bob, child.z);
     this.kick = damp(this.kick, 0, 16, dt);
     camera.rotation.set(child.punch.pitch, -(child.heading + child.punch.yaw), 0);

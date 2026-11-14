@@ -292,8 +292,9 @@ test('two friends patrol together from their own computers: the same robot tanks
   test.setTimeout(480_000);
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
-  // Together is how it comes. Ana's own patrols are on Tough, at level 4, which a patrol together leaves alone.
-  await openPatrol(page, { tanks: 6, pace: 'fast', tankLevel: 'tough', levels: { 'tank-patrol': 4 } });
+  // Together is how it comes. Ana's own patrols are at level 4, which a patrol together leaves alone. Both are on
+  // Gentle, the game as it was, so nobody can lose: losing together has its own test.
+  await openPatrol(page, { tanks: 6, pace: 'fast', tankShells: 'gentle', levels: { 'tank-patrol': 4 } });
   const code = await makeGame(page, 'Ana');
   await expect(page.locator('input[name="friends-team"][value="together"]')).toBeChecked();
   await expect(page.locator('#friends-how')).toContainText('stop the robot tanks together');
@@ -467,7 +468,7 @@ test('two friends patrol together from their own computers: the same robot tanks
   expect(hers.ownLevel).toBe(4);
   expect(ours.ownLevel).toBe(1);
   expect(await ben.page.evaluate(() => [window.__game.session.settings.tanks, window.__game.session.settings.pace, window.__game.session.settings.tankFriends])).toEqual([15, 'slow', 'against']);
-  expect(await page.evaluate(() => window.__game.session.settings.tankLevel)).toBe('tough');
+  expect(await page.evaluate(() => window.__game.session.settings.tankShells)).toBe('gentle');
   expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/tank-patrol/${code}?make=1`]);
   expect(ben.errors).toEqual([]);
   await ben.context.close();
@@ -491,6 +492,32 @@ test('together, a friend who goes leaves whoever made the patrol to finish it, w
   await expect(page.locator('#chip-left')).toHaveText('6');
   await expect(page.locator('#chip-stopped-label')).toHaveText('Stopped');
   expect(await page.evaluate(() => window.__game.session.screen)).toBe('playing');
+});
+
+test('together on Medium, as it comes, the two can lose together: when the friend\'s hearts run out, it ends on both screens', async ({ page, browser }) => {
+  test.setTimeout(300_000);
+  await openPatrol(page, { tankShells: undefined });
+  const code = await makeGame(page, 'Ana');
+  const ben = await secondPlayer(browser);
+  await openPatrol(ben.page, { tankShells: undefined }, `#tanks=${code}`);
+  await bothPlaying(page, ben.page);
+  expect(await ben.page.evaluate(() => [window.__game.patrol.level.canLose, window.__game.patrol.hearts])).toEqual([true, 4]);
+  // Ben's tank is hit four times over, on his own screen, which is where that's decided.
+  await ben.page.evaluate(() => {
+    const { patrol } = window.__game;
+    for (let i = 0; i < 4; i += 1) patrol.hurt();
+  });
+  await waitForScreen(ben.page, 'finish');
+  await waitForScreen(page, 'finish');
+  for (const each of [page, ben.page]) {
+    await expect(each.locator('#screen-finish h2')).toHaveText('The robot tanks got the better of you both!');
+    await expect(each.locator('#play-again')).toHaveText('Try again');
+    expect(await each.evaluate(() => window.__game.session.levels.current)).toBe(1);
+  }
+  await page.waitForTimeout(400);
+  await shot(page, 'k30-lost-together');
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
 });
 
 test('together, if whoever made the patrol goes, their friend\'s game takes the robot tanks over as they are, and they carry on', async ({ page, browser }) => {

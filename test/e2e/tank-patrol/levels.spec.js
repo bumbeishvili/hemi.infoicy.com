@@ -109,13 +109,14 @@ test('level 10 driving by itself: an open hand still chases a tank down and stop
 });
 
 test('running out of hearts on Tough tries the same level again', async ({ page }) => {
-  await startPatrol(page, atLevel(7, { tankLevel: 'tough' }));
+  await startPatrol(page, atLevel(7, { tankShells: 'tough' }));
   await page.evaluate(() => {
     const { patrol } = window.__game;
     for (let i = 0; i < 3; i += 1) patrol.hurt();
   });
   await waitForScreen(page, 'finish');
-  await expect(page.locator('#screen-finish h2')).toHaveText('So close!');
+  await expect(page.locator('#screen-finish h2')).toHaveText('The robot tanks got the better of you!');
+  await expect(page.locator('#play-again')).toHaveText('Try again');
   await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 7 again!');
   await show(page, null, 'open', { scale: 0.7 });
   await page.locator('#play-again').click();

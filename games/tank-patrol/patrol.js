@@ -60,6 +60,23 @@ export function levelPlan(level = 1) {
 }
 
 /**
+ * How much harder each level is again on Medium and Tough, where the shells can win, on top of levelPlan.
+ * Gentle keeps the game exactly as it always was, so for Gentle every number here leaves things as they are.
+ * Level 1 is the same on every setting, so a child who has never played can learn it. By level 10 shells come
+ * about twice as often as at level 1 and take a little over half as long to come over, they allow more for
+ * the tank driving along, and hearts come back half as quickly.
+ */
+export function challengePlan(level = 1, canLose = true) {
+  if (!canLose) return { lobEvery: 1, shellSeconds: 1, lead: 0, healAfter: 1 };
+  return {
+    lobEvery: ramp(level, 1, 0.8), // With levelPlan's, shells come about twice as often at level 10.
+    shellSeconds: ramp(level, 1, 0.75), // With levelPlan's, they come over in 60% of level 1's time.
+    lead: ramp(level, 0, 0.35), // They aim further ahead of a tank on the move.
+    healAfter: ramp(level, 1, 2), // A heart takes up to twice as long to come back.
+  };
+}
+
+/**
  * What each level brings that's new, shown on the title card, under the countdown and as coming up next.
  * Each key is something levelPlan switches on at that level.
  */
@@ -107,7 +124,7 @@ export const PACES = {
 // how many hits a tank can take, and lead is how much a shell allows for the tank moving.
 export const LEVELS = {
   gentle: { hearts: 5, canLose: false, lobEvery: [6, 9], shellSeconds: 3.8, blast: 5, inAir: 1, healAfter: 6, firstLob: 14, toughness: 1, lead: 0 },
-  medium: { hearts: 5, canLose: true, lobEvery: [4, 6.5], shellSeconds: 3.1, blast: 5.5, inAir: 2, healAfter: 10, firstLob: 7, toughness: 1.25, lead: 0.25 },
+  medium: { hearts: 4, canLose: true, lobEvery: [3.6, 6], shellSeconds: 3.1, blast: 5.5, inAir: 2, healAfter: 14, firstLob: 7, toughness: 1.25, lead: 0.25 },
   tough: { hearts: 3, canLose: true, lobEvery: [2.6, 4.5], shellSeconds: 2.6, blast: 6, inAir: 3, healAfter: 14, firstLob: 4, toughness: 1.5, lead: 0.5 },
 };
 
@@ -261,7 +278,7 @@ export class Patrol {
    * AIM_HELP, and driving is 'closed' for a closed hand or 'auto' for the tank driving itself towards
    * whatever's out of range, for a child who can't close easily.
    */
-  constructor({ tanks = 6, pace = 'slow', level = 'gentle', levelNumber = 1, help = 'little', driving = 'closed', random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ tanks = 6, pace = 'slow', level = 'medium', levelNumber = 1, help = 'little', driving = 'closed', random = Math.random, onEvent = () => {} } = {}) {
     // Where a tank can drive. Each patrol has its own copy of what's in the way, as a closed cage is too,
     // and that mustn't touch any other patrol.
     const valley = valleyNav();
@@ -335,7 +352,8 @@ export class Patrol {
   configure({ pace, level, help, driving }) {
     if (pace !== undefined) this.pace = PACES[pace] ?? PACES.slow;
     if (level !== undefined) {
-      this.level = LEVELS[level] ?? LEVELS.gentle;
+      this.level = LEVELS[level] ?? LEVELS.medium;
+      this.challenge = challengePlan(this.levelNumber, this.level.canLose);
       if (this.hearts !== undefined) this.hearts = clamp(this.hearts, 1, this.level.hearts);
     }
     if (help !== undefined) this.help = AIM_HELP[help] ?? AIM_HELP.little;
@@ -438,7 +456,12 @@ export class Patrol {
   }
 
   get shellSeconds() {
-    return this.level.shellSeconds * this.plan.shellSeconds;
+    return this.level.shellSeconds * this.plan.shellSeconds * this.challenge.shellSeconds;
+  }
+
+  /** How long a shell waits after the last, from the setting's range, made shorter by the level. */
+  lobGap(random = this.random) {
+    return between(random, this.level.lobEvery) * this.plan.lobEvery * this.challenge.lobEvery;
   }
 
   get inAir() {
@@ -446,7 +469,7 @@ export class Patrol {
   }
 
   get lead() {
-    return this.level.lead + this.plan.lead;
+    return this.level.lead + this.plan.lead + this.challenge.lead;
   }
 
   fill() {
@@ -708,7 +731,7 @@ export class Patrol {
   /* ---------- shells coming over ---------- */
 
   lobbing(dt) {
-    const { level, random } = this;
+    const { random } = this;
     this.lobIn -= dt * (this.slowing ? SLOW_SHELLS : 1);
     // Nothing new while the hand has gone, as there'd be no way of getting out from under it.
     const tank = this.lobTarget();
@@ -717,7 +740,7 @@ export class Patrol {
     const able = this.rolling.filter(({ stun, bubbled, dig }) => stun === 0 && !(bubbled > 0) && !dig);
     if (!able.length) return;
     const enemy = able[Math.floor(random() * able.length)];
-    this.lobIn = between(random, level.lobEvery) * this.plan.lobEvery;
+    this.lobIn = this.lobGap(random);
     const seconds = this.shellSeconds;
     const lead = tank.speed * seconds * this.lead;
     const toX = tank.x + Math.sin(tank.heading) * lead;
@@ -800,7 +823,7 @@ export class Patrol {
     this.hurtLeft = Math.max(0, this.hurtLeft - dt);
     if (this.hearts >= this.level.hearts || this.hearts <= 0) return;
     this.sinceHurt += dt;
-    if (this.sinceHurt >= this.level.healAfter) {
+    if (this.sinceHurt >= this.level.healAfter * this.challenge.healAfter) {
       this.sinceHurt = 0;
       this.hearts += 1;
       this.emit('healed', { hearts: this.hearts });
