@@ -163,7 +163,16 @@ test('the character can\'t walk through a hedge: on the other side of one from t
   }));
   await expectSoon(async () => (await state(page)).stuck, { timeout: 30_000 }).toBe(true);
   expect(await offPath).toBe(0);
-  expect((await state(page)).found).toBe(0);
+  // It has stopped short of the hand, with the hand still open and well away from it: that's what stuck is,
+  // and it only ever stops for a hedge. It may have come past the lost friend on its way, if the paths led
+  // that way: in some mazes they do, and this test used to say they never did, which failed about three
+  // times in eight.
+  const stopped = await page.evaluate(() => {
+    const { run } = window.__game;
+    const { cols, lost } = run.layout;
+    return Math.hypot(cols - 0.5 - run.position.x, lost[0].y - run.position.y);
+  });
+  expect(stopped).toBeGreaterThan(0.6);
   await shot(page, 'maze-puzzled');
   await stopHand(page);
 });

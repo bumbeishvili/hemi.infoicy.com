@@ -35,6 +35,7 @@ const CHOICES = { motoLean: String, motoBends: Number, motoWay: String, motoPace
 const BIG_AIR_SECONDS = 1.4; // A jump this long is said to be a big one.
 const TRICK_HINTS = 4; // How many jumps a trick is asked for in, until one is landed.
 const ORDINALS = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
+const PODIUM = 3; // A race is won from here up: lower than this, and the level is to be tried again.
 
 // Riding with friends, each on their own computer: see core/friends-ui.js for what each of these is.
 const RIDE_WORDS = {
@@ -714,17 +715,20 @@ class MotoMountain extends BodyGame {
       { name: 'right', icon: 'leanRight', label: 'Leans to the right', value: stats.leans.right },
       { name: 'longest', icon: 'leanRight', label: 'Longest lean, seconds', value: longest },
     ]);
-    // Nobody fails a ride, so every one that's finished moves on a level. With friends it's the host's level,
-    // so it doesn't move anyone's own level on.
+    // A race moves on a level from the podium: fourth or worse, and it's that level again. On the gentle ride
+    // nobody fails, so every one that's finished moves on. With friends it's the host's level, so it doesn't
+    // move anyone's own level on.
+    const passed = !raced || stats.place <= PODIUM;
     if (this.friends.current) {
       this.levels.last = null;
       this.levelUi.refresh();
     } else {
-      this.finishLevel(true);
+      this.finishLevel(passed);
     }
+    // The button is the level's own when the level moves on, and to try again when it doesn't: see core/levels.js.
     this.friends.showResults();
     // After a race, the card's title says how it went. With friends, the friends box has said it already.
-    if (raced && !this.friends.current && stats.place <= 3) byElementId('finish-title').textContent = stats.place === 1 ? 'You won the race!' : 'On the podium!';
+    if (raced && !this.friends.current && stats.place <= PODIUM) byElementId('finish-title').textContent = stats.place === 1 ? 'You won the race!' : 'On the podium!';
     this.confetti.start();
     this.setScreen('finish');
   }

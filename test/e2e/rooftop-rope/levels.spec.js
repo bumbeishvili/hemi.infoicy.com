@@ -331,6 +331,27 @@ for (const level of [1, 10]) {
   });
 }
 
+test('nothing flashes when the walker drops into the net for the last time, stays there, and the card comes', async ({ page }) => {
+  test.setTimeout(300_000);
+  await reachPlay(page, atLevel(10, { ropeFall: 'soon', ropeDrops: 'three' }));
+  await childWalks(page);
+  await expectSoon(async () => (await state(page)).progress).toBeGreaterThan(0.4);
+  // Two drops already had, so this is the one it doesn't come back up from.
+  await page.evaluate(() => {
+    window.__game.walk.stats.falls = 2;
+  });
+  await childFeet(page, null);
+  await expectSoon(async () => (await state(page)).wobble, { timeout: 20_000 }).toBeGreaterThan(0.7);
+  // The wobble, the drop, the bounce, sitting in the net, and the camera coming down to it as the card comes.
+  const last = judge(await watchBrightness(page, 600));
+  console.log('into the net for the last time', JSON.stringify(last));
+  expect(last.biggestStep).toBeLessThan(4);
+  expect(last.flickeringShare).toBeLessThan(0.01);
+  const now = await state(page);
+  expect([now.state, now.screen, now.stats.falls]).toEqual(['lost', 'finish', 3]);
+  await stopChild(page);
+});
+
 test('nothing flashes when the walker drops into the net and comes back, or at the last rooftop', async ({ page }) => {
   test.setTimeout(300_000);
   await reachPlay(page, atLevel(10, { ropeFall: 'soon' }));

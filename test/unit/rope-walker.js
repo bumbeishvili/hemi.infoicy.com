@@ -61,7 +61,7 @@ export function walk(options = {}, { feet = null, height = 1.05, late = 0.3, wob
   let value = lifter.zero;
   let time = 0;
   game.begin();
-  while (game.state !== 'finished' && time < seconds && !(until && until(game, time, events))) {
+  while (game.state !== 'finished' && game.state !== 'lost' && time < seconds && !(until && until(game, time, events))) {
     let want = null;
     if (feet) want = feet(game, time);
     else if (game.state === 'roof' || game.state === 'rope') {

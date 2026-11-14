@@ -11,12 +11,13 @@ import { ROSTER } from '../../core/body/roster.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { seededRandom } from '../../core/friends.js';
 import { FriendsPanel, time as raceTime } from '../../core/friends-ui.js';
-import { HIGHER, HOLDS, LIFT, Lifter, ROPE_COUNTS, WALK, WOBBLES, Walk, Warmup, liftOf, newAt as newAtLevel, newThingsAt, otherLeg } from './walk.js';
+import { DROPS, HIGHER, HOLDS, LIFT, Lifter, ROPE_COUNTS, WALK, WOBBLES, Walk, Warmup, liftOf, newAt as newAtLevel, newThingsAt, otherLeg } from './walk.js';
 import { RopeSound } from './rope-sound.js';
 import { Mate, finishMessage, mateRopes, scoreRows, teamStars, walkerMessage } from './team.js';
 import { World } from './world.js';
 
 const AFTER_FINISH_SECONDS = 3;
+const AFTER_LOST_SECONDS = 1.2; // From the walker's coming to rest in the net, the last time, to the card that says so.
 const COUNT_FROM = 3;
 const GO_SHOWN_SECONDS = 0.9;
 const READY_SECONDS = 1.1;
@@ -25,8 +26,11 @@ const NEW_GAP_SECONDS = 0.35;
 const METER_MOST = 1.6; // The meter's top, in whole lifts.
 const HIGHER_FROM = 0.12; // How far before a balloon, as a share of the rope, "Higher!" is asked for.
 
-const DEFAULTS = { moveSize: 'medium', ropeLift: 'medium', ropeCount: 6, ropeHold: 'medium', ropeLeg: 'turns', ropeFall: 'later', ropeFriends: 'together', fighter: 'giraffe' };
-const CHOICES = { ropeLift: String, ropeCount: Number, ropeHold: String, ropeLeg: String, ropeFall: String, ropeFriends: String };
+const DEFAULTS = { moveSize: 'medium', ropeLift: 'medium', ropeCount: 6, ropeHold: 'medium', ropeLeg: 'turns', ropeFall: 'later', ropeDrops: 'three', ropeFriends: 'together', fighter: 'giraffe' };
+const CHOICES = { ropeLift: String, ropeCount: Number, ropeHold: String, ropeLeg: String, ropeFall: String, ropeDrops: String, ropeFriends: String };
+// The card at the end of a crossing that ended in the net. Its big button is to try again, as after any game
+// that was lost: see core/levels.js.
+const LOST_TITLE = 'Into the net! Try again.';
 
 // Crossing with friends, each on their own computer: see core/friends-ui.js for what each of these is.
 const ROPE_WORDS = {
@@ -65,6 +69,7 @@ const SAY = {
   any: 'Lift one foot!',
   higher: 'Higher!',
   rest: 'Foot down, and have a rest.',
+  net: 'Into the net! Try again!',
   wait: 'Wait here for your friends!',
   top: 'You crossed them all!',
 };
@@ -387,6 +392,8 @@ class RooftopRope extends BodyGame {
       which: settings.ropeLeg,
       side: settings.hands,
       wobble: settings.ropeFall,
+      // With friends the walker always goes back up, as it always did: nobody's crossing ends before the others'.
+      drops: friendly ? 'any' : settings.ropeDrops,
       random: friendly ? seededRandom(friendly.seed) : Math.random,
       plain: Boolean(friendly),
       team: this.team,
@@ -521,6 +528,15 @@ class RooftopRope extends BodyGame {
     };
     set('crossed', stats.crossed, 'ropes-done');
     set('ropes', stats.ropes, 'ropes-all');
+    // Where drops into the net are counted: a heart for each the crossing still has, and a pale one for each gone.
+    const counted = Number.isFinite(walk.dropsMost);
+    const hearts = counted ? `${'❤️'.repeat(walk.dropsLeft)}${'🤍'.repeat(walk.dropsMost - walk.dropsLeft)}` : '';
+    if (lastNumbers.hearts !== hearts) {
+      lastNumbers.hearts = hearts;
+      byElementId('drops-chip').hidden = !counted;
+      byElementId('drops').textContent = hearts;
+      byElementId('drops').setAttribute('aria-label', counted ? `${walk.dropsLeft} of ${walk.dropsMost}` : '');
+    }
     // Prizes, from the levels that have them, each with its little picture.
     const { plan } = walk;
     const prizes = [['⭐', stats.stars, plan.stars > 0], ['🎈', stats.balloons, plan.balloons > 0], ['🪶', stats.feathers, plan.birds > 0], ['🏆', 1, stats.cup]].filter(([, , has]) => has);
@@ -619,6 +635,7 @@ class RooftopRope extends BodyGame {
         this.callout('🏆', { kind: 'is-number', ...world.walkerOnScreen(3) });
       },
       resting: () => sound.say(BODY_SAY.waiting, { ifQuiet: true }),
+      lost: () => this.onLost(),
       finished: () => this.onFinished(),
     };
     handlers[event.type]?.();
@@ -651,15 +668,39 @@ class RooftopRope extends BodyGame {
     this.setScreen('finishing');
   }
 
+  /** The last drop into the net the crossing had: it's over, and the card says so, with no cheering. */
+  onLost() {
+    const { sound } = this;
+    this.camera.stop();
+    this.reader.forget();
+    this.lifter.forget();
+    this.latestBody = null;
+    this.readAt = null;
+    this.hideFilm();
+    this.prompt.clear();
+    this.setCount('');
+    this.updateHud();
+    this.updateWobble(0);
+    sound.wobble(0);
+    sound.stopCity();
+    sound.finish(SAY.net, { lost: true });
+    this.timer = AFTER_LOST_SECONDS;
+    this.setScreen('finishing');
+  }
+
   showFinish() {
     const { walk } = this;
     const { stats } = walk;
+    const lost = walk.state === 'lost';
+    // After the net, the camera comes down to where the walker sits in it, beside the card.
+    if (lost) this.world.setView('finish');
     byElementId('finish-crossed').textContent = plural(stats.crossed, 'rope');
     const seconds = (value) => Math.round(value);
     const longest = Math.round(stats.longest * 10) / 10;
     // Standing on the left leg is the right foot held up, and the other way round.
     const stood = `${this.chosen.name} stood on the left leg for ${plural(seconds(stats.holdSeconds.right), 'second')} and on the right leg for ${plural(seconds(stats.holdSeconds.left), 'second')}, and the longest stand was ${longest} seconds.`;
-    const fell = stats.falls ? ` The walker dropped into the net ${plural(stats.falls, 'time')}, and went back up.` : '';
+    const dropped = `The walker dropped into the net ${plural(stats.falls, 'time')}`;
+    const fell = !stats.falls ? '' : lost ? ` ${dropped}, and that’s as many as a crossing has.` : ` ${dropped}, and went back up.`;
     const eased = stats.eased.left + stats.eased.right ? ' The ropes asked for a foot a little less high as the game went on, to meet how high it goes.' : '';
     byElementId('finish-line').textContent = `${stood}${fell}${eased}`;
     byElementId('finish-prizes').textContent = this.prizeWords();
@@ -668,16 +709,18 @@ class RooftopRope extends BodyGame {
       { name: 'right', icon: 'standRight', label: 'Stands on the right leg', value: stats.holds.left },
       { name: 'longest', icon: 'standRight', label: 'Longest stand, seconds', value: longest },
     ]);
-    // Nobody fails a game, so every one that's finished moves on a level. With friends it's the host's level,
-    // so it doesn't move anyone's own level on.
+    // A crossing that got to the last rooftop moves on a level, and one that ended in the net is to be tried
+    // again. With friends it's the host's level, so it doesn't move anyone's own level on.
     if (this.friends.current) {
       this.levels.last = null;
       this.levelUi.refresh();
     } else {
-      this.finishLevel(true);
+      this.finishLevel(!lost);
     }
     this.friends.showResults();
-    this.confetti.start();
+    // After the net the card says so, and nothing is cheered. The title is put back by the next card.
+    if (lost) byElementId('finish-title').textContent = LOST_TITLE;
+    else this.confetti.start();
     this.setScreen('finish');
   }
 
@@ -853,6 +896,7 @@ mountBodyShell({
   </div>
   <header id="rope-top" class="rope-top">
     <div class="chip"><span class="chip-label">Ropes</span><span class="chip-value"><span id="ropes-done">0</span> / <span id="ropes-all">0</span></span></div>
+    <div id="drops-chip" class="chip" hidden><span class="chip-label">Tries</span><span id="drops" class="chip-value"></span></div>
     <div id="prizes-chip" class="chip" hidden><span class="chip-label">Prizes</span><span id="prizes" class="chip-value"></span></div>
   </header>
   <ol id="rope-scores" class="rope-scores" aria-label="Everyone’s line" hidden></ol>
@@ -902,6 +946,12 @@ mountBodyShell({
       ${choice('ropeFall', 'soon', `After ${WOBBLES.soon} seconds`)}
       ${choice('ropeFall', 'later', `After ${WOBBLES.later} seconds`)}
       ${choice('ropeFall', 'never', 'Never: the walker waits on the rope for as long as it takes')}
+    </fieldset>
+    <fieldset class="choice">
+      <legend>Drops into the net before the crossing is over, and is to be tried again</legend>
+      ${choice('ropeDrops', 'three', `${DROPS.three}`)}
+      ${choice('ropeDrops', 'five', `${DROPS.five}`)}
+      ${choice('ropeDrops', 'any', 'Gentle: any number. The walker always goes back up, and nothing is lost')}
     </fieldset>
     <fieldset class="choice">
       <legend>With friends</legend>

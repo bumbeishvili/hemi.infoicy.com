@@ -10,6 +10,7 @@
   {"id": "any", "text": "Lift one foot!", "ka": "ასწიე ცალი ფეხი!"},
   {"id": "higher", "text": "Higher!", "ka": "უფრო მაღლა!"},
   {"id": "rest", "text": "Foot down, and have a rest.", "ka": "ფეხი დადგი და დაისვენე."},
+  {"id": "net", "text": "Into the net! Try again!", "ka": "ბადეში ჩავარდი! კიდევ სცადე!"},
   {"id": "wait", "text": "Wait here for your friends!", "ka": "აქ დაელოდე მეგობრებს!"},
   {"id": "top", "text": "You crossed them all!", "ka": "ყველა ბაგირი გადალახე!"}
 ]
