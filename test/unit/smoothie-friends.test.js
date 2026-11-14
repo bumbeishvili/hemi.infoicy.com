@@ -197,7 +197,8 @@ test('with friends, what\'s on the order is worth two points to whoever slices i
 test('with friends it\'s the plain fair at every level: the same pace and rotten fruit, and none of the levels\' new things', () => {
   for (const level of LEVELS) {
     const plain = plainFairAt(level);
-    const fair = fairAt(level);
+    // The fair as it always was, with the gentle climb, whatever each child's grown-up chose.
+    const fair = fairAt(level, { gentle: true });
     for (const key of ['gravity', 'every', 'volley', 'most', 'wantedShare', 'rottenLast', 'rottenShare']) assert.deepEqual(plain[key], fair[key], `${key} at level ${level}`);
     assert.deepEqual({ across: plain.across, pairs: plain.pairs, tough: plain.tough, tips: plain.tips, bonus: plain.bonus, powers: plain.powers, bee: plain.bee }, { across: 0, pairs: 0, tough: 0, tips: 0, bonus: [], powers: [], bee: false });
     // Whatever's thrown is only ever a plain fruit or a rotten one, thrown straight up.

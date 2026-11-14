@@ -2,7 +2,13 @@
 // brings that's new, tip coins, golden fruit, watermelons, the bee and the power-ups, rotten fruit,
 // fruit thrown across and tough fruit, and still the Golden Cup at the end, with nothing flashing.
 import { expect, openGame, show, shot, test, waitForScreen } from '../helpers.js';
-import { atLevel, judgeBrightness, moveGloveTo, startPlaying, stopMoving, storyIs, watchBrightness } from './helpers.js';
+import { atLevel, judgeBrightness, moveGloveTo, startPlaying as startStand, stopMoving, storyIs, watchBrightness } from './helpers.js';
+
+// These are the stand as it always was: customers who wait as long as it takes, the gentle choice under
+// "Customers' patience", and the slow pace that was the default then. The customers who won't wait are in
+// smoothie-patience.spec.js.
+const AS_IT_WAS = { patience: 'gentle', pace: 'slow' };
+const startPlaying = (page, game, settings = {}, ...rest) => startStand(page, game, { ...AS_IT_WAS, ...settings }, ...rest);
 
 const GAME = 'smoothie-stand';
 const GLOVE = ['field', 'gloves', 'right'];

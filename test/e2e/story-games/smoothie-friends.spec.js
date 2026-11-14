@@ -3,10 +3,12 @@
 // works out where each fruit is from how it was thrown, so it's in the same place on every screen. Whoever's glove
 // slices a fruit first has it, as the server decides, and it's gone for everyone. Here they're separate browsers,
 // talking through the race server on this computer (tools/race-server.mjs).
-import { expect, openGame, shot, show, test, waitForScreen } from '../helpers.js';
+import { expect, openGame as openPage, shot, show, test, waitForScreen } from '../helpers.js';
 import { judgeBrightness, storyIs, watchBrightness } from './helpers.js';
 
 const GAME = 'smoothie-stand';
+// The slow pace that was the default when these were written, unless a test says. With friends, customers always wait.
+const openGame = (page, settings = {}, ...rest) => openPage(page, { pace: 'slow', ...settings }, ...rest);
 const CODE = /^[A-HJ-NP-Z2-9]{3}$/;
 
 /** How the stand is on one child's screen. Fruit that hasn't been thrown yet is still below the screen. */

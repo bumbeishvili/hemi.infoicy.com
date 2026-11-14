@@ -1153,8 +1153,10 @@ const PACES = {
   medium: { gravity: 0.5, every: 0.7, volley: [1, 3], most: 10 },
   fast: { gravity: 0.68, every: 0.55, volley: [2, 3], most: 12 },
 };
-function fairLoad(level, paceName) {
-  const at = fairAt(level);
+// gentle is the fair as it always was, which these limits are for: see test/unit/smoothie-stand.test.js for the
+// customers who won't wait, and the steeper climb that comes with them.
+function fairLoad(level, paceName, { gentle = true } = {}) {
+  const at = fairAt(level, { gentle });
   const pace = PACES[paceName];
   const gravity = pace.gravity * at.gravity;
   const upSeconds = 2 * Math.sqrt((2 * 0.52) / gravity); // A throw up to halfway, and back down.
@@ -1186,7 +1188,7 @@ function fairLoad(level, paceName) {
   return { seconds, perMinute: (wantedPerSecond * (1 + at.tough) + extras / seconds) * 60, wantedPerSecond, reactSeconds: upSeconds };
 }
 
-test('smoothie stand: level 10 is still within reach, at every pace a grown-up can choose', () => {
+test('smoothie stand, gentle: level 10 is still within reach, at every pace a grown-up can choose', () => {
   for (const pace of Object.keys(PACES)) {
     const first = fairLoad(1, pace);
     for (const level of LEVELS) {
