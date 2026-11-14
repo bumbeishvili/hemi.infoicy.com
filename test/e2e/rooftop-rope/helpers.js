@@ -101,7 +101,9 @@ export const state = (page) => page.evaluate(() => {
     warmSide: warmup?.side ?? null,
     view: world.view,
     // Where the walker on the screen is, and how high it's drawn holding each foot.
-    walker: walker && { x: walker.root.position.x, y: walker.root.position.y, z: walker.root.position.z, left: walker.pose.footLY ?? 0, right: walker.pose.footRY ?? 0, size: walker.size },
+    // And how far up on its wheel it is, from 0 to 1, how far over the rope that puts it, how far the wheel
+    // has turned, and whether the wheel is to be seen.
+    walker: walker && { x: walker.root.position.x, y: walker.root.position.y, z: walker.root.position.z, left: walker.pose.footLY ?? 0, right: walker.pose.footRY ?? 0, size: walker.size, onWheel: walker.onWheel, up: walker.seat.position.y, rolled: walker.rolled, wheelSeen: walker.wheel.root.visible, tip: walker.wheel.root.rotation.z },
     camera: { x: world.camera.position.x, y: world.camera.position.y, z: world.camera.position.z },
     mates: window.__game.mates.map((mate) => ({ along: mate.along, stars: mate.stars, crossed: mate.crossed, done: mate.done, gone: mate.gone, heard: mate.heard })),
   };

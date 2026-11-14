@@ -226,6 +226,42 @@ export function buildPost() {
   ], { outline: 0.025 });
 }
 
+export const WHEEL = { radius: 0.34, wide: 0.2, up: 0.8 }; // How big the wheel is, and how high over the rope the walker stands on it.
+
+/**
+ * The one wheel the walker rides along a rope, standing on it on one foot: a fat tyre with pale blocks round
+ * its tread, which are what's seen of it turning from behind, a bright hub on each side, and a plate over it to
+ * stand on. Returns the whole of it, standing on the rope at its own middle, and the part that turns.
+ */
+export function buildWheel(colour = '#e4572e') {
+  const { radius, wide, up } = WHEEL;
+  // A tube's axis is up and down: turned on its side, it's a wheel that rolls along the rope.
+  const across = (geometry) => geometry.rotateZ(QUARTER);
+  const turning = [
+    { geometry: across(tube(radius, wide, 24)), colour: '#3b4350' },
+    { geometry: across(tube(radius * 0.64, wide + 0.06, 20)), colour },
+    { geometry: across(tube(radius * 0.22, wide + 0.1, 12)), colour: '#ffd23f' },
+  ];
+  // Pale blocks round the tread, each lying flat against it.
+  const blocks = 10;
+  for (let n = 0; n < blocks; n += 1) {
+    const angle = (n / blocks) * Math.PI * 2;
+    turning.push({ geometry: box(wide + 0.02, 0.05, 0.12), colour: '#f7f2e6', at: [0, Math.sin(angle) * radius, Math.cos(angle) * radius], turn: [QUARTER - angle, 0, 0] });
+  }
+  // A spoke across each hub, which goes round with it.
+  for (const side of [-1, 1]) turning.push({ geometry: box(0.03, radius * 1.1, 0.07), colour: '#f7f2e6', at: [side * (wide / 2 + 0.04), 0, 0] });
+  const fixed = [
+    { geometry: tube(0.028, up - radius, 8), colour: '#9aa3ab', at: [wide / 2 + 0.07, (radius + up) / 2, 0] },
+    { geometry: tube(0.028, up - radius, 8), colour: '#9aa3ab', at: [-(wide / 2 + 0.07), (radius + up) / 2, 0] },
+    { geometry: roundedBox(0.42, 0.07, 0.66, 0.03), colour: '#4aa3df', at: [0, up - 0.035, 0] },
+  ];
+  const root = new THREE.Group();
+  const spin = solid(turning, { outline: 0.02 });
+  spin.position.y = radius;
+  root.add(spin, solid(fixed, { outline: 0.02 }));
+  return { root, spin };
+}
+
 /** The cup on the last rooftop, at level 10. */
 export function buildCup() {
   const gold = '#ffd23f';

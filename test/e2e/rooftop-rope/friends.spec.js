@@ -8,7 +8,7 @@ const team = (page) => page.evaluate(() => window.__game.game.team);
 const mate = (page) => page.evaluate(() => {
   const { world, mates } = window.__game;
   const shown = world.mates[0];
-  return { name: mates[0]?.friend.spec.name, gone: mates[0]?.gone, visible: shown?.root.visible, walker: shown?.spec.id, along: mates[0]?.along, x: shown?.root.position.x, z: shown?.root.position.z };
+  return { name: mates[0]?.friend.spec.name, gone: mates[0]?.gone, visible: shown?.root.visible, walker: shown?.spec.id, along: mates[0]?.along, x: shown?.root.position.x, z: shown?.root.position.z, onWheel: shown?.onWheel };
 });
 const scores = (page) => page.locator('#rope-scores li').evaluateAll((rows) => rows.map((row) => [row.querySelector('span').textContent, Number(row.querySelector('strong').textContent)]));
 const rows = (page) => page.locator('.friends-results li').evaluateAll((list) => list.map((row) => row.textContent.replace(/\s+/g, ' ').trim()));
@@ -66,6 +66,8 @@ test('two friends cross the rooftops together from their own computers, side by 
   // not, and is told why.
   await childWalks(ben.page, { fixed: null });
   await childWalks(page, { rest: 0.3 });
+  // On Ben's screen, while she's on the rope, her walker is up on a wheel too.
+  await expectSoon(async () => (await mate(ben.page)).onWheel, { timeout: 40_000 }).toBeGreaterThan(0.9);
   await expectSoon(async () => (await state(page)).index, { timeout: 40_000 }).toBe(1);
   await expectSoon(async () => (await state(page)).hint, { timeout: 15_000 }).toBe('wait');
   await expect(page.locator('#prompt-text')).toHaveText('Wait here for your friends!');
@@ -76,6 +78,8 @@ test('two friends cross the rooftops together from their own computers, side by 
   // On Ben's screen, her walker is a rooftop in front.
   await expectSoon(async () => (await mate(ben.page)).along, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
   expect((await mate(ben.page)).z).toBeLessThan((await state(ben.page)).walker.z - 15);
+  // And off its wheel, on the rooftop.
+  await expectSoon(async () => (await mate(ben.page)).onWheel, { timeout: 15_000 }).toBeLessThan(0.1);
   await shot(ben.page, 'rope-friends-ahead');
 
   // Ben crosses too, and they get to the last rooftop one after the other.

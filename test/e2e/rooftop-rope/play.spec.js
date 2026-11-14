@@ -134,6 +134,8 @@ test('through the real tracker: lifting the foot the rope asks for glides the wa
   await expect(page.locator('#prompt-text')).toHaveText(`Lift your ${asked} foot!`);
   await expect(page.locator('#coach')).toHaveClass(/is-visible/);
   await expect(page.locator('#feet')).toHaveAttribute('data-ask', asked);
+  // On the rooftop it's on its own two feet: its wheel is put away.
+  expect([now.walker.wheelSeen, now.walker.up]).toEqual([false, 0]);
   await footUp(page, asked, 30);
   await expectSoon(async () => (await state(page)).state).toBe('rope');
   await expectSoon(async () => (await state(page)).progress).toBeGreaterThan(0.25);
@@ -141,6 +143,14 @@ test('through the real tracker: lifting the foot the rope asks for glides the wa
   expect(now.gliding).toBe(true);
   expect(now.foot).toBe(asked);
   expect(now.wobble).toBe(0);
+  // On the rope it's up on its one wheel, which has turned as far as it has come: forwards, about a turn for
+  // every two metres.
+  expect(now.walker.wheelSeen).toBe(true);
+  expect(now.walker.onWheel).toBeGreaterThan(0.95);
+  expect(now.walker.up).toBeCloseTo(0.8, 1);
+  expect(now.walker.rolled).toBeLessThan(-12);
+  const turned = now.walker.rolled;
+  await expectSoon(async () => (await state(page)).walker.rolled).toBeLessThan(turned - 3);
   await expect(page.locator('#feet')).toHaveAttribute('data-up', asked);
   await expect(page.locator('#rope-meter')).toHaveAttribute('data-zone', 'up');
   // Nothing is asked of a child who's doing it.
@@ -152,6 +162,10 @@ test('through the real tracker: lifting the foot the rope asks for glides the wa
   const stopped = (await state(page)).progress;
   await expectSoon(async () => (await state(page)).wobble).toBeGreaterThan(0.2);
   expect((await state(page)).progress).toBeCloseTo(stopped, 3);
+  // Its wheel rocks from side to side under it, and turns no further along the rope.
+  const still = (await state(page)).walker.rolled;
+  await expectSoon(async () => Math.abs((await state(page)).walker.tip)).toBeGreaterThan(0.01);
+  expect((await state(page)).walker.rolled).toBeCloseTo(still, 2);
   await expect(page.locator('#wobble')).toHaveAttribute('data-wobbling', 'true');
   expect(await page.locator('#wobble-fill').evaluate((fill) => parseFloat(fill.style.width))).toBeGreaterThan(15);
   await expect(page.locator('#prompt-text')).toHaveText(`Lift your ${asked} foot!`);
@@ -173,6 +187,9 @@ test('through the real tracker: lifting the foot the rope asks for glides the wa
   await expectSoon(async () => Math.abs((await state(page)).walker.z - spot.z)).toBeLessThan(0.3);
   // That's the far side of the rooftop from where the first rope came in.
   expect(spot.end - spot.z).toBeGreaterThan(4);
+  // And off its wheel, which is put away again.
+  await expectSoon(async () => (await state(page)).walker.wheelSeen).toBe(false);
+  expect((await state(page)).walker.up).toBeLessThan(0.05);
 });
 
 test('through the real tracker: a foot put down on the floor behind the other is not a lifted foot, and the walker stays on its rooftop', async ({ page }) => {
@@ -200,18 +217,26 @@ test('through the real tracker: a foot put down on the floor behind the other is
 test('with both feet down on the rope for too long, the walker drops slowly into the net and starts that rope again, with the stars it had', async ({ page }) => {
   await reachPlay(page, short({ ropeFall: 'soon', levels: { 'rooftop-rope': 2 } }));
   await listen(page);
-  await childWalks(page);
-  // Past two of this rope's three stars, and then both feet down.
-  await expectSoon(async () => (await state(page)).progress).toBeGreaterThan(0.55);
+  // A foot held half way up, so the walker goes slowly, and a child who's quick to put it down: on a busy
+  // computer the walker would otherwise be past the third star before the foot was seen to be down.
+  await childWalks(page, { share: 0.5, late: 0.1 });
+  // Two of this rope's three stars, and then both feet down.
+  await expectSoon(async () => (await state(page)).stats.stars).toBe(2);
   await childFeet(page, null);
   const before = await state(page);
   expect(before.stats.stars).toBe(2);
+  expect(before.progress).toBeLessThan(0.7);
   await expectSoon(async () => (await state(page)).state, { timeout: 20_000 }).toBe('falling');
-  // The camera looks down after it, and the walker is on its way down to the net, not gone.
-  await page.waitForTimeout(1200);
-  const falling = await state(page);
-  expect(falling.walker.y).toBeLessThan(before.walker.y - 3);
-  expect(falling.walker.size).toBeGreaterThan(0.9);
+  // The camera looks down after it, and the walker is on its way down to the net, not gone: well below the
+  // rope, whole, and without the wheel it was up on. Looked for all the way down, as a busy computer can be
+  // late for any one moment of it.
+  expect(before.walker.onWheel).toBeGreaterThan(0.95);
+  let falling = null;
+  await expectSoon(async () => {
+    falling = await state(page);
+    return falling.state === 'falling' && falling.walker.y < before.walker.y - 3 && falling.walker.size > 0.9;
+  }, { timeout: 10_000 }).toBe(true);
+  expect(falling.walker.wheelSeen).toBe(false);
   await shot(page, 'rope-net');
   // Back on the rooftop that rope starts from, with nothing lost but the way along it.
   await expectSoon(async () => (await state(page)).state).toBe('roof');
@@ -335,7 +360,7 @@ test('a whole game: every rope crossed, a leg at a time, and a card at the end w
   // Taking turns: one rope on each leg.
   expect(plan.ropes.map(({ leg }) => leg)).toEqual(plan.ropes[0].leg === 'left' ? ['left', 'right', 'left', 'right'] : ['right', 'left', 'right', 'left']);
   await childWalks(page);
-  await waitForScreen(page, 'finishing', 120_000);
+  await expectSoon(async () => (await state(page)).screen, { timeout: 120_000 }).toBe('finishing');
   const done = await state(page);
   expect(done.state).toBe('finished');
   expect(done.stats.crossed).toBe(4);

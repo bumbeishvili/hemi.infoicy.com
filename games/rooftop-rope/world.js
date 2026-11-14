@@ -10,7 +10,7 @@ import { Fighter3D, makePose } from '../../core/body/characters.js';
 import { ROSTER } from '../../core/body/roster.js';
 import { Sparks } from '../../core/body/sparks.js';
 import { WALK } from './walk.js';
-import { balancePose, buildBalloon, buildBird, buildBuildings, buildCup, buildLight, buildNet, buildPost, buildRoofTop, buildStar, buildSwapFlag, cheerPose, cloudGeometry, fallPose, seededRandom, wallColour } from './models.js';
+import { WHEEL, balancePose, buildBalloon, buildBird, buildBuildings, buildCup, buildLight, buildNet, buildPost, buildRoofTop, buildStar, buildSwapFlag, buildWheel, cheerPose, cloudGeometry, fallPose, seededRandom, wallColour } from './models.js';
 
 const MOST_PIXELS = 3_200_000; // A very big screen is drawn a little less sharply, so that it stays quick.
 const SLOW_FRAME_SECONDS = 1 / 45;
@@ -22,6 +22,7 @@ const SIDE_BY_SIDE = 3; // Metres between one friend's rope and the next.
 const NET_DROP = 5.5; // How far under a rope its net is.
 const WALKER_SIZE = 0.95;
 const MATE_SLOTS = [-1, 1, -2];
+const MATE_WHEELS = ['#4aa3df', '#27c96b', '#b06ad9']; // Each friend's wheel is its own colour.
 const QUARTER = Math.PI / 2;
 
 // How the sky looks as the levels go up: morning, the middle of the day, the afternoon, and sunset at the top.
@@ -38,28 +39,60 @@ const damp = (value, target, rate, dt) => value + (target - value) * (1 - Math.e
 const lerp = (a, b, t) => a + (b - a) * t;
 const scratch = { v: new THREE.Vector3(), w: new THREE.Vector3() };
 
-/** A character standing on a rope or a roof, lifting a foot. */
+/**
+ * A character standing on a roof, or riding its one wheel along a rope, lifting a foot. A grown-up who saw the
+ * first version, where the walker slid along the rope on its bare foot, asked for some kind of wheel for one
+ * foot where the child has to stand with a foot up: so on a rope the walker is up on a wheel, which turns as it
+ * goes, and on a rooftop it's on its own two feet.
+ */
 class Walker {
-  constructor(spec) {
+  constructor(spec, wheelColour = '#e4572e') {
     this.spec = spec;
     this.body = new Fighter3D(spec);
     this.body.root.scale.setScalar(WALKER_SIZE);
     // Seen from behind: facing away from the camera, along the rope.
     this.body.root.rotation.y = Math.PI;
     this.root = new THREE.Group();
-    this.root.add(this.body.root);
+    // The character stands on the plate over the wheel, which lifts it off the rope.
+    this.seat = new THREE.Group();
+    this.seat.add(this.body.root);
+    this.wheel = buildWheel(wheelColour);
+    this.wheel.root.visible = false;
+    this.root.add(this.seat, this.wheel.root);
     this.pose = makePose();
     this.time = Math.random() * 10;
     this.at = new THREE.Vector3();
     this.size = 1;
+    this.onWheel = 0; // From 0, on its own feet, to 1, up on its wheel.
+    this.rolled = 0; // How far the wheel has turned, in radians: less than nothing going forwards.
   }
 
-  /** Stands where it's told, in whatever pose the rules call for. */
-  stand(at, pose, dt, size = 1) {
+  /** How far over the rope the character's feet are: the height of the wheel, when it's on it. */
+  get lift() {
+    return WHEEL.up * this.onWheel;
+  }
+
+  /**
+   * Stands where it's told, in whatever pose the rules call for. wheel is whether it's riding its wheel, which
+   * comes out from under it and is put away again by growing and shrinking, and rock is how much it's
+   * wobbling on it, from 0 to 1.
+   */
+  stand(at, pose, dt, { size = 1, wheel = false, rock = 0 } = {}) {
     this.time += dt;
+    // The wheel turns by as far as it has come along the rope. A walker put somewhere new hasn't rolled there.
+    const along = at.z - this.root.position.z;
+    if (wheel && Math.abs(along) < 1) this.rolled += along / WHEEL.radius;
     this.root.position.copy(at);
     this.size = damp(this.size, size, 14, dt);
     this.root.scale.setScalar(Math.max(0.001, this.size));
+    this.onWheel = damp(this.onWheel, wheel ? 1 : 0, 10, dt);
+    this.wheel.root.visible = this.onWheel > 0.02;
+    this.wheel.root.scale.setScalar(Math.max(0.001, this.onWheel));
+    // Wobbling, the wheel rocks to and fro under the walker, and tips a little from side to side with it.
+    const sway = Math.sin(this.time * 6.5) * rock;
+    this.wheel.spin.rotation.x = this.rolled + sway * 0.4;
+    this.wheel.root.rotation.z = sway * 0.1;
+    this.seat.position.y = this.lift;
     this.body.setPose(pose(this.pose, this.time));
     this.body.update(dt);
   }
@@ -297,7 +330,8 @@ export class World {
     };
     const object = builders[thing.kind]();
     const at = this.onRope(this.place.ropes[rope], thing.at);
-    const lift = { star: 1.15, balloon: 2.7, bird: 3.2 }[thing.kind] ?? 0;
+    // Stars at the walker's middle, balloons over its head and the bird over that, for a walker up on its wheel.
+    const lift = { star: 1.15 + WHEEL.up, balloon: 2.7 + WHEEL.up, bird: 3.2 + WHEEL.up }[thing.kind] ?? 0;
     object.position.set(at.x + (thing.kind === 'star' ? 0.75 : 0), at.y + lift, at.z);
     if (thing.kind === 'bird') object.visible = false;
     this.place.group.add(object);
@@ -324,8 +358,8 @@ export class World {
   /** Friends' walkers, each on a rope beside this child's. */
   setMates(specs) {
     for (const mate of this.mates) mate.dispose();
-    this.mates = specs.map((spec) => {
-      const mate = new Walker(spec);
+    this.mates = specs.map((spec, index) => {
+      const mate = new Walker(spec, MATE_WHEELS[index % MATE_WHEELS.length]);
       mate.root.visible = false;
       this.scene.add(mate.root);
       return mate;
@@ -344,7 +378,9 @@ export class World {
       const spot = done ? this.spotOn(this.place.roofs.length - 1, scratch.v) : at.progress <= 0 ? this.spotOn(at.index, scratch.v) : this.onRope(rope, at.progress, scratch.v);
       spot.x = lane;
       if (at.falling) spot.y -= NET_DROP * 0.8;
-      mate.stand(spot, (pose, time) => (done ? cheerPose(pose, time, 0.6) : balancePose(pose, { foot: at.foot, lift: at.lift, wobble: at.wobble, time, onRope: at.progress > 0 })), dt);
+      // On a rope, a friend's walker is up on its wheel too.
+      const riding = !done && at.progress > 0 && !at.falling;
+      mate.stand(spot, (pose, time) => (done ? cheerPose(pose, time, 0.6) : balancePose(pose, { foot: at.foot, lift: at.lift, wobble: at.wobble, time, onRope: at.progress > 0 })), dt, { wheel: riding, rock: riding ? at.wobble : 0 });
     });
   }
 
@@ -497,7 +533,8 @@ export class World {
       pose = (out, time) => cheerPose(out, time);
     }
     this.walkerAt.set(damp(this.walkerAt.x, target.x, rate, dt), damp(this.walkerAt.y, target.y, rate, dt), damp(this.walkerAt.z, target.z, rate, dt));
-    walker.stand(this.walkerAt, pose, dt, size);
+    // On a rope it's up on its wheel, which is put away as it steps off, or drops into the net.
+    walker.stand(this.walkerAt, pose, dt, { size, wheel: walk.state === 'rope', rock: walk.state === 'rope' ? walk.wobble : 0 });
   }
 
   updateItems(dt) {
@@ -519,7 +556,7 @@ export class World {
       if (thing.kind === 'bird') {
         // Riding on the walker's head, or up and away from it.
         const riding = Boolean(item.riding) && item.rope === walk.index;
-        const head = scratch.v.copy(walker.root.position).setY(walker.root.position.y + 1.72 * WALKER_SIZE + (walker.spec.build?.neck ?? 0) * 0.9);
+        const head = scratch.v.copy(walker.root.position).setY(walker.root.position.y + walker.lift + 1.72 * WALKER_SIZE + (walker.spec.build?.neck ?? 0) * 0.9);
         const away = scratch.w.copy(item.base);
         const to = riding ? head : away;
         object.visible = riding || item.wasRiding > 0;
@@ -575,8 +612,10 @@ export class World {
     let fov = 56;
     if (this.view === 'play') {
       // Behind and above the walker, a little to one side, looking along the rope to the next rooftop.
-      at.set(here.x + 1.4, high + 2.7, here.z + 6.2);
-      look.set(here.x, high + 0.9 - down * 0.8, here.z - 7 + Math.min(1, down / 4) * 5.5);
+      // Up on its wheel the walker is higher, and so is the camera, by most of that.
+      const lift = walker.lift;
+      at.set(here.x + 1.4, high + 2.7 + lift * 0.8, here.z + 6.2);
+      look.set(here.x, high + 0.9 + lift * 0.6 - down * 0.8, here.z - 7 + Math.min(1, down / 4) * 5.5);
     } else if (this.view === 'warmup') {
       // From behind, so the child's left is the walker's left, with the walker to the right of the picture.
       at.set(here.x - 0.85, high + 1.7, here.z + 7);
@@ -620,7 +659,7 @@ export class World {
   walkerOnScreen(up = 2.2) {
     if (!this.walker) return { x: 0.5, y: 0.5 };
     const { position } = this.walker.root;
-    const at = this.project(position.x, position.y + up, position.z);
+    const at = this.project(position.x, position.y + up + this.walker.lift, position.z);
     return { x: clamp(at.x / Math.max(1, this.canvas.clientWidth), 0.08, 0.92), y: clamp(at.y / Math.max(1, this.canvas.clientHeight), 0.12, 0.9) };
   }
 

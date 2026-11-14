@@ -1,5 +1,5 @@
 // Rooftop Rope: ropes strung between rooftops, crossed by standing on one leg. While the child holds one foot
-// off the floor, their walker glides along the rope, faster the higher the foot is held. With both feet down
+// off the floor, their walker rolls along the rope on its one wheel, faster the higher the foot is held. With both feet down
 // on the rope the walker wobbles, and after a few seconds drops into the net and starts that rope again. It's
 // the game about standing on one leg and holding it. This file runs it from start to finish, on top of what
 // the body games share in core/body/game.js. The rules are in walk.js, and what it looks like is in world.js.
@@ -736,7 +736,7 @@ class RooftopRope extends BodyGame {
       const mark = this.markMates[index];
       if (!mark) return;
       const at = shown.root.position;
-      const seen = showing && shown.root.visible ? this.world.project(at.x, at.y + 2.6, at.z) : null;
+      const seen = showing && shown.root.visible ? this.world.project(at.x, at.y + 2.6 + shown.lift, at.z) : null;
       mark.dataset.where = seen && !seen.behind ? 'on' : 'none';
       if (seen) mark.style.transform = `translate(${Math.round(seen.x)}px, ${Math.round(seen.y)}px)`;
     });
@@ -831,11 +831,11 @@ const FOOT = '<svg viewBox="0 0 40 64" aria-hidden="true"><path d="M19 62c-8 0-1
 
 mountBodyShell({
   title: 'Rooftop Rope',
-  tagline: 'Walk the ropes between the rooftops! Stand on one leg, hold your foot up, and glide all the way across.',
+  tagline: 'Ride the ropes between the rooftops! Stand on one leg, hold your foot up, and roll all the way across on your one wheel.',
   startLabel: 'Choose your walker',
   chooseTitle: 'Who’s walking the rope today?',
   chooseSide: `
-      <p class="choose-tip">Lift one foot off the floor, and your walker glides along the rope. Rest on every rooftop for as long as you like.</p>
+      <p class="choose-tip">Lift one foot off the floor, and your walker rolls along the rope on its one wheel. Rest on every rooftop for as long as you like.</p>
       <button id="rope-start" class="big-button" type="button">Let’s cross!</button>`,
   hud: `
   <div id="rope-meter" class="rope-meter" data-zone="down" aria-hidden="true">
