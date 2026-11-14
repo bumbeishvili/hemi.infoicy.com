@@ -774,13 +774,16 @@ class PaintGame {
   }
 }
 
-/** The game's sounds. A contest the other painter won ends softly, with no fanfare and nothing said. */
+/**
+ * The game's sounds. A contest the other painter won ends softly: a sparkle in place of the fanfare, and
+ * the voice says what it says after any game that was lost.
+ */
 class PaintSound extends Sound {
   lost = false;
 
-  finish(line) {
+  finish(line, options) {
     if (this.lost) this.play('sparkle', { gain: 0.3 });
-    else super.finish(line);
+    super.finish(line, options);
   }
 }
 

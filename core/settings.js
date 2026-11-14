@@ -24,6 +24,10 @@ export const OLD_DEFAULTS = {
   flapFox: 'tumble', // Flap, Little Chick!: the fox who never catches the chick. He can now.
   pace: 'slow', // Leap Trail and Smoothie Stand come at a medium pace now. The other games that have a pace still come slow.
   arrowHelp: 'little', // Arrow Meadow: the arrow goes just where the bow points now, with no help.
+  mazeSize: 'medium', // Giraffe's Maze: the big maze now.
+  puzzlePieces: 'usual', // Giraffe's Puzzles: more pieces now,
+  puzzleSnap: 'near', // and a piece has to be let go closer to its place.
+  paintBrush: 'medium', // Giraffe's Paint Box: the small brush now.
 };
 
 /**
