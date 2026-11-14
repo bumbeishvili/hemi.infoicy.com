@@ -36,7 +36,7 @@ test('level 1 is the dogfight as it always was', async ({ page }) => {
   expect(now.level).toBe(1);
   expect(now.atOnce).toBe(3);
   expect(now.captain).toBe(false);
-  expect(now.rules).toEqual({ enemySpeed: 0.84, enemyTurn: 0.82, huntEvery: 1, dodgeSeconds: 2.2, weave: 0, climbs: 1, atOnce: 3, captain: false, prizes: false, gifts: [], kinds: [], airship: false, sky: 'day' });
+  expect(now.rules).toEqual({ enemySpeed: 0.84, enemyTurn: 0.82, huntEvery: 1, dodgeSeconds: 2.2, sharpness: 1, weave: 0, climbs: 1, atOnce: 3, captain: false, prizes: false, gifts: [], kinds: [], airship: false, sky: 'day' });
   await expect(page.locator('.mark:not([data-where="none"])')).toHaveCount(3, { timeout: 5000 });
 });
 
@@ -124,7 +124,8 @@ test('being shot down, on a harder setting, stays on the same level', async ({ p
   await waitForScreen(page, 'finish');
   await expect(page.locator('#finish-title')).toHaveText('So close! Fly again!');
   await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 4 again!');
-  await expect(page.locator('#fly-again')).toHaveText('Fly again');
+  await expect(page.locator('#fly-again')).toHaveText('Try again');
+  await expect(page.locator('#finish-line')).toContainText('The sky pirates got');
   expect(await page.evaluate(() => window.__game.game.levels.current)).toBe(4);
   await page.waitForTimeout(800);
   await shot(page, 'sky-l4-lost');
@@ -182,4 +183,55 @@ test('level 10: a slow computer still gives up sharpness and then some of the tr
   });
   expect(level).toEqual({ first: [1, 1], second: 0, fewer: true });
   expect(await page.evaluate(() => window.__game.screen)).toBe('fly');
+});
+
+test('by default the pirates can bring the plane down, even with arms down, and the card says so kindly', async ({ page }) => {
+  test.setTimeout(150_000);
+  // No level given: the game's own default, Medium.
+  await reachFlight(page, at(3, { level: undefined, planes: 3 }));
+  expect(await page.evaluate(() => window.__game.game.settings.level)).toBe('medium');
+  expect(await page.evaluate(() => window.__game.flight.level.canLose)).toBe(true);
+  await armsAre(page, 'down');
+  await expect.poll(async () => (await flightState(page)).resting, { timeout: 15_000 }).toBe(true);
+  // The pirates don't stop for the rest, so the coach keeps asking for the wings.
+  await expect(page.locator('#prompt')).toContainText('Hold your arms out like wings!');
+  // Every pirate comes hunting, and their shots find the gliding plane.
+  await expect.poll(async () => page.evaluate(() => {
+    for (const enemy of window.__game.flight.flying) {
+      if (enemy.mode !== 'hunt' && enemy.kind !== 'balloon') {
+        enemy.mode = 'hunt';
+        enemy.modeLeft = 100;
+      }
+    }
+    return window.__game.flight.stats.hurts;
+  }), { timeout: 60_000, intervals: [500] }).toBeGreaterThan(0);
+  // The last hearts go, and the picture doesn't flash as the flight ends.
+  const watching = brightness(page, 120);
+  await page.evaluate(() => {
+    const { flight } = window.__game;
+    while (flight.state === 'flying') flight.hurt();
+  });
+  const reading = await watching;
+  console.log('shot down: biggest brightness step', biggestStep(reading));
+  expect(biggestStep(reading)).toBeLessThan(25);
+  await waitForScreen(page, 'finish');
+  await expect(page.locator('#finish-title')).toHaveText('So close! Fly again!');
+  await expect(page.locator('#finish-line')).toContainText('The sky pirates got');
+  await expect(page.locator('#fly-again')).toHaveText('Try again');
+  await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 3 again!');
+  expect(await page.evaluate(() => window.__game.game.levels.current)).toBe(3);
+  await page.waitForTimeout(800);
+  await shot(page, 'sky-shot-down');
+});
+
+test('on Gentle, the old game: the same rest is left alone and the plane can\'t be brought down', async ({ page }) => {
+  test.setTimeout(120_000);
+  await reachFlight(page, at(10, { level: 'gentle', planes: 3 }));
+  await armsAre(page, 'down');
+  await expect.poll(async () => (await flightState(page)).resting, { timeout: 15_000 }).toBe(true);
+  await page.evaluate(() => {
+    for (let i = 0; i < 12; i += 1) window.__game.flight.hurt();
+  });
+  expect((await flightState(page)).state).toBe('flying');
+  expect((await flightState(page)).hearts).toBe(1);
 });

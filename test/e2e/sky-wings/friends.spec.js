@@ -31,7 +31,7 @@ async function secondPlayer(browser) {
 }
 
 async function openFlight(page, settings = {}, hash = '') {
-  await openGame(page, settings, 'sky-wings', hash);
+  await openGame(page, { level: 'gentle', ...settings }, 'sky-wings', hash);
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
   await armsAre(page, 'level');
 }
