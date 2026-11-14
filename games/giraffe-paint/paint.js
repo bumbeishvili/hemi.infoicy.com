@@ -6,8 +6,14 @@
 //
 // The rules are here, with no screen, so they run in the unit tests. main.js says where the hand is and whether it's
 // open, and view.js draws what this says. Places are on the sheet (pages.js): 150 across and 100 down, with the row
-// of paint pots under it. Nothing has a time limit and nothing goes away: a resting child comes back to the picture
-// just as they left it.
+// of paint pots under it.
+//
+// On their own, as it comes, it's a painting contest: a friend paints the same picture at their own easel, a little at
+// a time, and finishing it before they do wins. They only paint while the child's hand is in the picture, so a child
+// who goes away, or whose hand the camera loses, comes back to the contest as they left it. A grown-up can choose the
+// gentle picture instead, which is the game as it always was: nothing has a time limit and nothing goes away, a
+// resting child comes back to the picture just as they left it, and a brush with the wrong paint is given the right
+// one after a while. With friends there's no painter to beat: the friends are the contest, or the team.
 //
 // How much of a part is painted is counted on a grid of little squares, one for each unit of the sheet: 150 by 100.
 // Each square belongs to the part that's on top there, and is painted or not. The screen draws the real brush
@@ -46,6 +52,15 @@ const SWITCH_SECONDS = 0.3; // And for this long in another part, before it's th
 const TOUCH = 9; // How near the hand has to come to the big brush or a paint balloon to take it.
 const MOST_PARTS = 30; // Which parts are done goes to friends as one number, a bit for each.
 export const CLAIM_LATE = 0.5; // Together: seconds a done part can be nobody's before each child who painted some of it claims it.
+
+// The other painter, as a grown-up chooses: a contest (the default), or the gentle picture, with nobody to beat.
+export const RIVALS = ['contest', 'gentle'];
+// How long the other painter takes over a picture: base seconds, and so many for each part to paint and for each
+// hundred squares of it, each from level 1's to level 10's. lostSeconds is how long their finished picture is looked
+// at before the finish card.
+export const RIVAL = { base: [15, 3], part: [5, 1.1], hundred: [1.6, 0.4], lostSeconds: 2.4 };
+// Who the other painter is at each level, from core/body/roster.js: never Giraffe, whose pictures they are.
+export const RIVAL_PAINTERS = ['truffle', 'kit', 'mochi', 'widget', 'frost', 'bramble', 'nova', 'cinder', 'tur', 'kit'];
 
 // What the levels bring. Missing any of it never costs anything.
 export const EXTRAS = {
@@ -149,7 +164,7 @@ export class Painting {
    * brush is (see BRUSHES), all as a grown-up chose. shared is { claim(k) } with friends painting the same sheet,
    * and me this child's id among them. onEvent hears what happens: see main.js.
    */
-  constructor({ level = 1, plain = false, rule = 'own', done = 'most', brush = 'medium', shared = null, me = 'me', onEvent = () => {} } = {}) {
+  constructor({ level = 1, plain = false, rule = 'own', done = 'most', brush = 'medium', rival = 'contest', shared = null, me = 'me', onEvent = () => {} } = {}) {
     Object.assign(this, { shared, me, onEvent });
     this.level = clampLevel(level);
     const full = paintLevel(level);
@@ -180,6 +195,18 @@ export class Painting {
     this.tally = new Map();
     this.owners = new Map();
     this.lay();
+    // The other painter, on their own, unless the gentle picture was chosen. progress goes from 0 to 1 as they paint.
+    this.lost = false;
+    this.lostFor = 0;
+    this.rival = !plain && !shared && rival !== 'gentle' ? { who: RIVAL_PAINTERS[this.level - 1], progress: 0, seconds: this.rivalSeconds() } : null;
+  }
+
+  /** How long the other painter takes over this picture, at this level: see RIVAL. */
+  rivalSeconds() {
+    const at = (this.level - 1) / 9;
+    const mix = ([first, last]) => first + (last - first) * at;
+    const squares = this.toPaint.reduce((sum, part) => sum + part.cells * part.need, 0);
+    return mix(RIVAL.base) + this.toPaint.length * mix(RIVAL.part) + (squares / 100) * mix(RIVAL.hundred);
   }
 
   /* ---------- a new sheet ---------- */
@@ -400,7 +427,23 @@ export class Painting {
       this.lift();
       return;
     }
+    if (this.lost) {
+      // The other painter finished first: a moment for it to be seen, and the contest is over.
+      this.lift();
+      this.lostFor += dt;
+      return;
+    }
     this.time += dt;
+    // The other painter paints while the child's hand is in the picture, open or not, and finishing first wins.
+    if (this.rival && at) {
+      this.rival.progress = Math.min(1, this.rival.progress + dt / this.rival.seconds);
+      if (this.rival.progress >= 1) {
+        this.lost = true;
+        this.lift();
+        this.onEvent({ type: 'beaten', rival: this.rival });
+        return;
+      }
+    }
     // Which pot a part wants stays up for a while, as the hand goes off to it.
     if (this.hint && this.time > this.hintUntil) this.hint = null;
     this.updateBalloons(dt);
@@ -610,7 +653,8 @@ export class Painting {
       this.hint = this.hintFor(part);
       this.hintUntil = this.time + EXTRAS.hintStays;
     }
-    if (this.wrongFor >= EXTRAS.helpAfter) {
+    // In the gentle picture, after a good while the brush is given that paint. In a contest it isn't.
+    if (!this.rival && this.wrongFor >= EXTRAS.helpAfter) {
       this.wrongFor = 0;
       this.hint = null;
       this.give(part.colour);

@@ -111,7 +111,8 @@ test('level 3: with the star stamp, the hand held still prints a star, and movin
 
 test('level 4: the big brush lying on the sheet makes the brush much bigger, and only runs down while it paints', async ({ page }) => {
   test.setTimeout(180_000);
-  await startPlaying(page, atLevel(4));
+  // The medium brush, so the big brush's size is easy to see in numbers.
+  await startPlaying(page, atLevel(4, { paintBrush: 'medium' }));
   const start = await state(page);
   expect(start.roller.taken).toBe(false);
   expect(start.radius).toBe(6.5);

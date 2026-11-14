@@ -14,11 +14,14 @@ import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { giraffePixels, renderGiraffe } from '../giraffe-garden/giraffe.js';
 import { COLOUR_NAMES, SHEET } from './pages.js';
-import { BRUSH_NAMES, BRUSHES, DONE_NAMES, EXTRAS, modeWord, Painting, paintNewAt, REACH, readMode, RULES, STROKE_NUMBERS } from './paint.js';
+import { BRUSH_NAMES, BRUSHES, DONE_NAMES, EXTRAS, modeWord, Painting, paintNewAt, REACH, readMode, RIVAL, RIVALS, RULES, STROKE_NUMBERS } from './paint.js';
 import { GIRAFFE, LIFE_SECONDS, PaintView } from './view.js';
 
 const byId = (id) => document.getElementById(id);
 const FINISH = 'What a lovely picture!';
+// On the card when the other painter finishes first. It's only shown, not said.
+const BEATEN = (name) => `${name} finished painting first!`;
+const TRY_AGAIN = 'Try again';
 const INTRO = 'I’m painting pictures for the party! Can you colour them in?';
 const PAINT_HINT = 'Paint with your open hand!';
 const OPEN_TO_PAINT = 'Open your hand to paint!';
@@ -155,6 +158,7 @@ class PaintGame {
     this.stampIdleFor = 0;
     this.praised = 0;
     this.partyIn = null;
+    this.lostIn = null;
     this.alive = false;
     this.filmShown = false;
     this.storyFor = 0;
@@ -169,11 +173,16 @@ class PaintGame {
   }
 
   brushName() {
-    return BRUSH_NAMES.includes(this.settings.paintBrush) ? this.settings.paintBrush : 'medium';
+    return BRUSH_NAMES.includes(this.settings.paintBrush) ? this.settings.paintBrush : 'small';
   }
 
   doneName() {
     return DONE_NAMES.includes(this.settings.paintDone) ? this.settings.paintDone : 'most';
+  }
+
+  /** Whether another painter paints the same picture, to beat, or it's the gentle picture, as a grown-up chose. */
+  rivalName() {
+    return RIVALS.includes(this.settings.paintRival) ? this.settings.paintRival : 'contest';
   }
 
   rule() {
@@ -192,6 +201,7 @@ class PaintGame {
       rule,
       done,
       brush: this.brushName(),
+      rival: this.rivalName(),
       shared: friendly?.team ? { claim: (k) => this.friends.claim(k) } : null,
       me: friendly ? this.friends.room.you : 'me',
       onEvent: (event) => this.onPaint(event),
@@ -220,7 +230,7 @@ class PaintGame {
     const { screen } = this.session;
     // A new rule for the paints, or how much is enough, starts with the next picture, and the title shows it now.
     // A picture that's being painted, or has just been finished, stays as it is.
-    if (!['playing', 'countdown', 'finish'].includes(screen) && ('paintColours' in change || 'paintDone' in change)) {
+    if (!['playing', 'countdown', 'finish'].includes(screen) && ('paintColours' in change || 'paintDone' in change || 'paintRival' in change)) {
       this.painting = this.newPainting(this.session.level);
       this.view.setPainting(this.painting);
       this.showProgress();
@@ -260,6 +270,8 @@ class PaintGame {
     const { stamp, friend } = this.painting.plan;
     byId('chip-friend-box').hidden = !this.painting.friend;
     byId('chip-friend').textContent = '?';
+    this.showRival();
+    this.session.sound.lost = false;
     byId('sum-left-stars').closest('tr').hidden = !stamp;
     byId('sum-left-friends').closest('tr').hidden = !friend;
   }
@@ -363,6 +375,13 @@ class PaintGame {
         this.partyIn = SETTLE_FIRST + LIFE_SECONDS;
         this.story.hide();
         break;
+      case 'beaten':
+        // The other painter has finished first: a soft sound, and the contest is over a moment later.
+        this.lostIn = RIVAL.lostSeconds;
+        sound.play('sparkle', { gain: 0.2, rate: 0.8 });
+        this.story.hide();
+        this.showRival();
+        break;
       default:
     }
   }
@@ -443,8 +462,50 @@ class PaintGame {
         session.sound.play('cheer', { gain: 0.25 });
         session.sound.play('sparkle', { gain: 0.3 });
       }
-      if (this.partyIn <= 0 && session.screen === 'playing') session.finish();
+      if (this.partyIn <= 0 && session.screen === 'playing') this.end();
     }
+    this.showRival();
+    if (this.lostIn !== null) {
+      this.lostIn -= dt;
+      if (this.lostIn <= 0 && session.screen === 'playing') this.end();
+    }
+  }
+
+  /** The contest is over. One the other painter won is told kindly, with no party, and Try again on the big button. */
+  end() {
+    const { session, painting } = this;
+    session.sound.lost = painting.lost;
+    session.finish();
+    // After the card is filled in, which puts back the usual title.
+    if (this.mode === 'solo') document.querySelector('#screen-finish h2').textContent = painting.lost ? BEATEN(this.rivalCharacter().name) : FINISH;
+    if (painting.lost) {
+      session.hud.hideSummary();
+      byId('play-again').textContent = TRY_AGAIN;
+    }
+  }
+
+  /** The other painter, from core/body/roster.js. */
+  rivalCharacter() {
+    return characterWithId(this.painting.rival?.who) ?? ROSTER[1];
+  }
+
+  /** The other painter at the top: their face, their name, and how far through the picture they are. */
+  showRival() {
+    const { rival } = this.painting;
+    const box = byId('chip-rival-box');
+    box.hidden = !rival;
+    if (!rival) return;
+    const who = this.rivalCharacter();
+    if (box.dataset.who !== who.id) {
+      box.dataset.who = who.id;
+      byId('rival-name').textContent = who.name;
+      byId('rival-face').src = this.session.portraits?.[who.id] ?? '';
+    }
+    const shown = Math.round(rival.progress * 200) / 2;
+    if (this.rivalShown === shown) return;
+    this.rivalShown = shown;
+    byId('rival-done').style.width = `${shown}%`;
+    box.classList.toggle('is-near', rival.progress > 0.75);
   }
 
   idle(dt, snapshot) {
@@ -665,10 +726,11 @@ class PaintGame {
   prompt(snapshot, dt) {
     const { session, painting } = this;
     const needed = session.handsPrompt(snapshot, dt);
-    if (painting.done) return null;
+    if (painting.done || painting.lost) return null;
     if (needed && !needed.key.startsWith('closed')) return needed;
-    // The hand can rest whenever it likes: the picture just waits. After a while, it's said that's fine.
-    if (this.restFor > RESTING_AFTER) return { key: 'resting', text: SPOKEN.resting, side: null };
+    // In the gentle picture the hand can rest whenever it likes: the picture just waits. After a while, it's said
+    // that's fine. In a contest that isn't said, as the other painter doesn't wait for a closed hand.
+    if (!painting.rival && this.restFor > RESTING_AFTER) return { key: 'resting', text: SPOKEN.resting, side: null };
     if (this.closedFor > CLOSED_PROMPT_AFTER) return { key: 'open-to-paint', text: OPEN_TO_PAINT, side: null, asks: 'open' };
     // A part with the wrong paint on it is showing which pot it wants: the words say so too.
     const { hint } = painting;
@@ -703,11 +765,22 @@ class PaintGame {
       hero: stats.parts,
       noun: 'picture',
       rows: { parts: row(stats.parts), dips: row(stats.dips), stars: row(stats.stamps), friends: row(stats.friends) },
-      // Nobody can lose: every picture gets painted in the end.
-      won: true,
+      // On their own, the other painter can finish first, and that picture comes round again at the same level. In the
+      // gentle picture, and with friends, every picture gets painted in the end.
+      won: !this.painting.lost,
       // A picture with friends is the host's, so it doesn't move the child's own level on.
       countsForLevel: !this.friends.current,
     };
+  }
+}
+
+/** The game's sounds. A contest the other painter won ends softly, with no fanfare and nothing said. */
+class PaintSound extends Sound {
+  lost = false;
+
+  finish(line) {
+    if (this.lost) this.play('sparkle', { gain: 0.3 });
+    else super.finish(line);
   }
 }
 
@@ -728,6 +801,7 @@ new GameSession({
       <div class="paint-hud">
         <div class="chip chip-parts"><span class="chip-label">Painted</span><span id="chip-parts" class="chip-value">0 of 8</span></div>
         <div id="chip-friend-box" class="chip chip-friend" hidden><span class="chip-label">Hiding</span><span id="chip-friend" class="chip-value">?</span></div>
+        <div id="chip-rival-box" class="chip chip-rival" hidden><span class="chip-label"><img id="rival-face" class="rival-face" alt=""> <span id="rival-name"></span></span><span class="thin-meter rival-meter"><span id="rival-done"></span></span></div>
         <div id="chip-time-box" class="chip" hidden><span class="chip-label">Time</span><span id="chip-time" class="chip-value">3:00</span></div>
         <ol id="paint-scores" class="paint-scores" aria-label="How everyone is getting on" hidden></ol>
       </div>
@@ -773,6 +847,11 @@ new GameSession({
         ${choice('paintReach', 'lots', 'A lot')}
       </fieldset>
       <fieldset class="choice">
+        <legend>Another painter</legend>
+        ${choice('paintRival', 'contest', 'A contest: a friend paints the same picture, and the first to finish wins')}
+        ${choice('paintRival', 'gentle', 'Gentle: nobody to beat, take all the time you need')}
+      </fieldset>
+      <fieldset class="choice">
         <legend>Colours</legend>
         ${choice('paintColours', 'own', 'Each part takes only the paint its dot asks for')}
         ${choice('paintColours', 'free', 'Free painting: any colour anywhere')}
@@ -786,13 +865,13 @@ new GameSession({
         <button id="save-picture-now" class="soft-button" type="button">Save the picture as it is</button>
       </div>`,
   },
-  defaults: { paintBrush: 'medium', paintDone: 'most', paintReach: 'little', paintColours: 'own', paintFriends: 'together' },
-  choices: { paintBrush: String, paintDone: String, paintReach: String, paintColours: String, paintFriends: String },
+  defaults: { paintBrush: 'small', paintDone: 'most', paintRival: 'contest', paintReach: 'little', paintColours: 'own', paintFriends: 'together' },
+  choices: { paintBrush: String, paintDone: String, paintRival: String, paintReach: String, paintColours: String, paintFriends: String },
   tagline: (side) => `Giraffe is painting pictures for the party. Dip your open ${side} hand in a paint pot, and colour them in!`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),
   portraits: () => renderPortraits(ROSTER),
-  createSound: (options) => new Sound({
+  createSound: (options) => new PaintSound({
     ...options,
     sounds: {
       brush: new URL('../lighthouse/audio/wipe.ogg', import.meta.url),

@@ -47,7 +47,7 @@ test('together: friends paint one sheet, each sees the other\'s strokes arrive, 
   expect([hers.page, theirs.page, hers.level, theirs.level]).toEqual(['lighthouse', 'lighthouse', 4, 4]);
   expect([ana.plain, his.plain]).toEqual([true, true]);
   expect([hers.rule, theirs.rule]).toEqual(['own', 'own']);
-  expect([hers.radius, theirs.radius]).toEqual([6.5, 8.5]);
+  expect([hers.radius, theirs.radius]).toEqual([5, 8.5]); // Each their own brush: Ana's the small one, as it comes.
   await expect(page.locator('#paint-scores li')).toHaveCount(2);
 
   // Ana paints the sea. Ben, who is resting, sees her glove over the same place and her paint on his own sheet.
