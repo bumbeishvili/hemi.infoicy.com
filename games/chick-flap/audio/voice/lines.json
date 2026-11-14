@@ -6,5 +6,6 @@
   {"id": "flap-under", "text": "Hands down to go under!", "ka": "ხელები დაუშვი და ქვეშ გაირბინე!"},
   {"id": "flap-rest", "text": "Resting is OK. Flap when you’re ready.", "speak": "Resting is okay. Flap when you're ready.", "ka": "შეგიძლია დაისვენო. როცა მზად იქნები, დაიქნიე ფრთები."},
   {"id": "flap-show-both", "text": "Show both hands!", "ka": "მაჩვენე ორივე ხელი!"},
-  {"id": "flap-home", "text": "Home safe! What a flyer!", "ka": "სახლში ხარ! რა კარგად დაფრინავ!"}
+  {"id": "flap-home", "text": "Home safe! What a flyer!", "ka": "სახლში ხარ! რა კარგად დაფრინავ!"},
+  {"id": "flap-caught", "text": "The fox caught the chick! Try again!", "ka": "მელიამ წიწილა დაიჭირა! კიდევ სცადე!"}
 ]

@@ -7,18 +7,25 @@
 // is doing, main.js passes that on, and view.js draws what this says. Everything is measured in the chick's own
 // world: places along the track and heights in units a little longer than the chick is tall, and times in seconds.
 //
-// Nothing here can be lost, and nothing is taken away. The fox never catches anyone: if he gets right up behind,
-// the mother hen flies in, carries the chick on over the next thing, and the fox sits down, puffing. A child who
-// isn't flapping finds the chick waiting at whatever is in the way, for as long as it takes, and the fox waiting
-// too. Only a flap that was too early or too small has the chick tumble, and never twice running.
+// As the game comes, the fox can catch the chick, and then that flight is over: a grown-up who played the first
+// version, where he never could, said so ("make sure fox can catch, right now it just stops"). A chick that
+// stands at something for more than a moment has the fox come on, every tumble, splash and bump brings him nearer,
+// and each thing flown over cleanly takes the chick further ahead. Right behind a chick on the ground, he has it.
+//
+// A grown-up can have the game as it was, where nothing can be lost and nothing is taken away: the fox never
+// catches anyone, as the mother hen flies in when he gets right up behind, carries the chick on over the next
+// thing, and he sits down, puffing; a child who isn't flapping finds the chick waiting at whatever is in the way,
+// for as long as it takes, and the fox waiting too; and only a flap that was too early or too small has the chick
+// tumble, and never twice running. Flying home with friends, it's that game too.
 import { clampLevel, ramp } from '../../core/levels.js';
 
 // How long the way home is, as a grown-up chooses: how many things are in the way.
 export const WAYS = { short: 8, medium: 12, long: 16 };
 export const WAY_NAMES = Object.keys(WAYS);
-// What happens when a flap was too early or too small, as a grown-up chooses: the chick tumbles over the thing and
-// the fox gets nearer, or it waits there for another flap and the fox keeps his distance.
-export const FOX_NAMES = ['tumble', 'wait'];
+// What the fox does, as a grown-up chooses. He can catch the chick, which is how the game comes. Or he never
+// can: a flap that was too early or too small has the chick tumble over the thing and him come nearer, with the
+// mother hen there before he gets it. Or the chick waits there for another flap, and he keeps his distance.
+export const FOX_NAMES = ['catch', 'tumble', 'wait'];
 
 export const CHICK = {
   r: 0.36, // Half as wide as it is.
@@ -44,6 +51,10 @@ export const CHICK = {
 // each thing cleared without one takes the chick this much further ahead. At caught, the hen comes. On the track
 // ahead, a chick on the ground stops standoff short of him.
 export const FOX = { start: 3.4, most: 4.2, caught: 0.9, nearer: 0.85, further: 0.3, after: 3.6, standoff: 1.5 };
+// The fox that can catch: a chick standing at something has this many seconds before he comes on, or first, at
+// the first thing of a flight, while the child finds out what to do. Then he comes this much nearer each second.
+// Catching it takes a moment, in which he comes right up to it and lifts it.
+export const HUNT = { patience: 3, first: 8, creep: 0.22, seconds: 1.4, held: 0.25, lift: 0.5 };
 // The mother hen: after this many flaps at one thing that didn't get over it, she helps. Carrying the chick takes
 // seconds, and a little more for each unit she carries it, as high as high, and she sets it down beyond what was
 // in the way. Flying home together, a chick the rest have waited flockAfter seconds for is carried up to them.
@@ -314,6 +325,9 @@ export class Farm {
     this.level = clampLevel(level);
     this.plan = farmLevel(level);
     this.gentle = fox === 'wait';
+    // The fox that can catch is for a chick on its own: a flock is never hunted.
+    this.catches = fox === 'catch' && !friends && !together;
+    this.lost = false; // Whether the fox caught the chick, which is how a flight is lost.
     const track = layTrack({ level, things, random, friends });
     this.things = track.things;
     this.corn = track.corn;
@@ -444,11 +458,60 @@ export class Farm {
     else if (chick.state === 'ride') this.ride(dt, flaps, open);
     else if (chick.state === 'door') this.waitAtDoor(dt);
     else if (chick.state === 'home') this.party(dt);
+    else if (chick.state === 'caught') this.held(dt);
 
     this.pickCorn();
     this.passThings();
     this.fox.sitting = Boolean(chick.waiting) || chick.flockWait || ['carried', 'door', 'home'].includes(chick.state);
+    if (this.catches) this.hunt(dt);
     if (this.together) this.keepWithFlock(dt);
+  }
+
+  /**
+   * The fox that can catch. While the chick stands at something he sits for a moment, and then he's up and coming
+   * on. Right behind a chick that's on the ground, he has it. A child whose hands the camera can't see isn't
+   * hunted: he waits, as the game does.
+   */
+  hunt(dt) {
+    const { chick, fox, wings } = this;
+    if (fox.mode !== 'chase' || chick.state !== 'run') return;
+    const seen = Boolean(wings?.left?.seen || wings?.right?.seen);
+    const patience = this.stats.cleared === 0 ? HUNT.first : HUNT.patience;
+    if (chick.waiting && !chick.air && chick.waitFor >= patience && seen) {
+      fox.sitting = false;
+      const before = fox.gap;
+      fox.gap = Math.max(FOX.caught, fox.gap - HUNT.creep * dt);
+      // Said once each time he gets up and comes on.
+      if (!fox.coming && fox.gap < before) {
+        fox.coming = true;
+        this.onEvent({ type: 'fox-coming', thing: chick.waiting });
+      }
+    } else if (!chick.waiting || chick.air) {
+      fox.coming = false;
+    }
+    if (fox.gap <= FOX.caught && !chick.air) this.catchChick(null);
+  }
+
+  /** The fox has the chick: the one trotting behind, or the one waiting on the track, by. */
+  catchChick(by) {
+    const { chick } = this;
+    if (chick.state === 'caught' || this.done) return;
+    Object.assign(chick, { state: 'caught', t: 0, vy: 0, air: false, waiting: null, behind: null, dizzy: 0 });
+    this.script = null;
+    this.caughtBy = by;
+    this.caughtAt = chick.h;
+    this.onEvent({ type: 'caught', thing: by });
+  }
+
+  /** In the fox's paws: he comes right up and lifts the chick off the ground, and that flight is over. */
+  held(dt) {
+    const { chick, fox } = this;
+    chick.t = Math.min(1, chick.t + dt / HUNT.seconds);
+    if (fox.mode === 'chase') fox.gap = Math.max(HUNT.held, fox.gap - 2.4 * dt);
+    chick.h = mix(this.caughtAt, HUNT.lift, ease(clamp(chick.t * 2, 0, 1)));
+    if (chick.t < 1) return;
+    this.lost = true;
+    this.done = true;
   }
 
   /** Every flap is counted, whatever the chick is doing: it's the child's own work. */
@@ -658,10 +721,11 @@ export class Farm {
     this.lastWing = null;
     this.onEvent({ type: 'land', on: floor > 0 ? 'top' : 'ground' });
     if (floor > 0) return;
-    // Down right in front of the fox: the mother hen is there first.
+    // Down right in front of the fox: he has it, or, where he never can, the mother hen is there first.
     const fox = this.things.find((thing) => thing.kind === 'fox' && thing.waiting && !thing.done && chick.x > thing.x0 - CHICK.r - thing.standoff + 0.01);
     if (fox) {
-      this.callHen('fox', fox);
+      if (this.catches) this.catchChick(fox);
+      else this.callHen('fox', fox);
       return;
     }
     // Down again in front of what it was trying to get over: that flap didn't do it.
@@ -688,7 +752,8 @@ export class Farm {
     if (!thing.stopped) {
       // It ran into this having flapped on the way: too early, or not enough.
       if (thing.tries > 0 && thing.type === 'wall' && !this.gentle && !this.mercy) {
-        if (thing.kind === 'fox') this.callHen('fox', thing);
+        if (thing.kind === 'fox' && this.catches) this.catchChick(thing);
+        else if (thing.kind === 'fox') this.callHen('fox', thing);
         else this.startTumble(thing);
         return;
       }
@@ -741,15 +806,16 @@ export class Farm {
     if (chick.t < 1) return;
     Object.assign(chick, { state: 'run', h: 0, vy: 0, air: false, x: to });
     this.script = null;
-    if (this.fox.mode === 'chase' && this.fox.gap <= FOX.caught) this.callHen('caught', null);
+    // The fox right behind: the mother hen is there first, unless he's one who can catch, and then he does.
+    if (this.fox.mode === 'chase' && this.fox.gap <= FOX.caught && !this.catches) this.callHen('caught', null);
   }
 
   /**
    * A tumble brings the fox nearer: though never for two running, not when a grown-up has him keep his distance,
-   * and not from a flock.
+   * and not from a flock. The fox that can catch comes nearer every time.
    */
   foxNearer() {
-    const spared = this.mercy;
+    const spared = this.mercy && !this.catches;
     this.mercy = true;
     if (spared || this.gentle || this.together || this.fox.mode !== 'chase') return;
     this.fox.gap = Math.max(FOX.caught, this.fox.gap - FOX.nearer);

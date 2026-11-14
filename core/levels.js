@@ -11,6 +11,8 @@
 import { saveSettings } from './settings.js';
 
 export const LAST_LEVEL = 10;
+// On the finish card's big button after a game that was lost, in every game.
+const TRY_AGAIN = 'Try again';
 
 export const clampLevel = (value) => Math.min(LAST_LEVEL, Math.max(1, Math.round(Number(value)) || 1));
 
@@ -129,7 +131,8 @@ export function mountLevels(levels, { language = () => 'en', onChoose = () => {}
       ${Array.from({ length: LAST_LEVEL }, (_, index) => `<label><input type="radio" name="game-level" value="${index + 1}"> ${index + 1}</label>`).join('\n      ')}`;
   byId('setting-sound')?.closest('fieldset')?.before(choice);
 
-  // The finish card's big button, whatever a game calls it, keeps its own words unless it's a new level.
+  // The finish card's big button, whatever a game calls it, keeps its own words unless it's a new level, or the
+  // game was lost, when it's to try again.
   const again = document.querySelector('#screen-finish .finish-actions .big-button');
   const againLabel = again?.textContent ?? '';
 
@@ -151,7 +154,7 @@ export function mountLevels(levels, { language = () => 'en', onChoose = () => {}
         pip.classList.toggle('is-done', result ? at <= result.played && (result.won || at < result.played) : at < level);
         pip.classList.toggle('is-next', at === level && !result?.allDone);
       }
-      if (again) again.textContent = result?.won && !result.allDone ? 'Next level' : againLabel;
+      if (again) again.textContent = result?.won && !result.allDone ? 'Next level' : result && !result.won ? TRY_AGAIN : againLabel;
     },
     showResult(result) {
       ui.refresh();

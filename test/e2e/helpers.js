@@ -26,7 +26,8 @@ export const test = base.extend({
 
 /**
  * Opens a game ready for testing, with sound and voice off unless a test turns them on. hash is anything
- * after # in the address, as in a link to race a friend.
+ * after # in the address, as in a link to race a friend. What a test saves is what it chose, so it's saved as
+ * settled: see OLD_DEFAULTS in core/settings.js.
  */
 export async function openGame(page, settings = {}, game = 'high-five-racers', hash = '') {
   await page.addInitScript({ path: fakeCamera });
@@ -34,7 +35,7 @@ export async function openGame(page, settings = {}, game = 'high-five-racers', h
     if (!localStorage.getItem('camera-games-settings')) {
       localStorage.setItem('camera-games-settings', JSON.stringify(saved));
     }
-  }, { voice: false, sound: false, ...settings });
+  }, { voice: false, sound: false, settled: true, ...settings });
   await page.goto(`/games/${game}/index.html?debug${hash}`);
   // A link to play with friends opens the friends box, which is all the title card shows.
   await expect(page.locator('#start:visible, #friends-box:visible').first()).toBeVisible();

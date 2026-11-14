@@ -31,6 +31,10 @@ const UNDER_HINT = 'Hands down to go under!';
 const RESTING = 'Resting is OK. Flap when you’re ready.';
 const SHOW_BOTH = 'Show both hands!';
 const FINISH = 'Home safe! What a flyer!';
+// What's said, and what the card says, when the fox has the chick. The button under it is to try again, as
+// after any game that was lost: see core/levels.js.
+const CAUGHT = 'The fox caught the chick! Try again!';
+const CAUGHT_TITLE = 'The fox caught the little chick!';
 const PRAISE = ['Nice one!', 'Way to go!', 'Great job!'];
 const PRAISE_EVERY = 4; // Things flown over cleanly between one word of praise and the next.
 const FILM_SECONDS = 25; // The little film of what to do shows until the first flaps, or this long.
@@ -185,7 +189,7 @@ class FlapGame {
     return new Farm({
       level: friendly?.level ?? level,
       things: friendly ? friendly.length : this.thingsChosen,
-      fox: FOX_NAMES.includes(settings.flapFox) ? settings.flapFox : 'tumble',
+      fox: FOX_NAMES.includes(settings.flapFox) ? settings.flapFox : 'catch',
       single: this.single,
       together: Boolean(friendly?.team),
       friends: Boolean(friendly),
@@ -404,6 +408,15 @@ class FlapGame {
         this.showProgress();
         break;
       }
+      case 'fox-coming':
+        // He's up and coming: the child is told, in the words the flight began with.
+        sound.say(INTRO, { ifQuiet: true });
+        break;
+      case 'caught':
+        sound.play('swish', { gain: 0.3, rate: 0.8 });
+        sound.play('bump', { gain: 0.25, after: 0.35 });
+        this.story.hide();
+        break;
       case 'door':
         break;
       case 'home':
@@ -479,7 +492,11 @@ class FlapGame {
       this.storyFor -= dt;
       if (this.storyFor <= 0) this.story.hide();
     }
-    if (farm.done && session.screen === 'playing') session.finish();
+    if (farm.done && session.screen === 'playing') {
+      // Caught by the fox, it's said so, and not that the chick is home.
+      session.finishLine = farm.lost ? CAUGHT : FINISH;
+      session.finish();
+    }
   }
 
   idle(dt, snapshot) {
@@ -585,8 +602,9 @@ class FlapGame {
     if (needed?.key === 'apart') return this.once('apart', needed.text);
     const waiting = chick.waiting;
     if (waiting) {
-      // The chick waits for as long as it takes, and after a while it's said that resting is fine.
-      if (farm.restFor > RESTING_AFTER) return this.once('resting', RESTING);
+      // Where the fox can't catch, the chick waits for as long as it takes, and after a while it's said that
+      // resting is fine. Where he can, it isn't.
+      if (farm.restFor > RESTING_AFTER && !farm.catches) return this.once('resting', RESTING);
       const play = snapshot.side;
       const other = play === 'left' ? 'right' : 'left';
       // Something that takes both wings: said as soon as one alone has been tried and didn't do it, and the other
@@ -632,6 +650,10 @@ class FlapGame {
     const each = (left, right) => (this.single ? { left: hands === 'left' ? left : '', right: hands === 'right' ? right : '' } : { left, right });
     const seconds = (value) => `${Math.round(value)} s`;
     this.friends.showResults();
+    // Caught, the card says so, and the button under it is to try again.
+    const lost = Boolean(this.farm.lost);
+    const title = document.querySelector('#screen-finish h2');
+    if (!this.friends.current && title) title.textContent = lost ? CAUGHT_TITLE : FINISH;
     const noun = byId('finish-hero')?.nextSibling;
     if (noun?.nodeType === Node.TEXT_NODE) noun.textContent = total === 1 ? ' flap' : ' flaps';
     // How the way home went, in a line: what was flown over, the corn, and the hen's help if she gave any.
@@ -647,8 +669,8 @@ class FlapGame {
         held: each(seconds(stats.held.left), seconds(stats.held.right)),
         together: each(this.single ? '' : stats.together, this.single ? '' : stats.together),
       },
-      // Nobody can lose: the chick always gets home.
-      won: true,
+      // A chick the fox caught hasn't got home, and the level stays where it is.
+      won: !lost,
       // A flight with friends is on the host's level, so it doesn't move the child's own level on.
       countsForLevel: !this.friends.current,
     };
@@ -739,9 +761,10 @@ new GameSession({
         ${choice('flapWings', 'one', 'The hand in play alone: it works both wings')}
       </fieldset>
       <fieldset class="choice">
-        <legend>When a flap is too early or too small</legend>
-        ${choice('flapFox', 'tumble', 'The chick tumbles over, and the fox gets nearer')}
-        ${choice('flapFox', 'wait', 'The chick waits for another flap, and the fox keeps his distance')}
+        <legend>The fox</legend>
+        ${choice('flapFox', 'catch', 'He can catch the chick: he comes on while it stands at something, and nearer with every tumble, and a chick he catches has to start again')}
+        ${choice('flapFox', 'tumble', 'He never catches it: a flap that’s too early or too small has the chick tumble over and him get nearer, and the mother hen is always there first')}
+        ${choice('flapFox', 'wait', 'He keeps his distance: the chick waits for another flap, and nothing is ever lost')}
       </fieldset>
       <fieldset class="choice">
         <legend>How long the way home is</legend>
@@ -755,7 +778,7 @@ new GameSession({
         ${choice('flapFriends', 'against', 'Against each other: a race home')}
       </fieldset>`,
   },
-  defaults: { flapRise: 'little', flapWings: 'both', flapFox: 'tumble', flapWay: 'medium', flapFriends: 'together' },
+  defaults: { flapRise: 'little', flapWings: 'both', flapFox: 'catch', flapWay: 'medium', flapFriends: 'together' },
   choices: { flapRise: String, flapWings: String, flapFox: String, flapWay: String, flapFriends: String },
   tagline: () => 'Flap home before the fox! Your hands are the chick’s wings: bring them up like high fives, and it flies over what’s in the way.',
   finishLine: FINISH,

@@ -10,7 +10,7 @@ import { seededRandom, Track } from '../../core/friends.js';
 import { LAST_LEVEL } from '../../core/levels.js';
 import { UPRIGHT } from '../../core/upright.js';
 import {
-  AHEAD, CHICK, DUCK, Farm, farmLevel, farmNewAt, FIRST, FLOCK, flapWindow, FOX, FOX_NAMES, GUST, HAY, heightAfter, HEN, HOME,
+  AHEAD, CHICK, DUCK, Farm, farmLevel, farmNewAt, FIRST, FLOCK, flapWindow, FOX, FOX_NAMES, GUST, HAY, heightAfter, HEN, HOME, HUNT,
   KINDS, LABELS, layTrack, NEWS, newsIsOn, NOT_WITH_FRIENDS, timesAt, TRACTOR, WAYS, zoneFor,
 } from '../../games/chick-flap/farm.js';
 import { CHICK_TRACK, chickState, flockFrom, friendFrom, STATES, wireFor } from '../../games/chick-flap/flock.js';
@@ -631,7 +631,7 @@ test('the chick never tumbles twice running: after a tumble it waits at the next
 });
 
 test('set to wait, the chick never tumbles into anything, and the fox keeps his distance whatever happens', () => {
-  assert.deepEqual(FOX_NAMES, ['tumble', 'wait']);
+  assert.deepEqual(FOX_NAMES, ['catch', 'tumble', 'wait']);
   const farm = new Farm({ level: 5, fox: 'wait', random: seededRandom(4) });
   // Too early every time, and flying into the scarecrow and the ponds.
   play(farm, (game) => {
@@ -1133,9 +1133,9 @@ test('a child who flaps in good time gets home cleanly at every level, with the 
   }
 });
 
-test('a child who only ever flaps one hand still gets home at every level, however the grown-up set it, and is never stuck', () => {
+test('a child who only ever flaps one hand still gets home at every level, where the fox can\'t catch, and is never stuck', () => {
   for (const level of [1, 3, 4, 5, 6, 7, 8, 9, 10]) {
-    for (const fox of FOX_NAMES) {
+    for (const fox of ['tumble', 'wait']) {
       const farm = play(new Farm({ level, fox, random: seededRandom(level + 30) }), undefined, { most: 1, seconds: 900 });
       assert.equal(farm.done, true, `level ${level}, ${fox}`);
       assert.equal(farm.stats.cleared, WAYS.medium);
@@ -1367,11 +1367,189 @@ test('every line the game says has its English and Georgian voice files, and the
 
 test('the grown-ups\' settings for this game have names of their own, as every game\'s are kept together', () => {
   const source = readFileSync(new URL('../../games/chick-flap/main.js', import.meta.url), 'utf8');
-  assert.match(source, /defaults: \{ flapRise: 'little', flapWings: 'both', flapFox: 'tumble', flapWay: 'medium', flapFriends: 'together' \}/);
+  assert.match(source, /defaults: \{ flapRise: 'little', flapWings: 'both', flapFox: 'catch', flapWay: 'medium', flapFriends: 'together' \}/);
   assert.match(source, /choices: \{ flapRise: String, flapWings: String, flapFox: String, flapWay: String, flapFriends: String \}/);
   // Every choice in the panel is one the rules know.
   for (const name of RISE_NAMES) assert.ok(source.includes(`choice('flapRise', '${name}'`));
   for (const name of Object.keys(WAYS)) assert.ok(source.includes(`choice('flapWay', '${name}'`));
   for (const name of FOX_NAMES) assert.ok(source.includes(`choice('flapFox', '${name}'`));
   assert.ok(zoneFor({ type: 'over' }, 2) === null);
+});
+
+/* ---------- the fox that can catch ---------- */
+
+test('the fox that can catch: a chick left standing at something has a moment, then he gets up and comes on, and has it', () => {
+  const { farm, thing, heard } = farmWith('log', { fox: 'catch' });
+  assert.equal(farm.catches, true);
+  // Up to the log, and standing there: for the first few seconds he sits, as far back as he started.
+  run(approach(farm, thing, 0.01), 0.2);
+  assert.equal(farm.chick.waiting, thing);
+  const from = farm.time - farm.chick.waitFor;
+  // It's the first thing of the flight, where he gives it longer, while the child finds out what to do.
+  run(farm, HUNT.first - 0.5);
+  assert.equal(farm.fox.sitting, true);
+  assert.equal(farm.fox.gap, FOX.start);
+  assert.equal(heard('fox-coming').length, 0);
+  // Then he's up, and nearer each second.
+  run(farm, 2);
+  assert.equal(farm.fox.sitting, false);
+  assert.ok(Math.abs(farm.fox.gap - (FOX.start - HUNT.creep * 1.5)) < 0.12, `${farm.fox.gap}`);
+  assert.equal(heard('fox-coming').length, 1, 'said once');
+  assert.equal(farm.chick.state, 'run');
+  // Right behind it, he has it: a moment in his paws, and the flight is over, and lost.
+  for (let n = 0; n < 60 * 30 && farm.chick.state === 'run'; n += 1) farm.update(DT, { wings: { left: still(), right: still() } });
+  assert.ok(Math.abs(farm.time - from - (HUNT.first + (FOX.start - FOX.caught) / HUNT.creep)) < 0.5, `after ${farm.time - from} seconds of standing there`);
+  assert.equal(heard('caught').length, 1);
+  assert.equal(farm.chick.state, 'caught');
+  assert.equal(farm.done, false, 'not until he has lifted it');
+  run(farm, HUNT.seconds + 0.1);
+  assert.deepEqual([farm.done, farm.lost], [true, true]);
+  assert.ok(Math.abs(farm.chick.h - HUNT.lift) < 0.01, 'held off the ground');
+  assert.ok(farm.fox.gap <= HUNT.held + 0.01, 'and he\'s right up to it');
+  assert.equal(farm.stats.hen, 0, 'with no mother hen in sight');
+  assert.equal(thing.done, false);
+});
+
+test('a flap in time gets the chick away from him: over the thing, on its way, and further ahead for every thing flown over cleanly', () => {
+  const { farm, thing } = farmWith('log', { fox: 'catch' });
+  run(approach(farm, thing, 0.01), HUNT.first + 4);
+  const near = farm.fox.gap;
+  assert.ok(near < FOX.start - 0.5 && near > FOX.caught, `he has come on: ${near}`);
+  // A flap, and it's over the log. He comes no nearer while it's on its way.
+  run(farm, 0.05, { flaps: ['left', 'right'] });
+  run(farm, 3, { wings: { left: still(1), right: still(1) } });
+  assert.equal(thing.done, true);
+  assert.equal(farm.fox.gap, near, 'no nearer, and no further: it had stopped at that one');
+  assert.equal(farm.lost, false);
+  // Flying on well takes it further ahead again, and home.
+  play(farm);
+  assert.deepEqual([farm.done, farm.lost], [true, false]);
+  assert.ok(farm.fox.gap > near + 0.5, `ahead again: ${farm.fox.gap}`);
+});
+
+test('a child the camera can\'t see isn\'t hunted: with no hands in the picture the fox sits and waits, however long', () => {
+  const { farm, thing } = farmWith('log', { fox: 'catch' });
+  const unseen = { left: { lift: 0, up: false, seen: false }, right: { lift: 0, up: false, seen: false } };
+  run(approach(farm, thing, 0.01), 60, { wings: unseen });
+  assert.equal(farm.chick.waiting, thing);
+  assert.deepEqual([farm.fox.gap, farm.fox.sitting, farm.done], [FOX.start, true, false]);
+  // One hand back in the picture is enough for the game to go on, and so does he.
+  run(farm, 2, { wings: { ...unseen, right: still() } });
+  assert.ok(farm.fox.gap < FOX.start);
+});
+
+test('every tumble brings the fox that can catch nearer, with none let off, and tumbling with him right behind is being caught', () => {
+  const { farm, heard } = farmWith('log', { fox: 'catch' });
+  farm.fox.gap = FOX.caught + FOX.nearer - 0.01;
+  const [thing] = farm.things;
+  run(approach(farm, thing, 7), 0.05, { flaps: ['right'] });
+  while (farm.chick.state !== 'tumble' && farm.time < 30) farm.update(DT, { wings: { left: still(), right: still() } });
+  assert.equal(farm.fox.gap, FOX.caught);
+  // Over the log it rolls, and as it gets to its feet he has it. The mother hen doesn't come.
+  run(farm, CHICK.tumble + 0.1);
+  assert.equal(farm.chick.state, 'caught');
+  assert.equal(heard('hen').length, 0);
+  run(farm, HUNT.seconds + 0.1);
+  assert.equal(farm.lost, true);
+  // Where he can't catch, the same tumble has the hen carry the chick on: see the test of that.
+  // And a splash or a bump straight after a tumble isn't let off, as it is where he can't catch.
+  const again = new Farm({ level: 5, fox: 'catch', random: seededRandom(4) });
+  again.mercy = true;
+  again.begin();
+  again.foxNearer();
+  assert.ok(Math.abs(again.fox.gap - (FOX.start - FOX.nearer)) < 1e-9);
+  const spared = new Farm({ level: 5, fox: 'tumble', random: seededRandom(4) });
+  spared.mercy = true;
+  spared.begin();
+  spared.foxNearer();
+  assert.equal(spared.fox.gap, FOX.start);
+});
+
+test('he doesn\'t catch a chick that\'s in the air: only once it\'s down', () => {
+  const { farm, thing } = farmWith('pond', { fox: 'catch' });
+  // Up, and held up over the pond, and then he's right behind.
+  run(approach(farm, thing, 1.2), 0.05, { flaps: ['left', 'right'], wings: { left: still(1), right: still(1) } });
+  farm.fox.gap = FOX.caught;
+  run(farm, 0.6, { wings: { left: still(1), right: still(1) } });
+  assert.equal(farm.chick.air, true);
+  assert.equal(farm.chick.state, 'run');
+  // Down it comes, and then he has it.
+  for (let n = 0; n < 60 * 20 && farm.chick.state === 'run'; n += 1) farm.update(DT, { wings: { left: still(), right: still() } });
+  assert.equal(farm.chick.state, 'caught');
+  assert.equal(farm.chick.air, false);
+});
+
+test('level 10: coming down right in front of the fox on the track is being caught, where he can catch', () => {
+  const { farm, thing, heard } = farmWith('fox', { fox: 'catch' });
+  run(farm, 30);
+  assert.equal(thing.waiting, true, 'he has run round, and waits on the track');
+  // A hop that comes down short of him, inside where a chick on the ground would have stopped.
+  const stop = thing.x0 - CHICK.r - thing.standoff;
+  assert.ok(Math.abs(farm.chick.x - stop) < 0.05);
+  run(farm, 0.05, { flaps: ['right'] });
+  for (let n = 0; n < 60 * 10 && farm.chick.state === 'run' && (farm.chick.air || n < 5); n += 1) farm.update(DT, { wings: { left: still(), right: still() } });
+  assert.equal(farm.chick.state, 'caught');
+  assert.equal(heard('caught')[0].thing, thing);
+  assert.equal(heard('hen').length, 0);
+  run(farm, HUNT.seconds + 0.1);
+  assert.equal(farm.lost, true);
+});
+
+test('a child who flaps in good time gets home at every level with the fox that can catch, and is never caught', () => {
+  for (let level = 1; level <= LAST_LEVEL; level += 1) {
+    const farm = play(new Farm({ level, fox: 'catch', random: seededRandom(level + 50) }));
+    assert.deepEqual([farm.done, farm.lost], [true, false], `level ${level}`);
+    assert.equal(farm.stats.cleared, WAYS.medium);
+    assert.ok(farm.fox.gap > FOX.caught);
+  }
+});
+
+test('a child who never flaps is caught at the first thing, and one who is slow at every thing is caught on the way', () => {
+  const still1 = new Farm({ level: 1, fox: 'catch', random: seededRandom(3) });
+  run(still1, 60);
+  assert.deepEqual([still1.done, still1.lost, still1.stats.cleared], [true, true, 0]);
+  // Waiting six seconds at each thing: three of them his, each time, and nothing flown over cleanly to get ahead.
+  const slow = play(new Farm({ level: 1, fox: 'catch', random: seededRandom(3) }), (game) => (game.chick.waiting && game.chick.waitFor > 6 ? { wings: 2, keep: false } : HANDS_DOWN), { seconds: 400 });
+  assert.equal(slow.lost, true);
+  assert.ok(slow.stats.cleared >= 2 && slow.stats.cleared < WAYS.medium, `caught after ${slow.stats.cleared} things`);
+});
+
+test('a child who only ever flaps one hand is caught where a thing needs both wings, and gets home where none does', () => {
+  // Level 1 has logs, which one wing clears.
+  const logs = play(new Farm({ level: 1, fox: 'catch', random: seededRandom(31) }), undefined, { most: 1, seconds: 900 });
+  assert.deepEqual([logs.done, logs.lost], [true, false]);
+  // Level 3 has fences, which take both: it tumbles at them, or waits and is lifted over after three tries, and
+  // he's nearer each time, and in the end he has it.
+  const fences = play(new Farm({ level: 3, fox: 'catch', random: seededRandom(33) }), undefined, { most: 1, seconds: 900 });
+  assert.deepEqual([fences.done, fences.lost], [true, true]);
+  assert.ok(fences.stats.cleared < WAYS.medium);
+  assert.ok(fences.stats.tumbles + fences.stats.hen >= 1, 'it tumbled at a fence, or was lifted over one');
+});
+
+test('flying home with friends, the fox never catches anyone, whatever a grown-up chose for flying alone', () => {
+  for (const options of [{ friends: true }, { friends: true, together: true }]) {
+    const farm = new Farm({ level: 1, fox: 'catch', random: seededRandom(3), ...options });
+    assert.equal(farm.catches, false);
+    run(farm, 60);
+    assert.deepEqual([farm.done, farm.lost], [false, false]);
+    assert.equal(farm.fox.gap, FOX.start);
+  }
+});
+
+test('at the first thing of a flight the fox gives the chick longer, and after that only a moment', () => {
+  assert.ok(HUNT.first > HUNT.patience * 2);
+  const farm = new Farm({ level: 1, fox: 'catch', random: seededRandom(3) });
+  const [first, second] = farm.things;
+  // Standing at the first thing for a little less than he gives it there: he hasn't moved.
+  run(approach(farm, first, 0.01), HUNT.first - 0.3);
+  assert.equal(farm.fox.gap, FOX.start);
+  // Over it, and standing at the second for as long: he has come a good way.
+  run(farm, 0.05, { flaps: ['left', 'right'] });
+  run(farm, 3, { wings: { left: still(1), right: still(1) } });
+  assert.equal(first.done, true);
+  const before = farm.fox.gap;
+  approach(farm, second, 0.01);
+  while (!farm.chick.waiting && farm.time < 60) farm.update(DT, { wings: { left: still(), right: still() } });
+  run(farm, HUNT.first - 0.3);
+  assert.ok(farm.fox.gap < before - (HUNT.first - HUNT.patience - 1) * HUNT.creep, `from ${before} to ${farm.fox.gap}`);
 });

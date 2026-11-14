@@ -2,8 +2,8 @@
 // the same track. Whoever makes the flock chooses whether they fly together, as one flock that waits for its
 // slowest, or against each other, as a race. Here they're separate browsers, talking through the race server on
 // this computer (tools/race-server.mjs), and only numbers go between them.
-import { openGame, shot } from '../helpers.js';
-import { allPlaying, DOWN, expect, expectSoon, flapHands, GAME, hands, joinFlock, labelShown, makeFlock, secondPlayer, state, stopHands, test, waitForScreen } from './helpers.js';
+import { shot } from '../helpers.js';
+import { allPlaying, DOWN, expect, expectSoon, flapHands, GAME, hands, joinFlock, labelShown, makeFlock, openGame, secondPlayer, state, stopHands, test, waitForScreen } from './helpers.js';
 
 const ownLevel = (page) => page.evaluate(() => window.__game.session.levels.current);
 const track = (game) => game.things.map((thing) => [thing.kind, Math.round(thing.x0 * 100)]);

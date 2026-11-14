@@ -1,7 +1,7 @@
 // Flap, Little Chick!'s ten levels: what each brings is on the title card and under the countdown, each new thing
 // comes along and works in the real game, and nothing flashes, at level 1 or at level 10 with all of it about.
-import { openGame, shot } from '../helpers.js';
-import { DOWN, expect, expectSoon, flapHands, GAME, hands, judge, labelShown, startPlaying, state, stopHands, test, untilNear, UP, waitForScreen, watchBrightness } from './helpers.js';
+import { shot } from '../helpers.js';
+import { DOWN, expect, expectSoon, flapHands, GAME, hands, judge, labelShown, openGame, startPlaying, state, stopHands, test, untilNear, UP, waitForScreen, watchBrightness } from './helpers.js';
 
 const NEW_AT = {
   2: 'Corn to catch',

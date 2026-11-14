@@ -508,7 +508,7 @@ test('every line the game can say has a rendered voice file', () => {
   // Everything the shared code and each game say directly.
   const files = ['core/session.js', 'core/sound.js', 'games/high-five-racers/main.js', 'games/balloon-pop/main.js'];
   const source = files.map((file) => readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8')).join('\n');
-  for (const [, text] of source.matchAll(/(?:say\(|finishLine: |const (?:STEER_HINT|POP_HINT|MATHS_HINT|TOO_HOT|COOL_IT|COOLED) = )'([^']+)'/g)) asked.add(text);
+  for (const [, text] of source.matchAll(/(?:say\(|finishLine: |const (?:STEER_HINT|POP_HINT|MATHS_HINT|TOO_HOT|COOL_IT|COOLED|SO_CLOSE) = )'([^']+)'/g)) asked.add(text);
   for (const block of source.matchAll(/const (?:PRAISE|SPOKEN|OPEN_TO_POP) = [\[{]([\s\S]+?)\n?[\]}];/g)) {
     for (const [, text] of block[1].matchAll(/'([^']+)'/g)) asked.add(text);
   }

@@ -13,6 +13,10 @@ const SHARED_SOUNDS = {
   applause: 'sfx/applause.ogg',
 };
 
+// What's said at the end of a game that was lost, by a game with no line of its own for it: kind, and short.
+// It's one of the lines every game has: see audio/voice/lines.json.
+export const SO_CLOSE = 'So close! Try again!';
+
 const FETCH_ATTEMPTS = 3;
 
 const STAR_STREAK_SECONDS = 1.2;
@@ -235,10 +239,17 @@ export class Sound {
   }
 
   /** The celebration at the end of a game, and what the voice says over it. */
-  finish(line) {
-    this.play('win', { gain: 0.8 });
-    this.play('applause', { gain: 0.32 });
-    setTimeout(() => this.say(line), 650);
+  /**
+   * The end of a game: the fanfare and the clapping, and then what's said. A game that was lost has neither:
+   * only what's said, if anything is. What it ended with is kept, for the tests to read.
+   */
+  finish(line, { lost = false } = {}) {
+    this.finished = { line: line ?? null, lost };
+    if (!lost) {
+      this.play('win', { gain: 0.8 });
+      this.play('applause', { gain: 0.32 });
+    }
+    if (line) setTimeout(() => this.say(line), lost ? 300 : 650);
   }
 
   /**

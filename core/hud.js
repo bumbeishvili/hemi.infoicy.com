@@ -564,7 +564,7 @@ export class Hud {
   }
 
   /** hero is the big number, noun is what to call a round, and rows fills any extra rows. */
-  showSummary(stats, side, { hero, noun, rows = {} }) {
+  showSummary(stats, side, { hero, noun, rows = {}, won }) {
     const handRow = (side) => {
       const hand = stats[side];
       const share = stats.seconds > 0 ? hand.openSeconds / stats.seconds : 0;
@@ -582,7 +582,9 @@ export class Hud {
     byId('finish-hero').textContent = String(hero);
     const who = side === 'left' ? 'Left hand' : 'Right hand';
     byId('finish-open').textContent = `${who} open for ${clockTime(stats.handOpenSeconds)} of a ${clockTime(stats.seconds)} ${noun}`;
-    this.confetti.start();
+    // Confetti is for a game that was won, or that couldn't be lost.
+    if (won === false) this.confetti.stop();
+    else this.confetti.start();
   }
 
   hideSummary() {

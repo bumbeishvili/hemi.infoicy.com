@@ -18,6 +18,7 @@
   {"id": "count-1", "text": "1", "speak": "One!", "ka": "ერთი!"},
   {"id": "go", "text": "Go!", "ka": "წავედით!"},
   {"id": "great-job", "text": "Great job!", "ka": "ყოჩაღ!"},
+  {"id": "so-close", "text": "So close! Try again!", "ka": "თითქმის გამოგივიდა! კიდევ სცადე!"},
   {"id": "nice-one", "text": "Nice one!", "ka": "მაგარია!"},
   {"id": "passed-a-car", "text": "You passed a car!", "ka": "მანქანას გაასწარი!"},
   {"id": "way-to-go", "text": "Way to go!", "ka": "ასე გააგრძელე!"},

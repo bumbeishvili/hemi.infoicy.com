@@ -38,7 +38,7 @@ import { loadSettings, saveSettings } from './settings.js';
 import { SHAPE_RESTING, choiceOf, shapesFor } from './shapes.js';
 import { givenFor } from './mapping.js';
 import { mountShell } from './shell.js';
-import { Sound } from './sound.js';
+import { SO_CLOSE, Sound } from './sound.js';
 
 const MIN_FRAME_MS = 14;
 const TRACKER_STALL_MS = 1000; // No result for this long counts as no hands: fail closed.
@@ -89,6 +89,7 @@ export class GameSession {
     this.choices = choices;
     this.taglineFor = tagline;
     this.finishLine = finishLine;
+    this.wonLine = finishLine; // What's said when the game is won, whatever finishLine is changed to for one ending.
     this.createSound = createSound ?? ((options) => new Sound(options));
     this.createGame = createGame;
     this.gameLines = lines;
@@ -448,10 +449,14 @@ export class GameSession {
     this.camera.stop();
     this.monitor.forgetHands();
     this.game.finished?.();
-    this.sound.finish(this.finishLine);
+    const summary = this.game.summary();
+    // A game that was lost isn't cheered: no fanfare, no clapping and no confetti. What's said then is the line
+    // the game has for it, which it sets as finishLine before it finishes. A game with no line of its own for
+    // losing, which still has the line it's won with, has the one all the games share.
+    const lost = summary.won === false;
+    this.sound.finish(lost && this.finishLine === this.wonLine ? SO_CLOSE : this.finishLine, { lost });
     this.hud.prompt.clear();
     this.hud.setCount('');
-    const summary = this.game.summary();
     this.hud.showSummary(this.stats, this.monitor.side, summary);
     if (summary.countsForLevel === false) {
       this.levels.last = null;

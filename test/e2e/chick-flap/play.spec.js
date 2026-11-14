@@ -2,8 +2,8 @@
 // good time carries the chick over what's in the way, all the way home. A child who isn't flapping finds the chick
 // waiting, one hand alone is only a hop, and the mother hen helps where a flap can't. With real photos of hands
 // through the real tracker, each hand shown held up or tipped forwards on its own.
-import { openGame, shot } from '../helpers.js';
-import { DOWN, expect, expectSoon, flapHands, GAME, hands, labelShown, show, startPlaying, state, stopHands, test, untilNear, UP, waitForScreen } from './helpers.js';
+import { shot } from '../helpers.js';
+import { DOWN, expect, expectSoon, flapHands, GAME, hands, labelShown, openGame, show, startPlaying, state, stopHands, test, untilNear, UP, waitForScreen } from './helpers.js';
 
 const INTRO = 'Flap home, little chick! The fox is behind you!';
 const FLAP_HINT = 'Lift your hands to flap!';

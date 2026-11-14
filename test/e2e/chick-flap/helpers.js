@@ -3,11 +3,18 @@
 // wrist dropped. Each hand has its own, so one can come up without the other (leftShorten and rightShorten in
 // fake-camera.js). A child is played by changing how the two photos look, as the rules would have them: down
 // while the chick runs, up for a flap in good time, kept up over water, and down again for the scarecrow.
-import { expect, openGame, show, test, waitForScreen } from '../helpers.js';
+import { expect, openGame as openAnyGame, show, test, waitForScreen } from '../helpers.js';
 
 export { judge, watchBrightness } from '../giraffe-garden/helpers.js';
 
 export const GAME = 'chick-flap';
+
+/**
+ * Opens a game. This one is opened with the fox who never catches the chick, unless a test says otherwise:
+ * most of these tests are about the flight, and were written when that was the only fox there was. The fox who
+ * can catch, which is how the game comes, has his own tests in fox.spec.js.
+ */
+export const openGame = (page, settings = {}, game = GAME, hash = '') => openAnyGame(page, game === GAME ? { flapFox: 'tumble', ...settings } : settings, game, hash);
 // How a hand looks held up, and hanging forwards: the palm at half its height, as it looks tipped 60° to the camera.
 export const UP = 1;
 export const DOWN = 0.5;
@@ -35,6 +42,8 @@ export const state = (page) => page.evaluate(() => {
     together: farm.together,
     single: farm.single,
     gentle: farm.gentle,
+    catches: farm.catches,
+    lost: farm.lost,
     chick: { x: chick.x, h: chick.h, state: chick.state, air: chick.air, dizzy: chick.dizzy, waitFor: chick.waitFor, flockWait: chick.flockWait, waiting: thing(chick.waiting), behind: thing(chick.behind) },
     fox: { mode: fox.mode, gap: fox.gap, sitting: fox.sitting },
     hen: farm.hen && { why: farm.hen.why },

@@ -186,7 +186,9 @@ export class FarmView {
     // The picture follows the chick, a moment behind, so a tumble doesn't jolt it.
     this.cam += (chick.x - this.cam) * (1 - Math.exp(-dt * 9));
     if (Math.abs(chick.x - this.cam) > 6) this.cam = chick.x;
-    this.foxGap = this.foxGap === null ? fox.gap : this.foxGap + (fox.gap - this.foxGap) * (1 - Math.exp(-dt * 2.2));
+    // The fox is drawn where he is, a moment behind, and comes up fast when he has the chick.
+    const foxRate = chick.state === 'caught' ? 7 : 2.2;
+    this.foxGap = this.foxGap === null ? fox.gap : this.foxGap + (fox.gap - this.foxGap) * (1 - Math.exp(-dt * foxRate));
     for (const side of ['left', 'right']) this.flapFor[side] = Math.max(0, this.flapFor[side] - dt);
     this.openFor = Math.max(0, this.openFor - dt);
     for (const effect of this.effects) {
@@ -979,8 +981,11 @@ export class FarmView {
     const last = farm.together ? Math.min(chick.x, ...friends.map((friend) => friend.x)) : chick.x;
     const x = last - (this.foxGap ?? fox.gap) - 0.5;
     if (this.x(x) < -unit * 2) return;
-    const sitting = fox.sitting;
+    // With the chick in his paws he sits down, holding it up in front of him.
+    const has = chick.state === 'caught' && chick.t > 0.5;
+    const sitting = fox.sitting || has;
     draw(x, sitting ? 0 : this.foxHop(farm, x), sitting ? 'sit' : 'trot');
+    if (has) return;
     // Puffing, when he's sitting after a chase.
     if (sitting && !this.reducedMotion) {
       const age = (this.time * 0.7) % 1;
@@ -1095,7 +1100,8 @@ export class FarmView {
     } else if (chick.state === 'splash') {
       pose = 'splash';
       turn = Math.sin(this.time * 12) * 0.15;
-    } else if (chick.state === 'sit' || chick.state === 'ride' || carried) {
+    } else if (chick.state === 'sit' || chick.state === 'ride' || chick.state === 'caught' || carried) {
+      // Sitting on the hen, on the duck, or held up by the fox.
       pose = 'sit';
     } else if (chick.state === 'door' || chick.state === 'home') {
       pose = 'cheer';

@@ -185,7 +185,7 @@ test('on the harder settings it ends kindly, with a way to go again straight awa
   });
   await waitForScreen(page, 'finish');
   await expect(page.locator('#screen-finish h2')).toHaveText('So close! Sail again!');
-  await expect(page.locator('#play-again')).toHaveText('Sail again');
+  await expect(page.locator('#play-again')).toHaveText('Try again');
   await page.waitForTimeout(500);
   await shot(page, 'c-so-close');
   await page.locator('#play-again').click();
