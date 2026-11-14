@@ -468,6 +468,8 @@ export class MeadowView {
   /** How much of itself a target shows: it grows as it comes, and shrinks away once it's hit. */
   shownShare(target) {
     const coming = clamp(target.since / 0.35, 0, 1);
+    // One that has stood long enough, or is left when the quiver is empty, shrinks away.
+    if (target.state === 'leaving') return 1 - ease(clamp(target.since / 0.5, 0, 1));
     if (target.state === 'hit' || target.state === 'asked') return target.state === 'hit' ? 1 - ease(clamp((target.since - 0.45) / 0.35, 0, 1)) : 1;
     return ease(coming);
   }

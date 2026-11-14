@@ -41,6 +41,7 @@ body[data-screen='countdown'] .arrow-hud { display: flex; }
 .arrow-hud .chip[hidden] { display: none; }
 .chip-targets .chip-label::before { content: '🎯 '; }
 .chip-stars .chip-label::before { content: '⭐ '; }
+.chip-quiver .chip-label::before { content: '🏹 '; }
 
 /* With friends: how many targets each one has hit, the most first. */
 .arrow-scores {

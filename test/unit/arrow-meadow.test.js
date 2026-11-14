@@ -16,7 +16,8 @@ const deg = (radians) => (radians * 180) / Math.PI;
 
 function makeMeadow(options = {}) {
   const log = [];
-  const meadow = new Meadow({ random: seeded(options.seed ?? 7), help: 'off', onEvent: (event) => log.push(event), ...options });
+  // The contest as it always was, nothing lost: test/unit/arrow-meadow-quiver.test.js has the default.
+  const meadow = new Meadow({ random: seeded(options.seed ?? 7), help: 'off', gentle: true, onEvent: (event) => log.push(event), ...options });
   meadow.log = log;
   return meadow;
 }
@@ -321,10 +322,11 @@ test('each level from 2 brings something new, named in both languages, that the 
   }
   assert.equal(new Set(keys).size, 9);
   assert.deepEqual(Object.keys(NEWS).map(Number), LEVELS.slice(1));
-  // The plain target is a little smaller each level, and never tiny: at level 10 it's three quarters the size.
-  for (const level of LEVELS.slice(1)) assert.ok(meadowLevel(level).size < meadowLevel(level - 1).size);
-  assert.ok(meadowLevel(10).size >= 0.75 * meadowLevel(1).size);
-  assert.ok(meadowLevel(10).near > meadowLevel(1).near);
+  // The plain target is a little smaller each level, and never tiny: gently, at level 10 it's three quarters the size.
+  const gently = (level) => meadowLevel(level, { gentle: true });
+  for (const level of LEVELS.slice(1)) assert.ok(gently(level).size < gently(level - 1).size);
+  assert.ok(gently(10).size >= 0.75 * gently(1).size);
+  assert.ok(gently(10).near > gently(1).near);
 });
 
 test('a plain target is always up, near, whatever else the level has brought, and what\'s new comes first', () => {
@@ -871,11 +873,13 @@ test('every line the game says has its English and Georgian voice files, and the
 
 test('the grown-ups\' settings for this game have names of their own, as every game\'s are kept together', () => {
   const source = readFileSync(new URL('../../games/arrow-meadow/main.js', import.meta.url), 'utf8');
-  assert.match(source, /defaults: \{ arrowReach: 'small', arrowHelp: 'little', arrowGoal: 10, arrowFriends: 'together' \}/);
-  assert.match(source, /choices: \{ arrowReach: String, arrowHelp: String, arrowGoal: Number, arrowFriends: String \}/);
-  // Together is how a game with friends comes, and the gentlest of each choice is how the game comes.
+  assert.match(source, /defaults: \{ arrowReach: 'small', arrowHelp: 'off', arrowQuiver: 'quiver', arrowGoal: 10, arrowFriends: 'together' \}/);
+  assert.match(source, /choices: \{ arrowReach: String, arrowHelp: String, arrowQuiver: String, arrowGoal: Number, arrowFriends: String \}/);
+  // Together is how a game with friends comes. The contest comes as a challenge: no help with aiming, and only so many
+  // arrows. The gentle choice under "Arrows in the quiver" is the contest as it always was.
   assert.equal(GOALS.includes(10), true);
-  assert.equal(HELP_NAMES.includes('little'), true);
+  assert.equal(HELP_NAMES.includes('off'), true);
+  assert.match(source, /choice\('arrowQuiver', 'gentle'/);
 });
 
 test('the game is on the page for choosing one, under sports and both hands, with friends, and its server knows it', () => {
