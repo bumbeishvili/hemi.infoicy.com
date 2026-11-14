@@ -9,7 +9,7 @@ import {
   test,
   waitForHand,
   waitUntilMoving,
-} from '../helpers.js';
+} from './helpers.js';
 
 /** Records each line that actually starts playing. */
 function listenToSpeech(page) {

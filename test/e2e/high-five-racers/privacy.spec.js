@@ -7,7 +7,7 @@ import {
   test,
   waitForHand,
   waitUntilMoving,
-} from '../helpers.js';
+} from './helpers.js';
 
 test('the game makes no requests off this computer, and the page refuses to', async ({ page, baseURL, pageErrors }) => {
   const requests = [];

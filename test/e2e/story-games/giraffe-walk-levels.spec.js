@@ -1,8 +1,9 @@
 // Giraffe's Long Walk Home's levels, with real photos going through the real tracker: what each level
 // brings that's new, golden fruit, butterflies leaving flowers, green fruit, the basket, the monkey,
 // the bridge, frosty fruit, fireflies and the parrot, and still all the way home, with nothing flashing.
-import { expect, hands, openGame, show, shot, test, waitForScreen } from '../helpers.js';
-import { atLevel, judgeBrightness, moveGloveTo, startPlaying, stopMoving, storyIs, watchBrightness } from './helpers.js';
+import { expect, hands, show, shot, test, waitForScreen } from '../helpers.js';
+import { atLevel, judgeBrightness, moveGloveTo, stopMoving, storyIs, watchBrightness } from './helpers.js';
+import { openGame, startPlaying } from './challenge-helpers.js';
 
 const GAME = 'giraffe-walk';
 const GLOVE = ['walk', 'gloves', 'right'];

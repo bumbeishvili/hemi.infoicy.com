@@ -8,8 +8,9 @@
 //
 // Sky pirates hunt the child, and the child hunts them. There's a ring in the middle of the view, and
 // the guns fire by themselves at any plane inside it. Nobody gets hurt: a plane that's dropped falls
-// away smoking, and its pilot comes down by parachute. A child who lowers their arms glides, and after
-// a while nobody shoots at them, however long they rest.
+// away smoking, and its pilot comes down by parachute. A child who lowers their arms glides. On Gentle,
+// after a while nobody shoots at them, however long they rest, and they can't be shot down. On Medium
+// and Tough, the default, the pirates keep hunting a plane that's gliding, and five hits bring it down.
 //
 // Each level, from 1 to 10, is a little harder than the one before: see flightLevel.
 import { ramp, stepsAt } from '../../core/levels.js';
@@ -26,37 +27,49 @@ export const PACES = {
 
 // aim is the ring's size, as the angle from its middle to its edge, enemyHits is how many hits it
 // takes to drop a plane, and hitChance how many of their shots find the child. assist is how much the
-// plane helps with lining up. canLose says whether running out of hearts ends the flight.
+// plane helps with lining up. canLose says whether running out of hearts ends the flight, and restSafe
+// whether a child resting with arms down is left alone by the pirates. Gentle is the game as it was
+// before it could be lost; Medium is the default.
 export const LEVELS = {
-  gentle: { aim: degrees(11), enemyHits: 14, hitChance: 0.2, huntEvery: [8, 12], burst: 3, healAfter: 5, assist: 1, canLose: false },
-  medium: { aim: degrees(9), enemyHits: 18, hitChance: 0.25, huntEvery: [6, 9], burst: 3, healAfter: 7, assist: 0.6, canLose: true },
-  tough: { aim: degrees(7.5), enemyHits: 24, hitChance: 0.35, huntEvery: [4.5, 7], burst: 4, healAfter: 10, assist: 0.3, canLose: true },
+  gentle: { aim: degrees(11), enemyHits: 14, hitChance: 0.2, huntEvery: [8, 12], burst: 3, healAfter: 5, assist: 1, canLose: false, restSafe: true },
+  medium: { aim: degrees(9), enemyHits: 18, hitChance: 0.25, huntEvery: [6, 9], burst: 3, healAfter: 7, assist: 0.6, canLose: true, restSafe: false },
+  tough: { aim: degrees(7.5), enemyHits: 24, hitChance: 0.35, huntEvery: [4.5, 7], burst: 4, healAfter: 10, assist: 0.3, canLose: true, restSafe: false },
 };
 
 export const HEARTS = 5;
+// Where each ramp ends at level 10: on Medium and Tough, and on Gentle, which ramps as it always did.
+const HARD_TOP = { enemySpeed: 0.94, enemyTurn: 1.2, huntEvery: 0.5, dodgeSeconds: 3.2, sharpness: 1.6 };
+const GENTLE_TOP = { enemySpeed: 0.88, enemyTurn: 0.95, huntEvery: 0.8, dodgeSeconds: 2.4, sharpness: 1 };
 export const MOST_AT_ONCE = 3; // At level 1. See flightLevel.
 const CAPTAIN_HITS = 1.4; // The pirate captain takes this many times the hits of the others.
 const WEAVE_RATE = 1.3; // How quickly a weaving pirate swings from side to side, in radians a second.
 
 /**
  * What a level changes. Level 1 is the game as it always was. What a grown-up chose stays theirs: the
- * ring's size, the help with lining up, how hard the pirates shoot, whether the child can be shot
- * down, the speed and how many planes there are to drop. Being hunted gives as long to turn as ever.
+ * ring's size, the help with lining up, whether the child can be shot down, the speed and how many
+ * planes there are to drop. Being hunted gives as long to turn as ever.
+ *
+ * On Medium and Tough the levels climb steeply, so level 10 takes real skill: the pirates are nearly as
+ * fast as the child, turn half as sharply again, hunt twice as often and their shots find the plane
+ * more often. On Gentle (gentle: true) they climb as gently as they always did, and shoot no better.
  *
  * Every level from 2 brings something new to see and play with, on top of the pirates getting a little
  * quicker: prizes, gift boxes with new kinds of fire in them, new kinds of pirate, and a new sky. Later
  * levels keep what came before. NEW_AT lists what arrives where, and the tests check each one is on.
  */
-export function flightLevel(level = 1) {
+export function flightLevel(level = 1, { gentle = false } = {}) {
+  const top = gentle ? GENTLE_TOP : HARD_TOP;
   return {
-    // The pirates fly a little faster, as a share of the child's plane, but never as fast as it.
-    enemySpeed: ramp(level, ENEMY.speed, 0.88),
+    // The pirates fly faster, as a share of the child's plane, but never as fast as it.
+    enemySpeed: ramp(level, ENEMY.speed, top.enemySpeed),
     // And turn more sharply, in radians a second.
-    enemyTurn: ramp(level, ENEMY.turn, 0.95),
-    // One turns to hunt the child a little more often, down to 80% of the time between by level 10.
-    huntEvery: ramp(level, 1, 0.8),
+    enemyTurn: ramp(level, ENEMY.turn, top.enemyTurn),
+    // One turns to hunt the child more often, as a share of the time between at level 1.
+    huntEvery: ramp(level, 1, top.huntEvery),
     // A plane being shot at tries for longer to get out of the ring.
-    dodgeSeconds: ramp(level, ENEMY.dodgeSeconds, 2.4),
+    dodgeSeconds: ramp(level, ENEMY.dodgeSeconds, top.dodgeSeconds),
+    // How much more often their shots find the child, as a share of what the setting says.
+    sharpness: ramp(level, 1, top.sharpness),
     // From level 3 the pirates weave from side to side as they cross, as far as this either way.
     weave: stepsAt(level, { 1: 0, 3: 0.15, 6: 0.22, 9: 0.3 }),
     // From level 5 they go higher and lower, by this much more, to be followed up and down.
@@ -322,7 +335,7 @@ export class Flight {
     this.pace = PACES[pace];
     this.level = LEVELS[level];
     this.levelNumber = levelNumber;
-    this.levelRules = flightLevel(levelNumber);
+    this.levelRules = flightLevel(levelNumber, { gentle: !this.level.canLose });
     this.atOnce = this.levelRules.atOnce;
     this.plan = planPirates(planes, this.levelRules, freshKinds(levelNumber));
     this.enemyHits = this.level.enemyHits;
@@ -401,6 +414,11 @@ export class Flight {
   /** Seconds between hunts, as this level plays them. */
   get huntEvery() {
     return this.level.huntEvery.map((seconds) => seconds * this.levelRules.huntEvery);
+  }
+
+  /** Resting that the pirates respect: on Gentle only. On the harder settings they keep hunting. */
+  get safeResting() {
+    return this.resting && this.level.restSafe;
   }
 
   get dropped() {
@@ -561,7 +579,7 @@ export class Flight {
 
   shootAtChild(enemy) {
     const { random } = this;
-    const hit = random() < this.level.hitChance;
+    const hit = random() < Math.min(0.9, this.level.hitChance * this.levelRules.sharpness);
     const miss = hit ? 0 : ENEMY.miss;
     const to = {
       x: this.x + (random() - 0.5) * miss * 2 + (hit ? 0 : Math.sign(random() - 0.5) * miss * 0.5),
@@ -641,7 +659,7 @@ export class Flight {
 
       if (enemy.mode === 'hunt') {
         enemy.modeLeft -= dt;
-        if (this.resting || enemy.modeLeft <= 0 || away < ENEMY.passed) {
+        if (this.safeResting || enemy.modeLeft <= 0 || away < ENEMY.passed) {
           enemy.mode = 'cross';
           enemy.way = null;
         } else {
@@ -693,7 +711,7 @@ export class Flight {
 
   /** Every so often one of them turns and comes after the child. */
   startHunts(dt) {
-    if (this.resting) return;
+    if (this.safeResting) return;
     this.huntIn -= dt;
     if (this.huntIn > 0) return;
     this.huntIn = between(this.random, this.huntEvery);
@@ -889,7 +907,7 @@ export class Flight {
         shot.x += shot.dx * step;
         shot.y += shot.dy * step;
         shot.z += shot.dz * step;
-        if (shot.left <= 0 && shot.hit && !this.resting && this.state === 'flying') {
+        if (shot.left <= 0 && shot.hit && !this.safeResting && this.state === 'flying') {
           // The shield bubble: their shots bounce off it.
           if (this.power?.kind === 'shield') {
             this.stats.blocked += 1;
@@ -1170,7 +1188,7 @@ export class Flight {
     const resting = this.downFor > REST_AFTER;
     if (resting !== this.resting) {
       this.resting = resting;
-      if (resting) this.shots = this.shots.filter(({ mine }) => mine);
+      if (resting && this.level.restSafe) this.shots = this.shots.filter(({ mine }) => mine);
       this.emit('resting', { on: resting });
     }
 

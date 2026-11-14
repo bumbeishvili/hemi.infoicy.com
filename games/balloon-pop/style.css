@@ -33,6 +33,9 @@ body[data-prizes='on']:not([data-maths='on']) .chip-prizes { display: grid; }
 }
 .finish-prizes { margin: 0; font-size: clamp(20px, 2.4vw, 28px); font-weight: 600; }
 .finish-prizes:empty { display: none; }
+/* When too many balloons floated away: how it went, in a line. */
+.finish-story { margin: 0; font-size: clamp(17px, 2.1vw, 23px); font-weight: 600; text-align: center; }
+.finish-story[hidden] { display: none; }
 body:not([data-prizes='on']) tr:has(#sum-left-prizes),
 body[data-maths='on'] tr:has(#sum-left-prizes) { display: none; }
 

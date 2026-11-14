@@ -343,6 +343,10 @@ export class BalloonField {
     this.rings = [];
     this.smoke = [];
     this.numbered = false; // Whether balloons wait with answers on them, rather than floating by.
+    this.gentle = false;
+    // How many balloons can float away before the game is over. Infinity on Gentle, with friends, and with the
+    // maths challenge, whose balloons wait.
+    this.awayAllowed = Infinity;
     this.rightNumber = null;
     this.wrong = { left: 0, right: 0 };
     // Playing with friends, everyone plays with the same balloons: see setShared.
@@ -377,11 +381,15 @@ export class BalloonField {
     if (turned && this.width && this.plan?.place !== 'hills') this.paintBackdrop();
   }
 
-  /** What this level changes: see rules.js. A new place is painted when the level brings one. */
-  setLevel(level) {
+  /**
+   * What this level changes: see rules.js. A new place is painted when the level brings one. gentle is the
+   * game as it was, where floating away costs nothing, whose levels climb more gently.
+   */
+  setLevel(level, { gentle = this.gentle } = {}) {
     const place = this.plan?.place;
     this.level = level;
-    this.plan = balloonLevel(level);
+    this.gentle = gentle;
+    this.plan = balloonLevel(level, { gentle });
     if (this.width && place !== this.plan.place) this.paintBackdrop();
   }
 
@@ -404,6 +412,9 @@ export class BalloonField {
     this.caught = { left: 0, right: 0 }; // Prizes caught by each hand.
     this.prizeKinds = { sweet: 0, star: 0, gem: 0, heart: 0 };
     this.reachedGoal = false;
+    // Balloons that floated off the top while they could still have been popped, and whether too many have.
+    this.away = 0;
+    this.tooManyAway = false;
     this.gloves.left.burnt = 0;
     this.gloves.right.burnt = 0;
   }
@@ -568,6 +579,8 @@ export class BalloonField {
       caught: { ...this.caught },
       prizes: { ...this.prizeKinds },
       progress: clamp(this.total / this.goal, 0, 1),
+      away: this.away,
+      awayAllowed: this.awayAllowed,
     };
   }
 
@@ -987,6 +1000,7 @@ export class BalloonField {
       }
       if (popping && balloon.y < this.height + balloon.r && this.touchGloves(balloon, dt)) continue;
       if (balloon.y > -balloon.r * 3.2) kept.push(balloon);
+      else if (popping) this.floatedAway(balloon, snapshot);
     }
     this.balloons = kept.concat(before.slice(count));
 
@@ -999,7 +1013,25 @@ export class BalloonField {
     if (popping && !this.reachedGoal && this.total >= this.goal) {
       this.reachedGoal = true;
       this.events.onGoal?.();
+    } else if (popping && !this.reachedGoal && !this.tooManyAway && this.away >= this.awayAllowed) {
+      this.tooManyAway = true;
+      this.events.onTooManyAway?.();
     }
+  }
+
+  /**
+   * A balloon has floated off the top of the sky. An ordinary one that could have been popped has got away,
+   * unless the camera can't see the hand in play just then: a child who's out of the picture isn't counted
+   * against. A power-up's bubble, an answer, a friend's basket and the shared balloons of friends don't count.
+   */
+  floatedAway(balloon, snapshot) {
+    if (this.awayAllowed === Infinity || this.shared || this.numbered) return;
+    if (balloon.kind === 'power' || balloon.number !== undefined || balloon.leaving || balloon.basket) return;
+    const hand = snapshot?.[this.side];
+    const seen = Boolean(hand) && hand.status !== 'missing' && hand.reason !== 'edge' && hand.reason !== 'small';
+    if (!seen) return;
+    this.away += 1;
+    this.events.onAway?.(this.away);
   }
 
   /* ---------- prizes, power-ups and helpers, from the higher levels ---------- */

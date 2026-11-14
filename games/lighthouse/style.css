@@ -76,3 +76,27 @@ body[data-hands='left'] .hands-bar { justify-content: flex-start; }
 @media (prefers-reduced-motion: reduce) {
   .film-mud, .film-wiper { animation-duration: 7.5s; }
 }
+
+/* How long the ship can still wait, as a bar that empties slowly. It only changes colour when it's nearly
+   gone, and gently, so nothing flashes. */
+.wait-bar {
+  display: block;
+  width: clamp(80px, 10vw, 140px);
+  height: 12px;
+  margin-top: 6px;
+  background: var(--accent-track);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.wait-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #7cc6f2;
+  border-radius: 999px;
+  transition: width 0.4s linear, background-color 1.5s ease;
+}
+.chip-wait[data-low="yes"] .wait-fill { background: #f08a4b; }
+
+.finish-story { margin: 0; font-size: clamp(17px, 2.1vw, 23px); font-weight: 600; text-align: center; }
+.finish-story[hidden] { display: none; }

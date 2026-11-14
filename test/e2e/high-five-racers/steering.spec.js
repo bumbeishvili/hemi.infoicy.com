@@ -10,7 +10,7 @@ import {
   test,
   waitForHand,
   waitUntilMoving,
-} from '../helpers.js';
+} from './helpers.js';
 
 async function raceWithOpenHand(page, settings = {}) {
   await openGame(page, settings);

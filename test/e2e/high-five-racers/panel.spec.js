@@ -12,7 +12,7 @@ import {
   waitForScreen,
   waitUntilMoving,
   waitUntilStopped,
-} from '../helpers.js';
+} from './helpers.js';
 
 const rightSlider = (page) => page.locator('.panel-hand[data-side="right"] .strictness input');
 

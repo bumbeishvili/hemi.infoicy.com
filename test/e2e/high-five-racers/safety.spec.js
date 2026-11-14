@@ -1,6 +1,6 @@
 // Seizures are more common in children with hemiplegia, so nothing may flash or flicker, whatever's
 // going on. These read the picture itself, frame by frame, the same way as Sky Wings' test does.
-import { expect, openGame, reachRace, shot, show, test, waitForHand, waitUntilMoving } from '../helpers.js';
+import { expect, openGame, reachRace, shot, show, test, waitForHand, waitUntilMoving } from './helpers.js';
 
 async function raceWithOpenHand(page, settings = {}) {
   await openGame(page, settings);

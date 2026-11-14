@@ -9,7 +9,7 @@ import { GameSession } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { BalloonField } from './balloons.js';
 import { MathsDeck } from './maths.js';
-import { balloonNewAt, MOST_ANSWERS } from './rules.js';
+import { awayAllowed, balloonNewAt, MOST_ANSWERS } from './rules.js';
 import { WorldTrack } from './world-track.js';
 
 const POP_HINT_SECONDS = 6;
@@ -32,6 +32,10 @@ const PRAISE = ['Great job!', 'Nice one!', 'Way to go!'];
 const MATHS_HINT = 'Pop the right answer!';
 const TOO_HOT = 'Ouch! Too hot!';
 const COOL_IT = 'Hold your hand open to cool it down!';
+// What the voice says at the end. Both have a rendered voice file: see core/audio/voice/lines.json.
+const FINISH = 'You popped them all!';
+const AWAY_FINISH = 'Great job!';
+const AWAY_TITLE = 'The balloons floated away!';
 
 const byId = (id) => document.getElementById(id);
 const PRIZE_MARKS = { sweet: '🍬', star: '⭐', gem: '💎', heart: '💗' };
@@ -120,7 +124,20 @@ class BalloonGame {
       onBump: (side) => {
         this.bump = { side, at: session.playSeconds };
       },
-      onGoal: () => session.finish(),
+      onGoal: () => {
+        session.finishLine = FINISH;
+        session.finish();
+      },
+      onAway: () => this.showProgress(),
+      // Too many floated away before enough were popped: the game ends there, kindly, on the same level.
+      onTooManyAway: () => {
+        this.lost = true;
+        session.finishLine = AWAY_FINISH;
+        session.finish();
+        session.hud.confetti.stop();
+        const again = document.querySelector('#screen-finish .finish-actions .big-button');
+        if (again) again.textContent = 'Try again';
+      },
     }, {
       language: () => settings.language,
       prizeTarget: () => {
@@ -131,7 +148,10 @@ class BalloonGame {
     // The finish card lists the prizes caught, by kind.
     byId('finish-hero')?.closest('.finish-hero')?.insertAdjacentHTML('afterend', '<p id="finish-prizes" class="finish-prizes"></p>');
     this.field.configure({ pace: settings.pace, reach: settings.reach, goal: settings.balloons, side: settings.hands });
-    this.field.setLevel(session.level);
+    this.field.setLevel(session.level, { gentle: settings.away === 'gentle' });
+    this.lost = false;
+    // When a balloon got away, a line on the finish card saying how it went.
+    byId('finish-prizes')?.insertAdjacentHTML('beforebegin', '<p id="finish-story" class="finish-story" hidden></p>');
     // Playing with friends, if a grown-up makes or joins a game.
     this.friends = new FriendsPanel({
       game: 'balloon-pop',
@@ -197,10 +217,21 @@ class BalloonGame {
     this.question = null;
     this.field.configure({ goal: this.timed ? Infinity : on ? Math.round(balloons * MATHS_GOAL_SHARE) : balloons });
     this.field.numbered = on;
+    this.setUpAway();
     document.body.dataset.maths = on ? 'on' : 'off';
     byId('chip-popped-label').textContent = on ? 'Right answers' : 'Popped';
     byId('maths-question').textContent = '';
     byId('maths-question').classList.remove('is-right');
+  }
+
+  /**
+   * Balloons that float away count, unless a grown-up chose Gentle. Not with friends, where it's a contest of
+   * who pops the most in the time, and not with the maths challenge, whose balloons wait.
+   */
+  setUpAway() {
+    const counting = !this.mathsOn && !this.timed && this.session.settings.away !== 'gentle';
+    this.field.awayAllowed = counting ? awayAllowed(this.session.settings.balloons, this.field.level) : Infinity;
+    byId('chip-away-box').hidden = !counting;
   }
 
   nextQuestion() {
@@ -268,6 +299,8 @@ class BalloonGame {
     const { timed } = this;
     // With friends there's no goal, only the time: the bar shows how much of it has gone.
     byId('chip-popped').textContent = timed ? String(total) : `${total} of ${goal}`;
+    const { away, awayAllowed: allowed } = this.field.info;
+    if (allowed !== Infinity) byId('chip-away').textContent = `${away} of ${allowed}`;
     byId('race-progress-fill').style.width = `${Math.round((timed ? 1 - timed.left / timed.seconds : progress) * 100)}%`;
     if (timed) byId('chip-time').textContent = clock(timed.left);
     this.showScores();
@@ -347,6 +380,11 @@ class BalloonGame {
     if ('pace' in change) this.field.configure({ pace: change.pace });
     if ('reach' in change) this.field.configure({ reach: change.reach });
     if ('maths' in change) this.changeMaths();
+    if ('away' in change) {
+      this.field.setLevel(this.field.level, { gentle: change.away === 'gentle' });
+      this.setUpAway();
+      this.showProgress();
+    }
   }
 
   /** A grown-up can turn it on or off in the middle of a game, and it takes effect straight away. */
@@ -380,7 +418,9 @@ class BalloonGame {
     this.friendsGloves = (friendly?.friends ?? []).map((friend) => ({ id: friend.id, name: friend.spec.name, glove: new Glove('right'), track: new Track(HAND_TRACK), fade: 0 }));
     this.field.friendsGloves = this.friendsGloves;
     byId('chip-time-box').hidden = !friendly;
-    this.field.setLevel(friendly?.level ?? level);
+    this.lost = false;
+    this.session.finishLine = FINISH;
+    this.field.setLevel(friendly?.level ?? level, { gentle: this.session.settings.away === 'gentle' });
     this.field.reset({ goal: friendly ? Infinity : balloons, pace, reach, side: hands });
     this.field.setShared(friendly ? {
       host: friendly.hosting,
@@ -569,8 +609,15 @@ class BalloonGame {
       .map(([kind, count]) => `${PRIZE_MARKS[kind]} ${count}`)
       .join('   ');
     this.friends.showResults();
-    // A game with friends is on the host's level, so it doesn't move the child's own level on.
-    return { hero: total, noun: 'game', rows: { popped, wrong, prizes: caught }, countsForLevel: !this.friends.current };
+    const story = byId('finish-story');
+    if (!this.friends.current) {
+      document.querySelector('#screen-finish h2').textContent = this.lost ? AWAY_TITLE : FINISH;
+      story.textContent = this.lost ? `${this.field.away} balloons floated off into the sky before ${this.field.goal} were popped. You popped ${total}.` : '';
+    }
+    story.hidden = !this.lost || Boolean(this.friends.current);
+    // Too many floating away means that level again. A game with friends is on the host's level, so it
+    // doesn't move the child's own level on.
+    return { hero: total, noun: 'game', rows: { popped, wrong, prizes: caught }, won: !this.lost, countsForLevel: !this.friends.current };
   }
 }
 
@@ -591,6 +638,7 @@ new GameSession({
           <div class="chip"><span id="chip-popped-label" class="chip-label">Popped</span><span id="chip-popped" class="chip-value">0 of 20</span></div>
           <div class="chip chip-prizes"><span class="chip-label">Prizes</span><span id="chip-prizes" class="chip-value">0</span></div>
           <div id="chip-time-box" class="chip" hidden><span class="chip-label">Time</span><span id="chip-time" class="chip-value">1:00</span></div>
+          <div id="chip-away-box" class="chip chip-away" hidden><span class="chip-label">Floated away</span><span id="chip-away" class="chip-value">0</span></div>
         </div>
         <div class="race-progress" aria-hidden="true"><div id="race-progress-fill" class="race-progress-fill"></div></div>
         <ol id="pop-scores" class="pop-scores" hidden></ol>
@@ -623,6 +671,11 @@ new GameSession({
         <label><input type="radio" name="balloons" value="60"> 60</label>
       </fieldset>
       <fieldset class="choice">
+        <legend>Balloons that float away</legend>
+        <label><input type="radio" name="away" value="count"> They count: when too many have floated away, the game is over</label>
+        <label><input type="radio" name="away" value="gentle"> Gentle: they cost nothing, and the levels climb gently</label>
+      </fieldset>
+      <fieldset class="choice">
         <legend>Balloon speed</legend>
         <label><input type="radio" name="pace" value="slow"> Slow</label>
         <label><input type="radio" name="pace" value="medium"> Medium</label>
@@ -642,8 +695,8 @@ new GameSession({
         <label><input type="radio" name="maths" value="times"> Times tables</label>
       </fieldset>`,
   },
-  defaults: { balloons: 20, pace: 'slow', reach: 'little', maths: 'off' },
-  choices: { balloons: Number, pace: String, reach: String, maths: String },
+  defaults: { balloons: 20, pace: 'slow', reach: 'little', maths: 'off', away: 'count' },
+  choices: { balloons: Number, pace: String, reach: String, maths: String, away: String },
   tagline: (side) => `Pop the balloons with your open ${side} hand!`,
   finishLine: 'You popped them all!',
   portraits: () => renderPortraits(ROSTER),

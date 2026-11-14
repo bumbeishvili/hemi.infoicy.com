@@ -2,7 +2,7 @@
 // hand and says to keep it open, and then it's turbo. When turbo runs out, a little film by the meter shows
 // the other hand making a fist and opening, and the car taking off. Nothing in any of it flashes.
 import { inflateSync } from 'node:zlib';
-import { car, expect, openGame, reachRace, shot, show, test, waitForHand, waitUntilMoving } from '../helpers.js';
+import { car, expect, openGame, reachRace, shot, show, test, waitForHand, waitUntilMoving } from './helpers.js';
 
 const meter = (page) => page.evaluate(() => {
   const box = document.getElementById('turbo');

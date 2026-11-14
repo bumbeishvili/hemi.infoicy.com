@@ -1,5 +1,5 @@
 // The world the race goes through: what's in it, and how the start and the ramps behave.
-import { car, expect, openGame, reachRace, shot, show, test, waitForHand, waitForScreen, waitUntilMoving } from '../helpers.js';
+import { car, expect, openGame, reachRace, shot, show, test, waitForHand, waitForScreen, waitUntilMoving } from './helpers.js';
 
 test('the lights over the start line come on one by one, and go green for the off', async ({ page }) => {
   await openGame(page);

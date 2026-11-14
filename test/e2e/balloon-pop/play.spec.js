@@ -10,7 +10,7 @@ import {
   test,
   waitForHand,
   waitForScreen,
-} from '../helpers.js';
+} from './helpers.js';
 
 const GAME = 'balloon-pop';
 

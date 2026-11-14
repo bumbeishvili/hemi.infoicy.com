@@ -1,6 +1,7 @@
 // Giraffe's Long Walk Home, with real photos going through the real tracker.
 import { expect, hands, shot, show, test, waitForScreen } from '../helpers.js';
-import { moveGloveTo, startPlaying, stopMoving, storyIs } from './helpers.js';
+import { moveGloveTo, stopMoving, storyIs } from './helpers.js';
+import { startPlaying } from './challenge-helpers.js';
 
 const GAME = 'giraffe-walk';
 const GLOVE = ['walk', 'gloves', 'right'];

@@ -12,7 +12,7 @@ import {
   waitForScreen,
   waitUntilMoving,
   waitUntilStopped,
-} from '../helpers.js';
+} from './helpers.js';
 
 test('a full one-lap race finishes, reports the hand and can be run again', async ({ page }) => {
   await openGame(page, { laps: 1, steering: 'auto' });

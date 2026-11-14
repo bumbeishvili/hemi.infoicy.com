@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { toScreen } from '../../games/balloon-pop/balloons.js';
 import { LEVELS, MathsDeck, answersFor, choicesFor } from '../../games/balloon-pop/maths.js';
 import {
-  balloonLevel, balloonNewAt, balloonsPerMinute, MOST_ANSWERS, newsIsOn, PACES, PLACES, POWER_SECONDS, PRIZE, secondsOnScreen, STAR_HOLD_SECONDS, WANDERER_CHANCE,
+  awayAllowed, balloonLevel, balloonNewAt, balloonsPerMinute, LEAST_AWAY, MOST_ANSWERS, newsIsOn, PACES, PLACES, POWER_SECONDS, PRIZE, secondsOnScreen, STAR_HOLD_SECONDS, WANDERER_CHANCE,
 } from '../../games/balloon-pop/rules.js';
 
 test('the middle of the picture lands near the middle of the screen', () => {
@@ -158,13 +158,14 @@ test('prizes and power-ups are gentle: slow to fall, easy to catch, and over in 
   assert.ok(POWER_SECONDS >= 6 && POWER_SECONDS <= 10);
 });
 
-test('even level 10 stays doable: time to reach, balloons a minute, and the length of a game', () => {
+test('on Gentle, even level 10 stays doable: time to reach, balloons a minute, and the length of a game', () => {
+  const gentle = { gentle: true };
   for (const pace of Object.keys(PACES)) {
     // Each balloon is on the screen for at least 70% of the time it was at level 1.
-    assert.ok(secondsOnScreen(pace, 10) >= 0.7 * secondsOnScreen(pace, 1), pace);
+    assert.ok(secondsOnScreen(pace, 10, gentle) >= 0.7 * secondsOnScreen(pace, 1, gentle), pace);
     // No more than twice as many balloons a minute to reach for, counting the three a big one pops into
     // and the balloons on a friend's basket.
-    for (const level of LEVEL_NUMBERS) assert.ok(balloonsPerMinute(pace, level) <= 2 * balloonsPerMinute(pace, 1), `${pace} ${level}`);
+    for (const level of LEVEL_NUMBERS) assert.ok(balloonsPerMinute(pace, level, gentle) <= 2 * balloonsPerMinute(pace, 1, gentle), `${pace} ${level}`);
   }
   // How many to pop is the grown-up's, so a game only gets longer by the moments star balloons are held,
   // which is a few seconds over a game, well under a third of it.
@@ -222,4 +223,27 @@ test('with the maths challenge on, the cards only list what comes with it: one m
   assert.deepEqual(words(balloonNewAt(8, { maths: 'times' })), ['The fair']);
   assert.deepEqual(words(balloonNewAt(5, { maths: 'addTake' })), ['By the sea']);
   for (const level of [1, 2, 3, 6, 7, 9, 10]) assert.deepEqual(balloonNewAt(level, { maths: 'add' }), [], `level ${level}`);
+});
+
+test('by default the levels climb further: at level 10 a balloon is up for two thirds of the time, and more come', () => {
+  for (const pace of Object.keys(PACES)) {
+    assert.equal(secondsOnScreen(pace, 1), secondsOnScreen(pace, 1, { gentle: true }), 'level 1 is the same either way');
+    const share = secondsOnScreen(pace, 10) / secondsOnScreen(pace, 1);
+    assert.ok(share > 0.6 && share < 0.7, `${pace}: ${share}`);
+    assert.ok(secondsOnScreen(pace, 10) < secondsOnScreen(pace, 10, { gentle: true }));
+    assert.ok(balloonsPerMinute(pace, 10) > balloonsPerMinute(pace, 10, { gentle: true }));
+    for (const level of LEVEL_NUMBERS.slice(1)) assert.ok(secondsOnScreen(pace, level) < secondsOnScreen(pace, level - 1), `${pace} ${level}`);
+  }
+  assert.deepEqual(balloonLevel(1), balloonLevel(1, { gentle: true }));
+});
+
+test('how many balloons can float away: twice the number to pop at level 1, down to half at level 10', () => {
+  assert.equal(awayAllowed(20, 1), 40);
+  assert.equal(awayAllowed(40, 1), 80);
+  assert.equal(awayAllowed(20, 10), 10);
+  assert.equal(awayAllowed(60, 10), 30);
+  for (const goal of [20, 40, 60]) {
+    for (const level of LEVEL_NUMBERS.slice(1)) assert.ok(awayAllowed(goal, level) <= awayAllowed(goal, level - 1), `${goal} ${level}`);
+    assert.ok(awayAllowed(goal, 10) >= LEAST_AWAY);
+  }
 });

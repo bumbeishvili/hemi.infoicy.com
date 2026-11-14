@@ -10,7 +10,7 @@ import {
   test,
   waitForHand,
   waitForScreen,
-} from '../helpers.js';
+} from './helpers.js';
 
 const CONDITIONS = [
   { name: 'turned 30 degrees', rotate: 30, shouldReadOpen: true },

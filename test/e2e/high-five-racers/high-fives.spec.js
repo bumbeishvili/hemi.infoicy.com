@@ -11,7 +11,7 @@ import {
   waitForHand,
   waitForScreen,
   waitUntilMoving,
-} from '../helpers.js';
+} from './helpers.js';
 
 const TOWARDS = { 1: 150, '-1': -220 };
 

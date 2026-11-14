@@ -1,6 +1,6 @@
 // Hand shapes: a grown-up can choose what makes a game's active move, like pointing to drive. The passive move is
 // always the closed hand. Real photos go through the real model, the real tracker and the real game.
-import { expect, openGame, reachRace, shot, show, test, waitForHand, waitUntilMoving, waitUntilStopped } from '../helpers.js';
+import { expect, openGame, reachRace, shot, show, test, waitForHand, waitUntilMoving, waitUntilStopped } from './helpers.js';
 
 const saved = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('camera-games-settings')).shapes);
 

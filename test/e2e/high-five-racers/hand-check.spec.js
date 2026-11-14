@@ -14,7 +14,7 @@ import {
   waitForScreen,
   waitUntilMoving,
   waitUntilStopped,
-} from '../helpers.js';
+} from './helpers.js';
 
 test('a partly open hand can drive once the check knows it is that hand\'s best', async ({ page }) => {
   await openGame(page);

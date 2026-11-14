@@ -1,6 +1,6 @@
 // A fist and then an open hand with the other hand makes the car fly, with turbo, at any time. The hand in
 // play still has to be open for the car to go. Real photos, real tracker.
-import { car, expect, openGame, reachRace, shot, show, test, waitForHand, waitUntilStopped } from '../helpers.js';
+import { car, expect, openGame, reachRace, shot, show, test, waitForHand, waitUntilStopped } from './helpers.js';
 
 const state = (page) => page.evaluate(() => {
   const { race, monitor } = window.__game;

@@ -489,6 +489,56 @@ test('with arms down the plane glides, and after a while nobody shoots, however 
   assert.equal(named(events, 'resting').at(-1).on, false);
 });
 
+test('on Medium and Tough the pirates don\'t stop for a rest: they hunt a gliding plane and can bring it down', () => {
+  for (const level of ['medium', 'tough']) {
+    const { flight, events } = flying({ level, random: seeded(3) });
+    fly(flight, 5, { out: false });
+    assert.equal(flight.resting, true, `${level}: resting`);
+    // Every pirate turns to hunt, and keeps on hunting, a little behind the child's plane.
+    fly(flight, 120, () => {
+      for (const enemy of flight.flying) {
+        if (enemy.mode !== 'hunt') {
+          enemy.mode = 'hunt';
+          enemy.modeLeft = 100;
+        }
+        if (enemy.burstLeft === 0) enemy.fireIn = Math.min(enemy.fireIn, 0.1);
+      }
+      return { out: false };
+    });
+    assert.ok(flight.stats.shots > 0 || named(events, 'enemy-shot').length > 0, `${level}: they shot`);
+    assert.ok(flight.stats.hurts >= HEARTS, `${level}: hit ${flight.stats.hurts} times`);
+    assert.equal(flight.state, 'lost', `${level}: brought down`);
+    assert.equal(named(events, 'lost').length, 1);
+  }
+});
+
+test('on Gentle the same rest is left alone, and the plane can\'t be brought down', () => {
+  const { flight } = flying({ level: 'gentle', random: seeded(3) });
+  fly(flight, 5, { out: false });
+  fly(flight, 120, () => {
+    for (const enemy of flight.flying) {
+      enemy.mode = 'hunt';
+      enemy.modeLeft = 100;
+    }
+    return { out: false };
+  });
+  assert.equal(flight.stats.hurts, 0);
+  assert.equal(flight.state, 'flying');
+});
+
+test('a pirate left alone hunting a child who\'s flying straight brings the plane down on Medium', () => {
+  const { flight } = flying({ level: 'medium', planes: 1, random: seeded(4) });
+  const [enemy] = flight.enemies;
+  fly(flight, 90, () => {
+    if (flight.state === 'flying' && enemy.state === 'flying' && enemy.mode !== 'hunt') {
+      enemy.mode = 'hunt';
+      enemy.modeLeft = 100;
+    }
+    return { out: true, bank: 0, climb: 0 };
+  });
+  assert.equal(flight.state, 'lost');
+});
+
 /* ---------- for a child who can't do it all ---------- */
 
 test('with climbing off, the plane follows the others up and down by itself', () => {
@@ -655,7 +705,7 @@ function aMinuteOf(options) {
 
 test('level 1 is the dogfight as it always was', () => {
   assert.deepEqual(flightLevel(1), {
-    enemySpeed: 0.84, enemyTurn: 0.82, huntEvery: 1, dodgeSeconds: 2.2, weave: 0, climbs: 1, atOnce: MOST_AT_ONCE, captain: false,
+    enemySpeed: 0.84, enemyTurn: 0.82, huntEvery: 1, dodgeSeconds: 2.2, sharpness: 1, weave: 0, climbs: 1, atOnce: MOST_AT_ONCE, captain: false,
     prizes: false, gifts: [], kinds: [], airship: false, sky: 'day',
   });
   // The same flights, to the millimetre, as before there were levels.
@@ -683,6 +733,19 @@ test('each level is the same as the one before or harder, in every way, and alwa
     const now = flightLevel(level);
     return [now.weave > 0, now.climbs > 1, now.captain, now.atOnce];
   }), [[true, false, false, 3], [true, true, false, 3], [true, true, true, 3], [true, true, true, 4]]);
+});
+
+test('on Medium and Tough the levels climb much more steeply than on Gentle, from the same level 1', () => {
+  assert.deepEqual(flightLevel(1), flightLevel(1, { gentle: true }));
+  const hard = flightLevel(10);
+  const gentle = flightLevel(10, { gentle: true });
+  assert.deepEqual([hard.enemySpeed, hard.enemyTurn, hard.huntEvery, hard.dodgeSeconds, hard.sharpness].map((n) => +n.toFixed(3)), [0.94, 1.2, 0.5, 3.2, 1.6]);
+  assert.deepEqual([gentle.enemySpeed, gentle.enemyTurn, gentle.huntEvery, gentle.dodgeSeconds, gentle.sharpness].map((n) => +n.toFixed(3)), [0.88, 0.95, 0.8, 2.4, 1]);
+  assert.ok(hard.enemySpeed < 1, 'a pirate still never flies as fast as the child');
+  // The setting picks the ramp.
+  assert.equal(flying({ level: 'gentle', levelNumber: 10 }).flight.levelRules.sharpness, 1);
+  assert.equal(flying({ level: 'medium', levelNumber: 10 }).flight.levelRules.sharpness, 1.6);
+  assert.equal(flying({ level: 'tough', levelNumber: 10 }).flight.levelRules.huntEvery, 0.5);
 });
 
 test('a level never changes what a grown-up chose: the ring, the help, how hard they shoot, or being shot down', () => {
@@ -760,8 +823,8 @@ test('from level 8 the last pirate is the captain, which takes more hits, and dr
   assert.equal(one.enemies[0].captain, false);
 });
 
-test('at level 10, resting is still never punished: nobody hunts, shoots or hurts a child with arms down', () => {
-  const { flight } = flying({ levelNumber: 10, level: 'tough' });
+test('on Gentle at level 10, resting is still never punished: nobody hunts, shoots or hurts a child with arms down', () => {
+  const { flight } = flying({ levelNumber: 10, level: 'gentle' });
   fly(flight, 5, { out: false });
   assert.equal(flight.resting, true);
   const { hurts, shots } = flight.stats;
@@ -1056,7 +1119,22 @@ test('scouts need fewer hits and zigzag, but are never as fast as the child', ()
   assert.equal(scout.kind, 'scout');
   assert.ok(scout.hitsTotal < pirate.hitsTotal);
   assert.ok(KINDS.scout.weave > flightLevel(10).weave);
-  assert.ok(flightLevel(10).enemySpeed + KINDS.scout.faster < 0.96);
+  assert.ok(flightLevel(10, { gentle: true }).enemySpeed + KINDS.scout.faster < 0.96);
+  // On the harder settings a scout at level 10 is held just under the child's speed: a fast one, to catch.
+  const hard = flying({ level: 'medium', levelNumber: 10, planes: 9 }).flight;
+  hard.huntIn = 1000;
+  let most = 0;
+  let seen = false;
+  fly(hard, 4, () => {
+    for (const enemy of hard.flying) {
+      if (enemy.kind !== 'scout' || enemy.dodgeLeft > 0 || !(enemy.share <= 1.2)) continue;
+      seen = true;
+      most = Math.max(most, enemy.share);
+    }
+    return { out: true };
+  });
+  assert.ok(seen, 'a scout crossed');
+  assert.ok(most <= 0.95, `crossing at ${most} of the child's speed`);
 });
 
 test('balloon pirates drift slowly, high up, and never hunt or shoot', () => {
@@ -1255,7 +1333,13 @@ test('nothing new can make a child lose who couldn\'t before: on Gentle at level
   assert.ok(flight.hearts >= 1);
 });
 
-test('level 10 still gives at least 70% of the time to react: hunts come no more than a quarter more often, and last as long', () => {
-  assert.ok(flightLevel(10).huntEvery >= 0.7);
-  assert.ok(flightLevel(10).dodgeSeconds <= 2.4);
+test('on Gentle, level 10 still gives at least 70% of the time to react: hunts come no more than a quarter more often, and last as long', () => {
+  assert.ok(flightLevel(10, { gentle: true }).huntEvery >= 0.7);
+  assert.ok(flightLevel(10, { gentle: true }).dodgeSeconds <= 2.4);
+});
+
+test('on Medium and Tough, level 10 leaves about half the time between hunts, and a hunt still lasts as long', () => {
+  assert.equal(flightLevel(10).huntEvery, 0.5);
+  const { flight } = flying({ level: 'medium', levelNumber: 10 });
+  assert.deepEqual(flight.huntEvery, LEVELS.medium.huntEvery.map((seconds) => seconds * 0.5));
 });

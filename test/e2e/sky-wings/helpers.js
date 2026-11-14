@@ -1,8 +1,12 @@
 // Getting through Sky Wings, with test footage of a person holding their arms out as the webcam.
 import { expect, openGame, waitForScreen } from '../helpers.js';
 
+/**
+ * Opens the game. The tests written for the game as it was, where a child can't be shot down and a rest
+ * is left alone, fly on Gentle unless they say otherwise. level: undefined leaves the game's own default.
+ */
 export async function openSky(page, settings = {}) {
-  await openGame(page, settings, 'sky-wings');
+  await openGame(page, { level: 'gentle', ...settings }, 'sky-wings');
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
 }
 

@@ -3,8 +3,9 @@
 // sees everyone else's glove on the glass, and each patch of mud is whoever's hand wiped it first, as the server
 // decides, gone from every screen. Here they're separate browsers, talking through the race server on this
 // computer (tools/race-server.mjs), with real photos of hands going through the real tracker.
-import { expect, openGame, shot, show, test, waitForScreen } from '../helpers.js';
+import { expect, shot, show, test, waitForScreen } from '../helpers.js';
 import { judgeBrightness, moveGloveTo, stopMoving, watchBrightness } from './helpers.js';
+import { openGame } from './challenge-helpers.js';
 
 const GAME = 'lighthouse';
 const OPEN = [null, 'open', { scale: 0.7 }];

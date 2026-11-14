@@ -1,8 +1,9 @@
 // The Lighthouse Keeper's levels, with real photos going through the real tracker: what each level
 // brings that's new, treasure picked up by a real open hand, crabs, power-ups, oysters, the gull and
 // the treasure chest, and still every ship home at level 10, with nothing flashing.
-import { expect, openGame, show, shot, test, waitForScreen } from '../helpers.js';
-import { atLevel, judgeBrightness, moveGloveTo, startPlaying, stopMoving, storyIs, watchBrightness } from './helpers.js';
+import { expect, show, shot, test, waitForScreen } from '../helpers.js';
+import { atLevel, judgeBrightness, moveGloveTo, stopMoving, storyIs, watchBrightness } from './helpers.js';
+import { openGame, startPlaying } from './challenge-helpers.js';
 
 const GAME = 'lighthouse';
 const GLOVE = ['room', 'gloves', 'right'];

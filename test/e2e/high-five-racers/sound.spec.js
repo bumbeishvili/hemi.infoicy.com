@@ -11,7 +11,7 @@ import {
   waitForScreen,
   waitUntilMoving,
   waitUntilStopped,
-} from '../helpers.js';
+} from './helpers.js';
 
 /** Listens to the game's final output. */
 function tapOutput(page) {

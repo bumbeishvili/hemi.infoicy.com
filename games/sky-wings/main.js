@@ -24,7 +24,7 @@ const WING_CLIMB_SHOWN = 22;
 const MARK_MARGIN = 70; // How far from the edge of the screen the arrows to other planes stay.
 const LIMIT_PROMPT_FROM = 0.25;
 
-const DEFAULTS = { moveSize: 'small', pace: 'slow', planes: 6, level: 'gentle', climbing: 'yes', fighter: 'giraffe' };
+const DEFAULTS = { moveSize: 'small', pace: 'slow', planes: 6, level: 'medium', climbing: 'yes', fighter: 'giraffe' };
 const CHOICES = { pace: String, planes: Number, level: String, climbing: String };
 
 // Every one of these has a rendered voice file: see audio/voice/lines.json.
@@ -493,7 +493,9 @@ class SkyWings extends BodyGame {
     this.wingsDownFor = wings.out ? 0 : this.wingsDownFor + dt;
     if (this.hintLeft > 0) this.hintLeft -= dt;
 
-    if (this.wingsDownFor > WINGS_DOWN_SECONDS && !flight.resting) {
+    // On Gentle a rest is left alone, and the coach stops asking. On the harder settings the pirates keep
+    // coming, so the wings are still asked for.
+    if (this.wingsDownFor > WINGS_DOWN_SECONDS && !flight.safeResting) {
       this.showAsk('wings', this.translate(SAY.wings), settings.hands);
       this.prompt.show({ key: 'wings', text: SAY.wings, side: null }, now);
     } else if (flight.atLimit > LIMIT_PROMPT_FROM) {
@@ -806,7 +808,7 @@ class SkyWings extends BodyGame {
   }
 
   onResting({ on }) {
-    if (on) {
+    if (on && this.flight.level.restSafe) {
       this.sound.say(BODY_SAY.waiting, { ifQuiet: true });
       this.clearAsk();
     }
@@ -844,7 +846,9 @@ class SkyWings extends BodyGame {
       const whole = Math.round(seconds);
       return whole >= 60 ? `${Math.floor(whole / 60)} min ${whole % 60} sec` : `${whole} sec`;
     };
-    byElementId('finish-line').textContent = `${this.chosen.name} dropped ${stats.dropped} of ${total} planes.`;
+    byElementId('finish-line').textContent = won
+      ? `${this.chosen.name} dropped ${stats.dropped} of ${total} planes.`
+      : `The sky pirates got ${this.chosen.name}’s plane this time. ${this.chosen.name} dropped ${stats.dropped} of ${total} planes.`;
     byElementId('finish-hold').textContent = `Arms out for ${clock(stats.wingsSeconds)} of ${clock(stats.seconds)}.`;
     // The treasure brought home, on the levels with prizes.
     const prizes = Object.entries(stats.prizes).filter(([, count]) => count > 0);
@@ -883,6 +887,8 @@ class SkyWings extends BodyGame {
     } else {
       this.finishLevel(won);
     }
+    // Shot down: the same level again, with Try again as the big button.
+    if (!won) byElementId('fly-again').textContent = 'Try again';
     this.friends.showResults();
     if (won) this.confetti.start();
     this.setScreen('finish');
@@ -975,10 +981,10 @@ mountBodyShell({
       <label><input type="radio" name="climbing" value="no"> By itself, following the other planes, so that only turning is left to do</label>
     </fieldset>
     <fieldset class="choice">
-      <legend>How hard</legend>
-      <label><input type="radio" name="level" value="gentle"> Gentle: a big ring, and the child can’t be shot down</label>
-      <label><input type="radio" name="level" value="medium"> Medium</label>
-      <label><input type="radio" name="level" value="tough"> Tough</label>
+      <legend>How hard the sky pirates are</legend>
+      <label><input type="radio" name="level" value="gentle"> Gentle: a big ring, the pirates can’t shoot the plane down, and they leave a resting child alone</label>
+      <label><input type="radio" name="level" value="medium"> Medium: five hits bring the plane down, even with arms down</label>
+      <label><input type="radio" name="level" value="tough"> Tough: a smaller ring, and sharper pirates</label>
     </fieldset>
     <fieldset class="choice">
       <legend>Speed</legend>

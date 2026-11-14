@@ -11,7 +11,7 @@ import {
   test,
   waitForHand,
   waitUntilStopped,
-} from '../helpers.js';
+} from './helpers.js';
 
 const turbo = (page) => page.evaluate(() => {
   const { race } = window.__game;

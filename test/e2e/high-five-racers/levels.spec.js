@@ -14,7 +14,7 @@ import {
   waitForHand,
   waitForScreen,
   waitUntilMoving,
-} from '../helpers.js';
+} from './helpers.js';
 
 const AT_10 = { levels: { 'high-five-racers': 10 } };
 

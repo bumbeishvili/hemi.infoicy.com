@@ -78,6 +78,10 @@ function powerPictures() {
     return [kind, canvas.toDataURL()];
   }));
 }
+// What the voice says at the finish. Both have a rendered voice file: see core/audio/voice/lines.json.
+const WON_LINE = 'You did it! Great racing!';
+const LOST_LINE = 'Great job!';
+const WON_TITLE = 'You won the race!';
 const ordinal = (place) => ['1st', '2nd', '3rd', '4th'][place - 1] ?? `${place}th`;
 
 /**
@@ -166,10 +170,15 @@ class RaceGame {
       onCrowd: () => sound.crowd(),
       onFinish: () => {
         this.friends.crossed(this.sinceGo);
+        // Racing to win, one of the others may have got there first. The voice says something kind either way.
+        const lost = Boolean(this.race.lostTo);
+        session.finishLine = lost ? LOST_LINE : WON_LINE;
         session.finish();
+        if (lost) this.showLost();
       },
     }, { ...this.cast, reach: session.settings.reach, level: session.level });
     this.race.setMode('attract');
+    this.race.setRivalsMode(session.settings.rivals);
     this.showSteering(session.settings.steering);
     this.buildOrder();
     this.turboFill = byId('turbo-fill');
@@ -190,6 +199,12 @@ class RaceGame {
     this.finishPrizes.id = 'finish-prizes';
     this.finishPrizes.className = 'finish-prizes';
     document.querySelector('#screen-finish .finish-hero')?.after(this.finishPrizes);
+    // When one of the others won, a line saying so, over the stars.
+    this.finishStory = document.createElement('p');
+    this.finishStory.id = 'finish-story';
+    this.finishStory.className = 'finish-story';
+    this.finishStory.hidden = true;
+    document.querySelector('#screen-finish .finish-hero')?.before(this.finishStory);
     // Racing friends on their own computers, if a grown-up makes or joins a race.
     this.friends = new FriendsRace(this);
     // Otherwise it would play again whenever the race's screen comes back.
@@ -210,6 +225,13 @@ class RaceGame {
   /** What a level brings that's new, for the title card, the countdown and the finish card. */
   newAt(level) {
     return newAt(level);
+  }
+
+  /** A race one of the others won ends kindly: no confetti, and Try again as the big button. */
+  showLost() {
+    this.session.hud.confetti.stop();
+    const again = document.querySelector('#screen-finish .finish-actions .big-button');
+    if (again) again.textContent = 'Try again';
   }
 
   /** A badge for each power-up, which shows while it's on, with a ring that goes down as it runs out. */
@@ -429,6 +451,7 @@ class RaceGame {
 
   settingChanged(change) {
     if ('steering' in change) this.showSteering(change.steering);
+    if ('rivals' in change) this.race.setRivalsMode(change.rivals);
     if ('reach' in change) this.race.setReach(change.reach);
     if ('fighter' in change) {
       this.cast = castFor(this.session.settings);
@@ -502,7 +525,11 @@ class RaceGame {
 
   update(dt, snapshot) {
     const { session, race } = this;
+    // A hand the camera can't see properly, gone, at the edge or too far off, is waited for. A closed hand in
+    // plain view is a rest, which the others only wait for on Gentle.
+    const hand = snapshot[session.monitor.side];
     race.update(dt, {
+      handSeen: Boolean(hand) && hand.status !== 'missing' && hand.reason !== 'edge' && hand.reason !== 'small',
       drive: snapshot.drive,
       steer: snapshot.steer,
       steering: session.settings.steering,
@@ -560,8 +587,9 @@ class RaceGame {
 
     const needed = session.handsPrompt(snapshot, dt);
     if (needed) {
-      // After a while with the hand closed, stop asking and make resting feel fine.
-      if (needed.key.startsWith('closed') && session.closedSeconds > REST_AFTER_SECONDS) {
+      // After a while with the hand closed, stop asking and make resting feel fine. That's only on Gentle, where
+      // everyone waits: racing to win, the others drive on, so the hand is still asked for.
+      if (race.gentle && needed.key.startsWith('closed') && session.closedSeconds > REST_AFTER_SECONDS) {
         return { key: 'rest', text: SPOKEN_EVERYWHERE.resting, side: null };
       }
       return needed;
@@ -586,12 +614,20 @@ class RaceGame {
     const { race } = this;
     this.finishPrizes.textContent = this.prizesWords();
     this.friends.showResults();
+    if (!this.friends.current) {
+      const title = document.querySelector('#screen-finish h2');
+      if (title) title.textContent = race.lostTo ? `${race.lostTo.name} won the race!` : WON_TITLE;
+      this.finishStory.textContent = race.lostTo ? `${race.lostTo.name} got to the finish line first. You were ${ordinal(race.place)}.` : '';
+      this.finishStory.hidden = !race.lostTo;
+    }
     const fives = `${race.fives} of ${race.gatesMet}`;
     const sides = `Left ${race.fivesLeft}, right ${race.fivesRight}`;
     return {
       hero: race.info.stars,
       noun: 'race',
       rows: { fives: { left: fives, right: fives }, sides: { left: sides, right: sides } },
+      // Racing to win, coming in behind one of the others means the same level again.
+      won: !race.lostTo,
       // A race with friends is on the host's course, so it doesn't move the child's own level on.
       countsForLevel: !this.friends.current,
     };
@@ -607,7 +643,7 @@ new GameSession({
     title: 'High Five Racers',
     startLabel: 'Let’s race!',
     againLabel: 'Race again',
-    finishTitle: 'You won the race!',
+    finishTitle: WON_TITLE,
     heroMark: '★',
     heroNoun: 'stars',
     withWheel: true,
@@ -685,6 +721,11 @@ new GameSession({
         <label><input type="radio" name="steering" value="none"> No help</label>
       </fieldset>
       <fieldset class="choice">
+        <legend>The other cars</legend>
+        <label><input type="radio" name="rivals" value="race"> Race to win: they drive at their own pace, and the first over the line wins</label>
+        <label><input type="radio" name="rivals" value="gentle"> Gentle: they stay close, wait while the hand rests, and let the child win</label>
+      </fieldset>
+      <fieldset class="choice">
         <legend>How far to reach for the big hands</legend>
         <label><input type="radio" name="reach" value="small"> A small reach</label>
         <label><input type="radio" name="reach" value="medium"> A medium reach</label>
@@ -701,8 +742,8 @@ new GameSession({
         ${driverChoices}
       </fieldset>`,
   },
-  defaults: { steering: 'help', laps: 2, reach: 'medium', fighter: ROSTER[0].id },
-  choices: { steering: String, laps: Number, reach: String, fighter: String },
+  defaults: { steering: 'help', laps: 2, reach: 'medium', fighter: ROSTER[0].id, rivals: 'race' },
+  choices: { steering: String, laps: Number, reach: String, fighter: String, rivals: String },
   tagline: (side) => `Open your ${side} hand to make your car go!`,
   finishLine: 'You did it! Great racing!',
   portraits: () => renderPortraits(ROSTER),
