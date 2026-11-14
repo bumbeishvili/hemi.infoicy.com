@@ -39,6 +39,9 @@ test('out of hearts, the run is over there: a kind card, Try again, and the same
   await expect(page.locator('#finish-title')).toHaveText('Out of hearts!');
   await expect(page.locator('#finish-line')).toContainText('tripped 4 times');
   await expect(page.locator('#run-again')).toHaveText('Try again');
+  // Nothing is cheered, and the voice says what it says after any game that was lost.
+  expect(await page.evaluate(() => window.__game.game.sound.finished)).toEqual({ line: 'So close! Try again!', lost: true });
+  expect(await page.evaluate(() => window.__game.game.confetti.running)).toBe(false);
   await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 3 again!');
   expect(await page.evaluate(() => window.__game.game.confetti.running ?? false)).toBeFalsy();
   await page.waitForTimeout(500);

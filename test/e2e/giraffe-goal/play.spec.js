@@ -321,6 +321,9 @@ test('in a real match the kicker shoots at a closed hand too, the goals count, a
   expect(end.stats.saves).toBe(0);
   await expect(page.locator('#screen-finish h2')).toHaveText('The other team won the shoot-out!');
   await expect(page.locator('#play-again')).toHaveText('Try again');
+  // Nothing is cheered, and the voice says what it says after any game that was lost.
+  expect(await page.evaluate(() => window.__game.sound.finished)).toEqual({ line: 'So close! Try again!', lost: true });
+  expect(await page.evaluate(() => window.__game.hud.confetti.running)).toBe(false);
   await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 1 again!');
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('camera-games-settings')).levels?.['giraffe-goal'] ?? 1)).toBe(1);
   await page.waitForTimeout(800);

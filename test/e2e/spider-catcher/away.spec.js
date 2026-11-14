@@ -58,6 +58,9 @@ test('left alone too long, a spider heads off and gets away, and the third to ge
   await waitForScreen(page, 'finish');
   await expect(page.locator('#screen-finish h2')).toHaveText('Three little spiders got away!');
   await expect(page.locator('#play-again')).toHaveText('Try again');
+  // Nothing is cheered, and the voice says what it says after any game that was lost.
+  expect(await page.evaluate(() => window.__game.sound.finished)).toEqual({ line: 'So close! Try again!', lost: true });
+  expect(await page.evaluate(() => window.__game.hud.confetti.running)).toBe(false);
   await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 2 again!');
   expect(await page.evaluate(() => window.__game.session.levels.current)).toBe(2);
   await page.waitForTimeout(800);

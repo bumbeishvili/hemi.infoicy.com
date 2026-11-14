@@ -26,6 +26,9 @@ test('as it comes, there\'s a clock before sunset, and when the sun sets first t
   await expect(page.locator('#finish-title')).toHaveText('The sun has set!');
   await expect(page.locator('#finish-line')).toContainText('freed 1 of 5 friends before sunset, and 4 are still waiting');
   await expect(page.locator('#lift-again')).toHaveText('Try again');
+  // Nothing is cheered, and the voice says what it says after any game that was lost.
+  expect(await page.evaluate(() => window.__game.game.sound.finished)).toEqual({ line: 'So close! Try again!', lost: true });
+  expect(await page.evaluate(() => window.__game.game.confetti.running)).toBe(false);
   await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 3 again!');
   expect(await page.evaluate(() => window.__game.game.levels.current)).toBe(3);
   await page.waitForTimeout(600);
