@@ -299,11 +299,16 @@ test('three drops into the net and the crossing is over: the walker stays sat in
   await expect(page.locator('#finish-title')).toHaveText('Into the net! Try again.');
   await expect(page.locator('#finish-line')).toContainText('The walker dropped into the net 3 times, and that’s as many as a crossing has.');
   await expect(page.locator('#finish-crossed')).toHaveText('1 rope');
-  // The walker is sat in the net, whole, without its wheel, and can be seen there beside the card.
-  await expectSoon(async () => {
-    const { x, y, behind } = await walkerInPicture(page);
-    return !behind && x > 0.04 && x < 0.96 && y > 0.1 && y < 0.95;
-  }, { timeout: 15_000 }).toBe(true);
+  // The walker is sat in the net, whole, without its wheel. The camera comes down to it, so that once it has
+  // settled the walker can be seen there, beside the card.
+  await expectSoon(async () => (await state(page)).camera.y, { timeout: 15_000 }).toBeLessThan(up - 1);
+  await page.waitForTimeout(2500);
+  const seen = await walkerInPicture(page);
+  expect(seen.behind).toBe(false);
+  expect(seen.x).toBeGreaterThan(0.04);
+  expect(seen.x).toBeLessThan(0.96);
+  expect(seen.y).toBeGreaterThan(0.1);
+  expect(seen.y).toBeLessThan(0.95);
   const down = await state(page);
   expect(down.walker.size).toBeGreaterThan(0.9);
   expect(down.walker.y).toBeLessThan(up - 4);
