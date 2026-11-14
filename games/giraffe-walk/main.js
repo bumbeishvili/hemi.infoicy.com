@@ -16,6 +16,9 @@ const OPEN_FOR_GIRAFFE = 'Bring it to the giraffe, and open your hand!';
 const ON_THE_PLANK = ['Close your hand on the plank!', 'მოკუმე ხელი ფიცარზე!'];
 const TO_THE_BRIDGE = ['Bring it to the bridge, and open your hand!', 'ხიდთან მიიტანე და ხელი გაშალე!'];
 const HOME = 'The giraffe is home!';
+// When the sun goes down first. The card's words are only shown, and the voice says a line it already has.
+const DARK_TITLE = 'The sun went down!';
+const DARK_SAID = 'Great job!';
 
 const LAST_WORDS_SECONDS = 2.4;
 const HINT_AFTER_SECONDS = 4;
@@ -68,6 +71,9 @@ class WalkGame {
         this.walk.introduce('parrot', () => (this.walk.parrot === parrot ? parrot : null));
       },
     });
+    // When the sun goes down first, a line on the finish card saying what happened.
+    document.querySelector('#screen-finish .finish-hero')?.insertAdjacentHTML('beforebegin', '<p id="finish-story" class="finish-story" hidden></p>');
+    this.daylightShown = null;
     this.giraffe = new MoveDemo(byId('giraffe-stage'));
     this.giraffe.setCharacter(characterById('giraffe'));
     this.applySettings();
@@ -117,7 +123,13 @@ class WalkGame {
     this.walk.fed = { left: 0, right: 0 };
     this.walk.arriveAt(STOPS[0].place);
     this.walk.setLevel(level);
-    this.journey = new Journey({ level, onEvent: (event) => this.onJourney(event) });
+    // The sun goes down unless a grown-up chose Gentle, where it stays light, as the walk always was.
+    const daylight = this.session.settings.daylight !== 'gentle';
+    this.journey = new Journey({ level, daylight, onEvent: (event) => this.onJourney(event) });
+    this.atTree = false;
+    this.lost = false;
+    this.session.finishLine = HOME;
+    byId('chip-sun-box').hidden = !daylight;
     // Gifts only come from level 2, so level 1 looks as it always did.
     const gifts = this.journey.level.golden > 0;
     byId('chip-gifts-box').hidden = !gifts;
@@ -165,12 +177,14 @@ class WalkGame {
       gift: () => this.showProgress(),
       'stop-done': () => this.onStopDone(event),
       home: () => this.session.finish(),
+      dark: () => this.onDark(),
     };
     handlers[event.type]?.();
   }
 
   onStop({ stop, features }) {
     const { walk } = this;
+    this.atTree = true;
     walk.arriveAt(stop.place);
     this.giraffeDoes('giraffeWaits');
     this.story.say(stop.who, stop.hello);
@@ -210,8 +224,24 @@ class WalkGame {
     this.journey.feed(count, { golden });
   }
 
+  /**
+   * The sun went down before Giraffe got home: the walk ends there, kindly, and that level comes round again.
+   * His family come to find him, so nobody is left out in the dark.
+   */
+  onDark() {
+    const { session } = this;
+    this.lost = true;
+    this.atTree = false;
+    session.finishLine = DARK_SAID;
+    session.finish();
+    session.hud.confetti.stop();
+    const again = document.querySelector('#screen-finish .finish-actions .big-button');
+    if (again) again.textContent = 'Try again';
+  }
+
   /** Off to the next tree straight away, except at the very end, where there's a thank-you. */
   onStopDone({ stop }) {
+    this.atTree = false;
     this.walk.fruit = [];
     const next = this.journey.stops[this.journey.index + 1];
     if (!next) {
@@ -235,6 +265,17 @@ class WalkGame {
     byId('race-progress-fill').style.width = `${Math.round(share * 100)}%`;
     byId('map-giraffe').style.left = `${Math.round(share * 1000) / 10}%`;
     byId('chip-gifts').textContent = `🎁 ${journey.gifts}`;
+    this.showDaylight();
+  }
+
+  /** The sun sinking towards the hills, as a bar that empties. */
+  showDaylight() {
+    const share = this.journey.daylightShare;
+    const shown = Math.round(share * 100);
+    if (shown === this.daylightShown) return;
+    this.daylightShown = shown;
+    byId('sun-fill').style.width = `${shown}%`;
+    byId('chip-sun-box').dataset.low = share < 0.25 ? 'yes' : 'no';
   }
 
   update(dt, snapshot) {
@@ -254,6 +295,13 @@ class WalkGame {
       this.walk.setMouth(head.x + way * window.innerHeight * MOUTH_FORWARD, head.y + window.innerHeight * MOUTH_DOWN);
     }
     this.walk.update(dt, snapshot, { aspect: this.session.camera.aspect, playing: true, showHands: true });
+    // The sun only goes down while Giraffe waits at a tree and the camera can see the hand: not while he walks,
+    // and not for a child who's out of the picture.
+    const hand = snapshot?.[this.session.settings.hands];
+    const seen = Boolean(hand) && hand.status !== 'missing' && hand.reason !== 'edge' && hand.reason !== 'small';
+    if (this.atTree && seen && this.walk.walking === 0) this.journey.passTime(dt);
+    if (this.session.screen !== 'playing') return;
+    this.showDaylight();
     if (this.eatingUntil && performance.now() > this.eatingUntil) {
       this.eatingUntil = 0;
       if (this.walk.walking === 0 && this.walk.fruit.length) this.giraffeDoes('giraffeWaits');
@@ -312,7 +360,12 @@ class WalkGame {
     // The fruit the child's own hand fed Giraffe, with each hand and in all, so the big number and the rows
     // agree. The parrot's fruit isn't the child's, and fruit fed after he'd had enough still counts.
     const { fed } = this.walk;
-    return { hero: fed.left + fed.right, noun: 'walk', rows: { fed, gifts: { left: hands === 'left' ? gifts : 0, right: hands === 'right' ? gifts : 0 } } };
+    document.querySelector('#screen-finish h2').textContent = this.lost ? DARK_TITLE : HOME;
+    const story = byId('finish-story');
+    story.textContent = this.lost ? 'It got dark before Giraffe got home, so his family came to find him with a lantern.' : '';
+    story.hidden = !this.lost;
+    // When the sun went down first, that level comes round again.
+    return { hero: fed.left + fed.right, noun: 'walk', won: !this.lost, rows: { fed, gifts: { left: hands === 'left' ? gifts : 0, right: hands === 'right' ? gifts : 0 } } };
   }
 }
 
@@ -332,6 +385,7 @@ new GameSession({
         <div class="chips">
           <div class="chip"><span class="chip-label">Stop</span><span id="chip-stops" class="chip-value">1 of 5</span></div>
           <div id="chip-gifts-box" class="chip" hidden><span class="chip-label">Gifts</span><span id="chip-gifts" class="chip-value">🎁 0</span></div>
+          <div id="chip-sun-box" class="chip chip-sun" hidden><span class="chip-label">☀️ Home before dark</span><span class="sun-bar"><span id="sun-fill" class="sun-fill"></span></span></div>
         </div>
       </div>
       <div class="map" aria-hidden="true">
@@ -356,14 +410,19 @@ new GameSession({
       </div>`,
     panelSettings: `
       <fieldset class="choice">
+        <legend>The sun going down</legend>
+        <label><input type="radio" name="daylight" value="sets"> It sets: Giraffe has to be home before dark, or the walk is over</label>
+        <label><input type="radio" name="daylight" value="gentle"> Gentle: it stays light, with no hurry, as before</label>
+      </fieldset>
+      <fieldset class="choice">
         <legend>How far to reach (how close the tree is to Giraffe)</legend>
         <label><input type="radio" name="reach" value="none"> Far</label>
         <label><input type="radio" name="reach" value="little"> Medium</label>
         <label><input type="radio" name="reach" value="lots"> Close</label>
       </fieldset>`,
   },
-  defaults: { reach: 'little' },
-  choices: { reach: String },
+  defaults: { reach: 'little', daylight: 'sets' },
+  choices: { reach: String, daylight: String },
   tagline: (side) => `Giraffe is lost! Pick fruit with your ${side} hand, carry it to him, and open your hand to feed him, all the way home.`,
   finishLine: HOME,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

@@ -1,6 +1,11 @@
 // The story of Giraffe's Long Walk Home. Giraffe got lost following a butterfly, and his family are at the
 // watering hole. It's a long way, and he gets hungry at every stop. Each fruit the child picks and
 // feeds him gets him closer to home. There's no screen in this file, so it runs in the unit tests.
+//
+// What's at stake: the sun is going down, and Giraffe has to be home before dark. The daylight only goes
+// while he's waiting at a tree and the camera can see the hand, never while he walks, and if it runs out
+// the walk ends there and that level comes round again (see daylightAt). On Gentle, a grown-up's choice,
+// it stays light, as the walk always was.
 import { clampLevel, ramp, stepsAt } from '../../core/levels.js';
 
 // Each stop: the place, what grows there, how many it takes, who's there, and what they say.
@@ -62,9 +67,23 @@ export function newAt(level) {
   return (NEW_AT[clampLevel(level)] ?? []).map((key) => ({ key, ...NEW_THINGS[key] }));
 }
 
+// How much daylight there is, in seconds for each fruit Giraffe wants and each other thing to do, at level 1
+// and at level 10: mending the bridge counts as two, and each frosty fruit as one more, for warming it.
+export const DAYLIGHT = { each: [14, 5], bridge: 2, frost: 1 };
+
+/** How many seconds of daylight a walk home has at a level: enough for every fruit and job on the way. */
+export function daylightAt(level) {
+  const each = ramp(level, DAYLIGHT.each[0], DAYLIGHT.each[1]);
+  const jobs = stopsAt(level).reduce((sum, stop, index) => {
+    const features = featuresAt(level, index);
+    return sum + stop.count + (features.bridge ? DAYLIGHT.bridge : 0) + features.frost * DAYLIGHT.frost;
+  }, 0);
+  return jobs * each;
+}
+
 /**
- * What each level of the walk brings, from 1 to 10. Level 1 is the walk as it always was. Nothing here
- * has a time limit, and nothing can be lost: green fruit, frost, butterflies and the monkey only mean
+ * What each level of the walk brings, from 1 to 10. Level 1 is the walk as it always was. Apart from
+ * the daylight (see daylightAt), nothing here can be lost: green fruit, frost, butterflies and the monkey only mean
  * choosing another fruit, there's always a ripe one free, and missing a gift costs nothing. How close
  * the tree is stays the grown-ups' choice. Each level brings something new: see NEW_AT.
  */
@@ -150,9 +169,13 @@ export function warm(fruit, dt, seconds) {
 }
 
 export class Journey {
-  constructor({ level = 1, onEvent = () => {} } = {}) {
+  /** daylight false is Gentle, the walk as it was, where it stays light however long it takes. */
+  constructor({ level = 1, daylight = true, onEvent = () => {} } = {}) {
     this.onEvent = onEvent;
     this.levelNumber = clampLevel(level);
+    this.daylight = daylight ? daylightAt(this.levelNumber) : Infinity;
+    this.dayLeft = this.daylight;
+    this.dark = false;
     this.stops = stopsAt(level);
     this.level = walkAt(level);
     this.index = -1;
@@ -180,6 +203,24 @@ export class Journey {
     const stops = Math.max(0, this.index);
     const atThisOne = this.stop ? this.fed / this.stop.count : 0;
     return Math.min(1, (stops + atThisOne) / this.stops.length);
+  }
+
+  /** How much daylight is left, from 1 at the start to 0 at dark. Always 1 on Gentle. */
+  get daylightShare() {
+    return Number.isFinite(this.daylight) ? this.dayLeft / this.daylight : 1;
+  }
+
+  /**
+   * The sun goes down while Giraffe waits at a tree and the camera can see the hand. The game only calls this
+   * then: never while he walks, during a hand check, or with nobody in the picture. When it's dark, the walk
+   * is over.
+   */
+  passTime(dt) {
+    if (this.dark || this.over || !Number.isFinite(this.daylight)) return;
+    this.dayLeft = Math.max(0, this.dayLeft - dt);
+    if (this.dayLeft > 0) return;
+    this.dark = true;
+    this.emit('dark');
   }
 
   /** How many more fruit he wants at this stop. */

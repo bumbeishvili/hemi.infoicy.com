@@ -86,3 +86,27 @@ body[data-screen='playing'] .map { display: block; }
 @media (prefers-reduced-motion: reduce) {
   .film-fruit, .film-finger, .film-hand { animation-duration: 6s; }
 }
+
+/* The daylight left to get Giraffe home, as a bar that empties. It goes down slowly and smoothly, and only
+   changes colour when it's nearly gone, so nothing flashes. */
+.sun-bar {
+  display: block;
+  width: clamp(80px, 10vw, 140px);
+  height: 12px;
+  margin-top: 6px;
+  background: var(--accent-track);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.sun-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #ffc93c;
+  border-radius: 999px;
+  transition: width 0.4s linear, background-color 1.5s ease;
+}
+.chip-sun[data-low="yes"] .sun-fill { background: #f08a4b; }
+
+.finish-story { margin: 0; font-size: clamp(17px, 2.1vw, 23px); font-weight: 600; text-align: center; }
+.finish-story[hidden] { display: none; }
