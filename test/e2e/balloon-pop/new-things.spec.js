@@ -1,7 +1,7 @@
 // Balloon Pop's new things, level by level, with real photos going through the real tracker: presents
 // that fall to be caught, power-up bubbles, star prizes, gems from pairs, friends in baskets, the magnet,
 // rainbow balloons, the bluebird and big balloons, the places, the prize tally, and the "New:" chips.
-import { expect, openGame, screenName, shot, show, test, waitForHand, waitForScreen } from '../helpers.js';
+import { expect, openGame, screenName, shot, show, test, waitForHand, waitForScreen } from './helpers.js';
 
 const GAME = 'balloon-pop';
 

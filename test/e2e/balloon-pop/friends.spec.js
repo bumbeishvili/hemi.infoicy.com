@@ -2,7 +2,7 @@
 // game together. The host's game runs the balloons and the sums, and everyone sees the same ones: whoever's
 // hand gets to a balloon first has it, and it's gone for everyone. Here they're two separate browsers,
 // talking through the race server on this computer (tools/race-server.mjs).
-import { expect, openGame, show, test, waitForScreen } from '../helpers.js';
+import { expect, openGame, show, test, waitForScreen } from './helpers.js';
 
 const GAME = 'balloon-pop';
 

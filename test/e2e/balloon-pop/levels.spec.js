@@ -1,7 +1,7 @@
 // Balloon Pop's levels: at level 10 there are more balloons, a little faster, star balloons that need the
 // open hand held on them for a moment, pairs tied together, a breeze, and more answers in the maths
 // challenge. It can still be finished, and nothing flashes. Level 1 is checked by play.spec.js.
-import { expect, openGame, shot, show, test, waitForHand, waitForScreen } from '../helpers.js';
+import { expect, openGame, shot, show, test, waitForHand, waitForScreen } from './helpers.js';
 
 const GAME = 'balloon-pop';
 const AT_10 = { levels: { [GAME]: 10 } };

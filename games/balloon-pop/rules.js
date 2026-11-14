@@ -6,6 +6,10 @@
 // Every level from 2 brings something new to see and play with, and keeps what came before: presents
 // with sweets in them, power-up bubbles, star balloons, pairs, friends in baskets, a magnet, rainbow
 // balloons, a bluebird and big balloons. Prizes only ever add: missing one costs nothing.
+//
+// What's at stake: balloons that float off the top of the sky get away, and when too many have got away
+// before the child has popped enough, the game is over and that level comes round again (see awayAllowed).
+// On Gentle, a grown-up's choice, floating away costs nothing and the levels climb as gently as they did.
 import { ramp, rampWhole, stepsAt } from '../../core/levels.js';
 import { choicesFor, LEVELS as MATHS } from './maths.js';
 
@@ -48,13 +52,27 @@ export const BUBBLE_REACH = 0.65;
 // The bluebird pops a balloon near the hand this often, and only this near it, in screen heights.
 export const BIRD = { every: 1.1, range: 0.34, flySeconds: 0.45 };
 
-/** What changes from level 1 to 10. */
-export function balloonLevel(level) {
+// How many balloons may get away in a game, as a share of how many there are to pop, at level 1 and at
+// level 10. At level 1 it's twice as many, so a child new to it has plenty of time, and at level 10 half.
+export const AWAY_SHARE = [2, 0.5];
+export const LEAST_AWAY = 3;
+
+/** How many balloons can float away before the game is over, for a number to pop at a level. */
+export function awayAllowed(goal, level) {
+  return Math.max(LEAST_AWAY, Math.round(goal * ramp(level, AWAY_SHARE[0], AWAY_SHARE[1])));
+}
+
+/**
+ * What changes from level 1 to 10. gentle is the game as it was before balloons could get away: its
+ * levels climb as gently as they always did. Otherwise they climb further.
+ */
+export function balloonLevel(level, { gentle = false } = {}) {
   return {
-    // Balloons float up faster. Even at level 10 each is on the screen for 3/4 of the time it was.
-    rise: ramp(level, 1, 1.35),
+    // Balloons float up faster. On Gentle, even at level 10 each is on the screen for 3/4 of the time it
+    // was, and otherwise for 2/3 of it.
+    rise: ramp(level, 1, gentle ? 1.35 : 1.5),
     // They come along more often: the time between them, as a share of the chosen speed's.
-    every: ramp(level, 1, 0.72),
+    every: ramp(level, 1, gentle ? 0.72 : 0.62),
     // More of them can be up at once.
     most: rampWhole(level, 0, 3),
     // More of them sway wide and drift across.
@@ -165,14 +183,14 @@ export function newsIsOn(key, level) {
  * How many balloons come up a minute at a speed and level, counting both of a pair, the three a big one
  * pops into, and the two more that a friend's basket brings. A power-up bubble takes a balloon's place.
  */
-export function balloonsPerMinute(paceName, level) {
-  const plan = balloonLevel(level);
+export function balloonsPerMinute(paceName, level, options = {}) {
+  const plan = balloonLevel(level, options);
   const stream = (60 / (PACES[paceName].every * plan.every)) * (1 + plan.pairs + plan.big * BIG_SPLITS_INTO);
   const baskets = plan.baskets ? (60 / plan.baskets) * (BASKET_BALLOONS - 1) : 0;
   return stream + baskets;
 }
 
 /** How many seconds a balloon takes to float up the screen, at its usual pace. */
-export function secondsOnScreen(paceName, level) {
-  return 1 / (PACES[paceName].rise * balloonLevel(level).rise);
+export function secondsOnScreen(paceName, level, options = {}) {
+  return 1 / (PACES[paceName].rise * balloonLevel(level, options).rise);
 }
