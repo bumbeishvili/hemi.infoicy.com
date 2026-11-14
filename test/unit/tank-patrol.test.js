@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { AIM_HELP, CAGE_SPOTS, GUN, KINDS, LEVELS, NEWS, PACES, POWERS, Patrol, STANDOFF, headingTo, levelPlan, newsAt, readHand, shellPoint, tanksFor } from '../../games/tank-patrol/patrol.js';
+import { AIM_HELP, CAGE_SPOTS, GUN, KINDS, LEVELS, NEWS, PACES, POWERS, Patrol, STANDOFF, challengePlan, headingTo, levelPlan, newsAt, readHand, shellPoint, tanksFor } from '../../games/tank-patrol/patrol.js';
 import { BATTLE_SECONDS, CLEAR, Duel, SAFE_SECONDS, STARTS, battleSeconds, wrap } from '../../games/tank-patrol/duel.js';
 import { MOST_FOES, MOST_SHELLS, TEAM_CLEAR, TEAM_STARTS, TeamPatrol, teamTanks } from '../../games/tank-patrol/team.js';
 import { MOST_BYTES, cleanFoes, cleanTag, cleanTank } from '../../server/race-room.js';
@@ -10,7 +10,8 @@ import { BRIDGES, PLAY, SPAWNS, START, TANK_RADIUS, groundY, heightAt, riverNear
 import { PatrolSound } from '../../games/tank-patrol/patrol-sound.js';
 
 const STEP = 1 / 60;
-const quiet = (settings = {}) => new Patrol({ random: seeded(7), ...settings });
+// Gentle, the game as it always was, unless a test says otherwise: the challenge has its own tests.
+const quiet = (settings = {}) => new Patrol({ random: seeded(7), level: 'gentle', ...settings });
 
 function run(patrol, seconds, input) {
   for (let t = 0; t < seconds; t += STEP) patrol.update(STEP, typeof input === 'function' ? input(t) : input);
@@ -768,8 +769,8 @@ test('level 10 asks no more than twice the movements a minute of level 1, and la
   }
 });
 
-test('at level 10 there\'s still at least 70% of the time to get out from under a shell', () => {
-  for (const level of Object.keys(LEVELS)) {
+test('on Gentle, at level 10 there\'s still at least 70% of the time to get out from under a shell', () => {
+  for (const level of ['gentle']) {
     const first = started({ level, levelNumber: 1 });
     const last = started({ level, levelNumber: 10 });
     assert.ok(last.shellSeconds >= first.shellSeconds * 0.7, level);
@@ -1638,6 +1639,7 @@ function teamUp(settings = {}) {
       slot,
       runs: slot === 0,
       random: seeded(seed),
+      level: 'gentle', // As it always was, unless a test says otherwise.
       ...settings,
       onEvent: (event) => {
         log.push(event);
@@ -2126,7 +2128,7 @@ test('if whoever made the patrol goes, the friend\'s game takes the robot tanks 
 
 test('a friend who goes before it has begun leaves a patrol for one, on either side', () => {
   for (const slot of [0, 1]) {
-    const patrol = new TeamPatrol({ slot, runs: slot === 0, tanks: 6, random: seeded(5) });
+    const patrol = new TeamPatrol({ slot, runs: slot === 0, tanks: 6, level: 'gentle', random: seeded(5) });
     patrol.friendGone();
     assert.deepEqual([patrol.runs, patrol.total, patrol.rolling.length + patrol.queue.length], [true, 6, 6], `slot ${slot}`);
     patrol.begin();
@@ -2170,4 +2172,136 @@ test('a patrol together\'s messages are passed on to the game, and its hits go f
   const main = readFileSync(new URL('../../games/tank-patrol/main.js', import.meta.url), 'utf8');
   assert.match(main, /tag: \(\) => this\.friends\.sendTag\(event\.id, event\.hits\)/);
   assert.match(main, /this\.patrol\.friendTagged\(message\.k, message\.n\)/);
+});
+
+/* ---------- the challenge: Medium, how it comes, and Tough, where the shells can win ---------- */
+
+/**
+ * A made-up player. notice is how long after a shell sets off they see it's coming for them, switchSeconds how
+ * long their hand takes to change, and a careless one never drives away from a shell at all. To get out from under
+ * one, they drive for the nearest free place just outside where it will land.
+ */
+function patrolAs(patrol, { notice = 0.8, switchSeconds = 0.45, dodge = true } = {}) {
+  let hand = 'closed';
+  let waitFor = 0;
+  for (let seconds = 0; patrol.state === 'playing' && seconds < 900; seconds += STEP) {
+    const { tank } = patrol;
+    const target = patrol.rolling.slice().sort((a, b) => Math.hypot(a.x - tank.x, a.z - tank.z) - Math.hypot(b.x - tank.x, b.z - tank.z))[0];
+    const shell = dodge && patrol.shells.find(({ to, blast, share, seconds: over }) => share * over > notice && Math.hypot(tank.x - to.x, tank.z - to.z) <= blast + 1);
+    let wanted = 'closed';
+    let pointer = target ? { x: target.x, z: target.z } : { x: tank.x, z: tank.z };
+    if (shell) {
+      let best = null;
+      for (let step = 0; step < 16; step += 1) {
+        const angle = (step / 16) * Math.PI * 2;
+        const x = shell.to.x + Math.cos(angle) * (shell.blast + 5);
+        const z = shell.to.z + Math.sin(angle) * (shell.blast + 5);
+        const gap = Math.hypot(x - tank.x, z - tank.z);
+        if (patrol.nav.isFree(x, z) && (!best || gap < best.gap)) best = { x, z, gap };
+      }
+      pointer = best ?? pointer;
+    } else if (target && patrol.inRange(target)) {
+      wanted = 'open';
+    }
+    if (wanted !== hand) {
+      waitFor += STEP;
+      if (waitFor >= switchSeconds) {
+        hand = wanted;
+        waitFor = 0;
+      }
+    } else {
+      waitFor = 0;
+    }
+    patrol.update(STEP, { hand, pointer });
+  }
+  return patrol.state;
+}
+
+const TANK_PLAYERS = {
+  careless: { dodge: false },
+  slowChild: { notice: 1.2, switchSeconds: 0.6 },
+  adult: { notice: 0.6, switchSeconds: 0.3 },
+  sharp: { notice: 0.3, switchSeconds: 0.15 },
+};
+
+const patrolWins = (options, player) => [3, 7, 11, 19].filter((seed) => {
+  const patrol = new Patrol({ random: seeded(seed), ...options });
+  patrol.begin();
+  return patrolAs(patrol, TANK_PLAYERS[player]) === 'won';
+}).length;
+
+test('it comes on Medium, where the shells can win: four hearts, coming back slowly, and no stopping at one', () => {
+  const patrol = new Patrol();
+  assert.equal(patrol.level, LEVELS.medium);
+  assert.deepEqual([LEVELS.medium.hearts, LEVELS.medium.canLose, LEVELS.medium.healAfter], [4, true, 14]);
+  // A child who never drives away from a shell mostly loses, even at level 1, and a slow, careful one wins it.
+  assert.ok(patrolWins({ levelNumber: 1 }, 'careless') <= 1);
+  assert.equal(patrolWins({ levelNumber: 1 }, 'slowChild'), 4);
+  // On Gentle, the game as it was, even the careless one gets there.
+  assert.equal(patrolWins({ level: 'gentle', levelNumber: 1 }, 'careless'), 4);
+});
+
+test('level 10 on Medium needs real skill: a slow child and a fair grown-up lose it, and a sharp player wins', () => {
+  assert.equal(patrolWins({ levelNumber: 10 }, 'careless'), 0);
+  assert.equal(patrolWins({ levelNumber: 10 }, 'slowChild'), 0);
+  assert.equal(patrolWins({ levelNumber: 10 }, 'adult'), 0);
+  assert.ok(patrolWins({ levelNumber: 10 }, 'sharp') >= 3);
+  for (const player of Object.keys(TANK_PLAYERS)) assert.equal(patrolWins({ level: 'gentle', levelNumber: 10 }, player), 4, `Gentle ${player}`);
+});
+
+test('on Medium and Tough the levels ramp: by level 10 shells come about twice as often and take about 60% as long', () => {
+  for (const level of ['medium', 'tough']) {
+    const first = started({ level, levelNumber: 1 });
+    const last = started({ level, levelNumber: 10 });
+    assert.equal(first.shellSeconds, LEVELS[level].shellSeconds, 'level 1 is as it always was');
+    assert.ok(last.shellSeconds <= first.shellSeconds * 0.61 && last.shellSeconds >= first.shellSeconds * 0.5, `${level}: ${last.shellSeconds}`);
+    const gaps = (patrol) => average(Array.from({ length: 200 }, () => patrol.lobGap()));
+    assert.ok(gaps(last) <= gaps(first) * 0.55, `${level}: shells`);
+    assert.ok(last.lead >= first.lead + 0.5, `${level}: shells aim further ahead`);
+    assert.equal(last.challenge.healAfter, 2, 'hearts come back half as quickly');
+  }
+  assert.deepEqual(challengePlan(10, false), challengePlan(1, false), 'Gentle never ramps more than it did');
+  assert.deepEqual(challengePlan(1, true), challengePlan(1, false), 'level 1 is the same on every setting');
+});
+
+test('at level 10 on Medium a heart takes twice as long to come back', () => {
+  const patrol = started({ level: 'medium', levelNumber: 10 });
+  oneTankAt(patrol, 30);
+  lotsOfHits(patrol, 1);
+  patrol.level = { ...patrol.level, lobEvery: [999, 999] };
+  const after = patrol.hearts;
+  run(patrol, LEVELS.medium.healAfter + 0.5, (t) => closedAt(START.x + Math.sin(t) * 8, START.z - 3));
+  assert.equal(patrol.hearts, after);
+  run(patrol, LEVELS.medium.healAfter, (t) => closedAt(START.x + Math.sin(t) * 8, START.z - 3));
+  assert.equal(patrol.hearts, after + 1);
+});
+
+test('resting still stops the shells on Tough at level 10, so a child who walks away is never caught for it', () => {
+  const patrol = started({ level: 'tough', levelNumber: 10 });
+  run(patrol, 3.5, { hand: 'none', pointer: null });
+  assert.equal(patrol.resting, true);
+  const hearts = patrol.hearts;
+  run(patrol, 60, { hand: 'none', pointer: null });
+  assert.deepEqual([patrol.state, patrol.hearts, patrol.shells.length], ['playing', hearts, 0]);
+});
+
+test('together, on Medium, a child whose hearts run out has lost, and on Gentle hearts still stop at one', () => {
+  for (const [level, lost] of [['medium', true], ['gentle', false]]) {
+    const both = teamUp({ level });
+    const [host, guest] = [both.host.patrol, both.guest.patrol];
+    for (let i = 0; i < 6; i += 1) {
+      guest.shells.push({ id: 900 + i, share: 0.999, seconds: 3, blast: 5, from: { x: 0, y: 0, z: 0 }, to: { x: guest.tank.x, y: 0, z: guest.tank.z }, target: guest.tank });
+      runTeam(both, STEP, busyHand(host), busyHand(guest));
+    }
+    runTeam(both, 1.2, busyHand(host), busyHand(guest));
+    assert.equal(guest.state === 'lost', lost, level);
+    assert.equal(guest.hearts > 0, !lost, level);
+    assert.equal(host.state, 'playing', 'the host hears of it from the result the friend\'s game sends');
+  }
+});
+
+test('a patrol together that is lost says so in the result that goes to the friend, and the friend\'s game ends it too', () => {
+  const main = readFileSync(new URL('../../games/tank-patrol/main.js', import.meta.url), 'utf8');
+  assert.match(main, /this\.friends\.finished\(this\.sinceGo, \{ n: mine, w: this\.lost \? 0 : 1 \}\)/);
+  assert.match(main, /this\.friends\.results\.get\(team\.friend\.id\)\?\.won !== false/);
 });

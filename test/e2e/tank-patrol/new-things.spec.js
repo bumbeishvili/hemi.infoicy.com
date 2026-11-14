@@ -217,7 +217,7 @@ test('level 6: firing at the cage lets the friend out, who hops over, and it\'s 
 });
 
 test('level 7: a digger goes underground and pops up nearer, and a heart crate gives a heart back', async ({ page }) => {
-  await startPatrol(page, atLevel(7, { tankLevel: 'medium' }));
+  await startPatrol(page, atLevel(7, { tankShells: 'medium' }));
   await stage(page, [{ kind: 'digger', dx: 22, dz: -14 }]);
   await countEvents(page);
   await show(page, null, 'fist', { scale: 0.7 });

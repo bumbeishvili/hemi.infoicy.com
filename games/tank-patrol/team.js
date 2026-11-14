@@ -8,8 +8,11 @@
 // hit, decided by the game that fired it, as that's the one its child is looking at. The friend's game shows its
 // own hits at once and tells the host's game (a 'tag'), which counts them (friendTagged).
 //
-// It's the plain patrol, with none of what the levels bring, on Gentle, so the shells are slow and nobody can
-// lose, and with twice the robot tanks, as there are two tanks to stop them. Shells come for each tank in turn,
+// It's the plain patrol, with none of what the levels bring, and with twice the robot tanks, as there are two
+// tanks to stop them. Each child has their own hearts, from their own How hard: on Medium and Tough a child whose
+// hearts run out has lost, and so has the team, as their game says so to the other in the result it sends at the
+// end. On Gentle a child's hearts stop at one, and with both on Gentle nobody can lose, as it always was. The
+// host's How hard says how often the shells come and how quickly. Shells come for each tank in turn,
 // never for one whose child is resting, and the robot tanks only stop and wait when both children are resting.
 // A friend who goes leaves the other to finish by themselves, with half of what was left. If the friend was the
 // one running the robot tanks, the game still here takes them over as they are.
@@ -51,12 +54,12 @@ export class TeamPatrol extends Pair {
   /**
    * slot is this child's place, 0 for whoever made the patrol and 1 for their friend. runs says whether this
    * game runs the robot tanks, which is the host's. tanks and pace are the host's number of robot tanks and
-   * speed. help and driving are this child's own.
+   * speed. help, driving and level, how hard it is, are this child's own.
    */
-  constructor({ slot = 0, runs = true, tanks = 6, pace = 'slow', help = 'little', driving = 'closed', random = Math.random, onEvent = () => {} } = {}) {
-    // Level 1 on Gentle: nothing a level brings, and nobody can lose. A game that doesn't run the robot tanks has
-    // none of its own: they come from the host's game.
-    super({ slot, starts: TEAM_STARTS, tanks: runs ? teamTanks(tanks) : 0, pace, level: 'gentle', levelNumber: 1, help, driving, random, onEvent });
+  constructor({ slot = 0, runs = true, tanks = 6, pace = 'slow', level = 'medium', help = 'little', driving = 'closed', random = Math.random, onEvent = () => {} } = {}) {
+    // Level 1: nothing a level brings. A game that doesn't run the robot tanks has none of its own: they come from
+    // the host's game.
+    super({ slot, starts: TEAM_STARTS, tanks: runs ? teamTanks(tanks) : 0, pace, level, levelNumber: 1, help, driving, random, onEvent });
     this.runs = Boolean(runs);
     this.clear = TEAM_CLEAR;
     this.total = teamTanks(tanks);
@@ -117,7 +120,7 @@ export class TeamPatrol extends Pair {
 
   /**
    * Whether a shell can set off for a tank: not while its child is resting, or this child's hand has gone, and
-   * not with one on its way to it already, as on Gentle there's only ever one to get out from under.
+   * not with one on its way to it already, so there's only ever one to get out from under.
    */
   canLobAt(tank) {
     if (this.shells.some(({ target }) => target === tank)) return false;
@@ -135,8 +138,7 @@ export class TeamPatrol extends Pair {
     // A turn that can't be taken passes to the other child, after as long again, so nobody has more shells
     // because their friend is resting.
     if (this.together && this.lobIn - dt <= 0 && !this.lobTarget()) {
-      const [low, high] = this.level.lobEvery;
-      this.lobIn = (low + this.random() * (high - low)) * this.plan.lobEvery;
+      this.lobIn = this.lobGap();
       this.lobTurn = 1 - this.lobTurn;
       return;
     }

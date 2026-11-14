@@ -26,6 +26,10 @@ const GIRAFFE_ONE_MORE = 'One more tank!';
 const GIRAFFE_BATTLE = 'A friendly battle! Hit your friend’s tank!';
 const FINISH = 'You saved the valley!';
 const SO_CLOSE = 'So close!';
+// What the card says when the shells win, in the story. It's only shown, as "So close!" is what's said.
+const SHELLS_WON = { en: 'The robot tanks got the better of you!', ka: 'რობოტმა ტანკებმა გაგაჩერეს!' };
+const SHELLS_WON_TOGETHER = { en: 'The robot tanks got the better of you both!', ka: 'რობოტმა ტანკებმა ორივე გაგაჩერეს!' };
+const TRY_AGAIN = { en: 'Try again', ka: 'კიდევ სცადე' };
 const CLOSE_TO_DRIVE = 'Close your hand to drive!';
 const OPEN_TO_FIRE = 'Open your hand to fire!';
 const TOO_FAR = 'Too far! Close your hand and drive closer!';
@@ -46,6 +50,8 @@ const TICKLES_AT_MOST = 2; // Giraffe only says this now and then.
 const NAMES_AFTER_SECONDS = 1.3; // Names of new things wait until "GO!" has gone.
 
 // With a friend, each on their own computer: see core/friends-ui.js for what each of these is.
+// A patrol together that the two have lost has its own title, which the friends' finish card reads each time it fills in.
+const teamCard = { lost: null };
 const TANK_WORDS = {
   toggle: 'Play with a friend',
   make: 'Make a game',
@@ -56,7 +62,9 @@ const TANK_WORDS = {
   together: 'Together',
   against: 'Against each other',
   howTogether: 'Tell your friend the code. Then you both press <b>Climb aboard</b>, and stop the robot tanks together.',
-  teamTitle: 'You saved the valley together!',
+  get teamTitle() {
+    return teamCard.lost ?? 'You saved the valley together!';
+  },
   leave: 'Leave this game',
   privacy: 'Only your name, whether you chose together or against each other, where your tank is and which way it points, when it fires, how many hits it makes, and whether your hand is open or resting go to your friend. Together, the game of whoever made it also sends where the robot tanks and their shells are. The camera picture stays on this computer.',
   alone: 'Play on your own',
@@ -172,10 +180,12 @@ class TankGame {
     const { hands, language } = this.session.settings;
     this.field.configure({ side: hands, language });
     if (this.patrol) {
-      const { reach, pace, tankLevel, driving } = this.session.settings;
-      // With a friend, both tanks go at the host's speed, and there's nothing to make harder.
-      if (this.battle || this.team) this.patrol.configure({ help: reach, driving });
-      else this.patrol.configure({ help: reach, pace, level: tankLevel, driving });
+      const { reach, pace, tankShells, driving } = this.session.settings;
+      // With a friend, both tanks go at the host's speed. A battle has nothing to make harder, and together each
+      // child's own How hard says how many hearts they have.
+      if (this.battle) this.patrol.configure({ help: reach, driving });
+      else if (this.team) this.patrol.configure({ help: reach, level: tankShells, driving });
+      else this.patrol.configure({ help: reach, pace, level: tankShells, driving });
       this.showHearts();
     }
   }
@@ -234,6 +244,7 @@ class TankGame {
     this.saidWaving = false;
     this.preview = false;
     sound.lost = false;
+    this.lost = false;
     const friendly = this.friends.current;
     const rival = friendly?.friends[0] ?? null;
     const pace = PACES[friendly?.mode] ? friendly.mode : 'slow';
@@ -246,6 +257,7 @@ class TankGame {
         runs: friendly.hosting,
         tanks: friendly.length,
         pace,
+        level: settings.tankShells,
         help: settings.reach,
         driving: settings.driving,
         onEvent: (event) => this.onEvent(event),
@@ -266,7 +278,7 @@ class TankGame {
       this.patrol = new Patrol({
         tanks: settings.tanks,
         pace: settings.pace,
-        level: settings.tankLevel,
+        level: settings.tankShells,
         levelNumber: level,
         help: settings.reach,
         driving: settings.driving,
@@ -446,18 +458,39 @@ class TankGame {
   onLost() {
     const { session } = this;
     session.sound.lost = true;
+    this.lost = true;
     this.end(SO_CLOSE);
+  }
+
+  /**
+   * On a patrol together, the friend's hearts have run out, which their game says in the result it sends: the
+   * team has lost together, and it ends here too.
+   */
+  watchFriendLost() {
+    const { team, session } = this;
+    if (!team || team.alone || this.lost || session.screen !== 'playing') return;
+    if (this.friends.results.get(team.friend.id)?.won !== false) return;
+    this.patrol.fizzleShells();
+    this.onLost();
   }
 
   end(words) {
     const { session } = this;
+    const language = session.settings.language === 'ka' ? 'ka' : 'en';
     session.finishLine = words;
     // A patrol finished together says so, on both screens.
     const together = Boolean(this.team) && !this.team.alone;
-    document.querySelector('#screen-finish h2').textContent = together ? TANK_WORDS.teamTitle : session.translate(words);
+    teamCard.lost = this.lost && together ? SHELLS_WON_TOGETHER[language] : null;
+    const title = this.lost && !together ? SHELLS_WON[language] : together ? TANK_WORDS.teamTitle : session.translate(words);
+    document.querySelector('#screen-finish h2').textContent = title;
     // Short enough to stay on one line: the title above says what was stopped.
     document.querySelector('.finish-hero').lastChild.textContent = together ? ' stopped together' : this.patrol.stopped === 1 ? ' tank stopped' : ' tanks stopped';
     session.finish();
+    // The level doesn't move on, and the big button says so.
+    const again = document.getElementById('play-again');
+    if (this.lost && again) again.textContent = TRY_AGAIN[language];
+    // And no confetti for the robot tanks winning.
+    if (this.lost) session.hud.confetti?.stop();
   }
 
   showProgress() {
@@ -650,6 +683,7 @@ class TankGame {
     patrol.update(dt, { hand, pointer });
     if (this.battle) this.updateBattle();
     if (this.team) this.updateTeam();
+    if (this.team) this.watchFriendLost();
     // The game may have just finished.
     if (session.screen !== 'playing') return;
     field.showMarks = true;
@@ -760,7 +794,8 @@ class TankGame {
     // The friend's finish card fills in with how this child did.
     // On a patrol together, it's how many of the robot tanks were this child's.
     const mine = this.battle ? this.patrol.score.mine : this.team ? this.patrol.stoppedBy.mine : this.patrol.stopped;
-    if (this.friends.current) this.friends.finished(this.sinceGo, { n: mine, w: 1 });
+    // A child whose hearts ran out on a patrol together, or whose friend's did, says the team lost.
+    if (this.friends.current) this.friends.finished(this.sinceGo, { n: mine, w: this.lost ? 0 : 1 });
   }
 
   summary() {
@@ -783,11 +818,11 @@ class TankGame {
       return { hero: mine, noun: 'battle', rows: { hits: onHand(mine) }, won: true, countsForLevel: false };
     }
     if (this.team) {
-      // A patrol together: how many the two stopped between them, and how many of those were this child's. Nobody
-      // can lose it, and it doesn't move anyone's own level on.
+      // A patrol together: how many the two stopped between them, and how many of those were this child's. On
+      // Medium and Tough the two can lose it together. It doesn't move anyone's own level on.
       rowOf('prizes').hidden = true;
       rowOf('friends').hidden = true;
-      return { hero: this.patrol.stopped, noun: 'patrol', rows: { tanks: onHand(this.patrol.stoppedBy.mine) }, won: true, countsForLevel: false };
+      return { hero: this.patrol.stopped, noun: 'patrol', rows: { tanks: onHand(this.patrol.stoppedBy.mine) }, won: !this.lost, countsForLevel: false };
     }
     // What was picked up, from level 2 on, and any friend let out of a cage, from level 6.
     const { plan } = this.patrol;
@@ -896,10 +931,10 @@ new GameSession({
         ${choice('reach', 'lots', 'A lot')}
       </fieldset>
       <fieldset class="choice">
-        <legend>How hard</legend>
-        ${choice('tankLevel', 'gentle', 'Gentle: the shells are slow, and it can’t be lost')}
-        ${choice('tankLevel', 'medium', 'Medium')}
-        ${choice('tankLevel', 'tough', 'Tough')}
+        <legend>How hard the robots’ shells come</legend>
+        ${choice('tankShells', 'gentle', 'Gentle: the shells are slow, hearts stop at one, and it can’t be lost')}
+        ${choice('tankShells', 'medium', 'Medium: the shells can win, and the patrol ends when the hearts run out')}
+        ${choice('tankShells', 'tough', 'Tough: fewer hearts, and the shells come thick and fast')}
       </fieldset>
       <fieldset class="choice">
         <legend>Robot tanks to stop (together with a friend, twice as many between you. Against each other, the battle lasts 2, 3 or 4 minutes)</legend>
@@ -913,8 +948,8 @@ new GameSession({
         ${choice('tankFriends', 'against', 'Against each other: tank against tank, with no robot tanks')}
       </fieldset>`,
   },
-  defaults: { pace: 'slow', reach: 'little', driving: 'closed', tankLevel: 'gentle', tanks: 6, tankFriends: 'together' },
-  choices: { pace: String, reach: String, driving: String, tankLevel: String, tanks: Number, tankFriends: String },
+  defaults: { pace: 'slow', reach: 'little', driving: 'closed', tankShells: 'medium', tanks: 6, tankFriends: 'together' },
+  choices: { pace: String, reach: String, driving: String, tankShells: String, tanks: Number, tankFriends: String },
   tagline: (side) => `Robot tanks are rolling into Giraffe’s valley! Close your ${side} hand to drive, and open it to fire.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

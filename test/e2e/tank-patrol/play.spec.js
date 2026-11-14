@@ -200,7 +200,7 @@ test('a shell costs a heart if the tank stays put, and nothing if it\'s driven a
 });
 
 test('on Gentle a child can\'t lose, however many shells land', async ({ page }) => {
-  await startPatrol(page, { tankLevel: 'gentle' });
+  await startPatrol(page, { tankShells: 'gentle' });
   await oneTankAt(page, 0, -30);
   await pointAt(page, { x: 3, z: 26 }, 'open');
   await handIs(page, 'open');
@@ -221,7 +221,7 @@ test('on Gentle a child can\'t lose, however many shells land', async ({ page })
 
 test('on Tough, running out ends it kindly, and they can go again straight away', async ({ page }) => {
   test.setTimeout(120_000);
-  await startPatrol(page, { tankLevel: 'tough' });
+  await startPatrol(page, { tankShells: 'tough' });
   await oneTankAt(page, 0, -30);
   await pointAt(page, { x: 3, z: 26 }, 'open');
   await handIs(page, 'open');
@@ -233,7 +233,10 @@ test('on Tough, running out ends it kindly, and they can go again straight away'
   });
   await stopPointing(page);
   await waitForScreen(page, 'finish');
-  await expect(page.locator('#screen-finish h2')).toHaveText('So close!');
+  // The card says what happened in the story, and the big button is to try again, at the same level.
+  await expect(page.locator('#screen-finish h2')).toHaveText('The robot tanks got the better of you!');
+  await expect(page.locator('#play-again')).toHaveText('Try again');
+  await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 1 again!');
   await page.waitForTimeout(300);
   await shot(page, 'k14-so-close');
   await show(page, null, 'open', { scale: 0.7 });
@@ -244,6 +247,43 @@ test('on Tough, running out ends it kindly, and they can go again straight away'
   expect(hearts).toBe(3);
   expect(state).toBe('playing');
   expect(stopped).toBe(0);
+});
+
+test('as it comes, the shells can win: four hits end the patrol at level 3, and level 3 comes round again', async ({ page }) => {
+  test.setTimeout(120_000);
+  await startPatrol(page, { tankShells: undefined, levels: { 'tank-patrol': 3 } });
+  expect(await page.evaluate(() => [window.__game.session.settings.tankShells, window.__game.patrol.level.canLose, window.__game.patrol.hearts])).toEqual(['medium', true, 4]);
+  await oneTankAt(page, 0, -30);
+  await pointAt(page, { x: 3, z: 26 }, 'open');
+  await handIs(page, 'open');
+  // A child who keeps playing, so a hand held still for 5 seconds isn't a rest, which would let the shells fizzle.
+  await page.evaluate(() => {
+    window.__awake = setInterval(() => {
+      window.__game.patrol.stillFor = 0;
+    }, 25);
+  });
+  // Real shells, coming down on the tank where it stands.
+  for (let i = 0; i < 4; i += 1) {
+    await page.evaluate(() => {
+      const { patrol } = window.__game;
+      patrol.lobIn = 9999; // Only these.
+      patrol.lob(patrol.rolling[0], { x: patrol.tank.x, z: patrol.tank.z }, 0.6, false);
+    });
+    await expect.poll(async () => (await patrolIs(page)).stats.hurts, { timeout: 8000 }).toBe(i + 1);
+  }
+  await stopPointing(page);
+  await waitForScreen(page, 'finish');
+  await expect(page.locator('#screen-finish h2')).toHaveText('The robot tanks got the better of you!');
+  await expect(page.locator('#play-again')).toHaveText('Try again');
+  await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 3 again!');
+  await page.waitForTimeout(400);
+  await shot(page, 'k14-shells-won');
+  // No confetti for losing.
+  expect(await page.evaluate(() => window.__game.session.hud.confetti.running)).toBe(false);
+  await show(page, null, 'open', { scale: 0.7 });
+  await page.locator('#play-again').click();
+  await waitForScreen(page, 'playing');
+  expect(await page.evaluate(() => window.__game.patrol.levelNumber)).toBe(3);
 });
 
 test('resting: with the hand gone or staying the same, the robots stop and wait, and nothing bad happens', async ({ page }) => {
@@ -394,23 +434,24 @@ test('the film shows what to do until the child has got the idea, and comes back
 });
 
 test('the grown-ups\' panel has every setting, the way back to all the games, and pauses the game', async ({ page }) => {
-  await startPatrol(page);
+  // As it comes, without the test helpers' Gentle.
+  await startPatrol(page, { tankShells: undefined });
   await page.locator('#open-panel').click();
   await expect(page.locator('#panel')).toBeVisible();
   await expect(page.locator('#panel-all-games')).toHaveAttribute('href', '../../index.html');
-  for (const name of ['pace', 'reach', 'driving', 'tankLevel', 'tanks']) {
+  for (const name of ['pace', 'reach', 'driving', 'tankShells', 'tanks']) {
     const options = await page.locator(`input[name="${name}"]`).count();
     expect(options, name).toBeGreaterThanOrEqual(2);
     expect(await page.locator(`input[name="${name}"]:checked`).count(), name).toBe(1);
   }
-  await expect(page.locator('input[name="tankLevel"][value="gentle"]')).toBeChecked();
+  await expect(page.locator('input[name="tankShells"][value="medium"]')).toBeChecked();
   await expect(page.locator('input[name="driving"][value="closed"]')).toBeChecked();
   await expect(page.locator('input[name="pace"][value="slow"]')).toBeChecked();
   await expect(page.locator('input[name="tanks"][value="6"]')).toBeChecked();
   await page.locator('input[name="reach"][value="lots"]').check();
   await page.locator('input[name="driving"][value="auto"]').check();
   await page.locator('input[name="pace"][value="fast"]').check();
-  await page.locator('input[name="tankLevel"][value="tough"]').check();
+  await page.locator('input[name="tankShells"][value="tough"]').check();
   await shot(page, 'k22-panel');
   const set = await page.evaluate(async () => {
     const { AIM_HELP, LEVELS, PACES } = await import('/games/tank-patrol/patrol.js');

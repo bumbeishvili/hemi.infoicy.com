@@ -32,7 +32,7 @@ for (const language of ['en', 'ka']) {
 
 test('the engine, birds and music play all through and stop at the end, nothing clips, and no line gets cut off', async ({ page }) => {
   test.setTimeout(240_000);
-  await startPatrol(page, { voice: true, sound: true, tanks: 6, pace: 'fast', tankLevel: 'medium' });
+  await startPatrol(page, { voice: true, sound: true, tanks: 6, pace: 'fast', tankShells: 'medium' });
   await page.evaluate(() => {
     const { sound } = window.__game;
     window.__voicesCutOff = 0;
@@ -173,7 +173,7 @@ for (const level of [1, 10]) {
 
   test(`nothing flashes${atLevel}: the picture's brightness stays steady through firing, stopping a tank and shells landing`, async ({ page }) => {
     test.setTimeout(120_000);
-    await startPatrol(page, { tankLevel: 'tough', ...levels });
+    await startPatrol(page, { tankShells: 'tough', ...levels });
     const { x, z } = await oneTankAt(page, 10, -13, { hp: 12 });
     await pointAt(page, 'tank', 'open');
     await expect.poll(async () => (await patrolIs(page)).firing, { timeout: 15_000 }).toBe(true);
