@@ -182,6 +182,8 @@ body[data-screen='practice'] .move-meter {
 /* ---------- what later levels bring ---------- */
 
 /* Coins only from level 2, so level 1 looks as it always has. */
+body:not([data-hearts='yes']) .hearts-chip { display: none; }
+.hearts-value { color: #e2557a; letter-spacing: 0.08em; }
 body[data-coins='no'] .coins-chip,
 body[data-coins='no'] .finish-coins { display: none; }
 

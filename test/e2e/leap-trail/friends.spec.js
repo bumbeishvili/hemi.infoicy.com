@@ -20,7 +20,7 @@ async function secondPlayer(browser) {
 }
 
 async function openRun(page, settings = {}, hash = '') {
-  await openGame(page, { onMissed: 'stumble', ...settings }, GAME, hash);
+  await openGame(page, { onMissed: 'stumble', pace: 'slow', ...settings }, GAME, hash);
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
   await standInView(page);
 }

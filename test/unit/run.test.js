@@ -309,6 +309,102 @@ test('when set to stumble, missing costs a stumble and the streak, but the run g
   assert.equal(run.stats.bestStreak, 1, 'the best streak stays');
 });
 
+/* ---------- hearts: a run can be lost ---------- */
+
+/** Runs into every obstacle, moving about the whole time so it's never resting, until the run ends. */
+function runIntoEverything(run) {
+  for (let i = 0; i < 60 * 600 && run.state === 'running'; i += 1) {
+    run.noteActivity();
+    run.update(1 / 60);
+  }
+}
+
+test('as it comes, each stumble costs a heart, and the run is over when the last one goes', () => {
+  const { run, events } = setup({ obstacles: 20, whenMissed: 'stumble' });
+  assert.equal(run.hearts, 5, 'five hearts at level 1');
+  runIntoEverything(run);
+  assert.equal(run.state, 'finished');
+  assert.equal(run.lost, true);
+  assert.equal(run.hearts, 0);
+  assert.equal(run.stats.bumps, 5, 'over at the fifth stumble');
+  assert.deepEqual(events.filter(({ type }) => type === 'bump').map(({ hearts }) => hearts), [4, 3, 2, 1, 0]);
+  const finished = events.filter(({ type }) => type === 'finished');
+  assert.equal(finished.length, 1);
+  assert.equal(finished[0].lost, true);
+  assert.ok(run.course.filter(({ state }) => state === 'ahead').length > 0, 'it ends there, before the finish');
+  assert.ok(run.distance < run.end);
+  // Nothing more happens to it: no more stumbles, and the runner slows to a stop.
+  const bumps = run.stats.bumps;
+  for (let i = 0; i < 60 * 10; i += 1) run.update(1 / 60);
+  assert.equal(run.stats.bumps, bumps);
+  assert.equal(run.speed, 0);
+});
+
+test('a run that gets to the finish is won, whatever stumbles it had on the way', () => {
+  const { run, events } = setup({ obstacles: 12, whenMissed: 'stumble' });
+  // Run into the first four, and jump the rest.
+  for (let i = 0; i < 60 * 600 && run.state === 'running'; i += 1) {
+    if (run.stats.bumps >= 4 && run.mustJump) run.jump();
+    run.noteActivity();
+    run.update(1 / 60);
+  }
+  assert.equal(run.state, 'finished');
+  assert.equal(run.lost, false);
+  assert.equal(run.hearts, 1);
+  assert.equal(events.find(({ type }) => type === 'finished').lost, false);
+});
+
+test('the gentle trail is the game as it was: no hearts, and the run always gets to the finish', () => {
+  const { run } = setup({ obstacles: 20, whenMissed: 'stumble', gentle: true, levelNumber: 10 });
+  assert.equal(run.hearts, null);
+  runIntoEverything(run);
+  assert.equal(run.state, 'finished');
+  assert.equal(run.lost, false);
+  assert.ok(run.stats.bumps >= 6, `${run.stats.bumps} run into, and it carried on`);
+  assert.equal(run.course.filter(({ state }) => state === 'ahead').length, 0, 'to the finish');
+  // And its levels ramp as they always did.
+  const gentle = trailLevel(10, { gentle: true });
+  assert.deepEqual([gentle.speed, gentle.gaps, gentle.early, gentle.hearts], [1.12, 0.85, 0.85, null]);
+  for (const pace of Object.keys(PACES)) assert.deepEqual(paceAt(pace, 1, { gentle: true }), PACES[pace]);
+});
+
+test('a runner set to wait, or running with friends, has no hearts and can\'t lose', () => {
+  assert.equal(setup({ whenMissed: 'wait' }).run.hearts, null);
+  const { run } = setup({ obstacles: 10, whenMissed: 'stumble', friends: true, levelNumber: 10 });
+  assert.equal(run.hearts, null);
+  runIntoEverything(run);
+  assert.deepEqual([run.state, run.lost], ['finished', false]);
+  assert.ok(run.stats.bumps >= 3, `${run.stats.bumps} run into`);
+});
+
+test('hearts get fewer as the levels go up, down to two at level 10', () => {
+  const hearts = LEVELS.map((level) => trailLevel(level).hearts);
+  assert.deepEqual(hearts, [5, 5, 4, 4, 4, 3, 3, 3, 2, 2]);
+  const { run } = setup({ obstacles: 20, whenMissed: 'stumble', levelNumber: 10 });
+  runIntoEverything(run);
+  assert.deepEqual([run.lost, run.stats.bumps], [true, 2]);
+});
+
+test('a bubble shield floats over what would have cost a heart', () => {
+  const { run } = withPickup('shield', { level: 6 });
+  step(run, 2, () => run.noteActivity());
+  assert.ok(run.power.shield > 0);
+  run.course[0].at = run.distance + 20;
+  run.course[0].lanes = [...LANES];
+  step(run, 3, () => run.noteActivity());
+  assert.deepEqual([run.stats.floated, run.stats.bumps, run.hearts], [1, 0, 3]);
+});
+
+test('a child who rests loses no more hearts once the runner has stopped for them', () => {
+  const { run } = setup({ obstacles: 20, whenMissed: 'stumble' });
+  step(run, 11);
+  assert.ok(run.resting);
+  const hearts = run.hearts;
+  step(run, 120);
+  assert.equal(run.hearts, hearts);
+  assert.equal(run.state, 'running', 'still there, waiting for them');
+});
+
 test('a child who stops moving is waited for, whichever setting it\'s on', () => {
   const { run } = setup({ obstacles: 5, whenMissed: 'stumble' });
   step(run, 11);
@@ -583,6 +679,7 @@ test('each level is the same as the one before or harder, in every way, and alwa
     const now = trailLevel(level);
     const harder = [now.speed > before.speed, now.gaps < before.gaps, now.early < before.early, now.laneMoves > before.laneMoves, now.gold > before.gold, now.zigzag > before.zigzag, now.kinds.length > before.kinds.length];
     assert.ok(now.speed >= before.speed && now.gaps <= before.gaps && now.early <= before.early, `${level}: pace`);
+    assert.ok(now.hearts <= before.hearts, `${level}: hearts`);
     assert.ok(now.laneMoves >= before.laneMoves && now.gold >= before.gold && now.zigzag >= before.zigzag, `${level}: stars`);
     assert.ok(now.full <= before.full && now.single >= before.single && now.freeSwitch >= before.freeSwitch && now.freeStars >= before.freeStars, `${level}: lanes to choose between`);
     assert.ok(before.kinds.every((kind) => now.kinds.includes(kind)), `${level}: nothing taken away`);
@@ -677,8 +774,8 @@ test('with the lanes off, every star and golden star is in the middle at every l
  * A child catching everything: always in the lane of the next star or golden star, and jumping
  * delay seconds after a jump starts to count. Says how long it took and how many moves it asked for.
  */
-function followEverything({ levelNumber, pace, lanes = true, seed, delay = 0 }) {
-  const run = new Run({ obstacles: 20, pace, lanes, random: seeded(seed), levelNumber });
+function followEverything({ levelNumber, pace, lanes = true, seed, delay = 0, gentle = false }) {
+  const run = new Run({ obstacles: 20, pace, lanes, random: seeded(seed), levelNumber, gentle });
   run.begin();
   let laneChanges = 0;
   let asked = 0;
@@ -719,26 +816,31 @@ function followEverything({ levelNumber, pace, lanes = true, seed, delay = 0 }) 
   };
 }
 
-test('level 10 is still doable: as much time to move, no more than double the moves, and not much longer', () => {
+test('level 10 is still doable: time to move, at most twice the moves, and not much longer', () => {
   for (const pace of Object.keys(PACES)) {
-    assert.ok(paceAt(pace, 10).early >= PACES[pace].early * 0.8, `${pace}: time to jump`);
-    for (const [lanes, delay] of [[true, 0], [true, 0.9], [false, 0.9]]) {
-      const total = (levelNumber) => {
-        const runs = [1, 2, 3, 4, 5].map((seed) => followEverything({ levelNumber, pace, lanes, seed, delay }));
-        const mean = (field) => runs.reduce((sum, one) => sum + one[field], 0) / runs.length;
-        return { seconds: mean('seconds'), jumps: mean('jumps'), moves: mean('moves'), caught: runs.every(({ lined, all }) => lined >= all * 0.9), clean: runs.every(({ cleared, bumps }) => cleared === 20 && bumps === 0) };
-      };
-      const first = total(1);
-      const last = total(10);
-      const name = `${pace}, lanes ${lanes ? 'on' : 'off'}, jumping after ${delay}s`;
-      assert.ok(first.caught && last.caught, `${name}: nearly every star can be caught`);
-      assert.ok(first.clean && last.clean, `${name}: every obstacle cleared, none run into`);
-      // Stricter than the limits every game keeps (twice the moves, a third longer), as these are big
-      // whole-body moves: trampolines, power-ups and keys are on the way the stars go, and add no jumps.
-      assert.ok(last.moves <= first.moves * 1.6, `${name}: ${last.moves} moves a minute against ${first.moves}`);
-      assert.ok(last.jumps <= first.jumps * 1.25, `${name}: ${last.jumps} jumps a minute against ${first.jumps}`);
-      assert.ok(last.seconds <= first.seconds * 1.1, `${name}: ${last.seconds} seconds against ${first.seconds}`);
-      if (lanes && delay === 0.9) console.log(`${name}: level 10 against level 1: ${(last.moves / first.moves).toFixed(2)}x the moves a minute, ${(last.jumps / first.jumps).toFixed(2)}x the jumps, ${(last.seconds / first.seconds).toFixed(2)}x as long`);
+    // As it comes, level 10 leaves 70% of level 1's time to jump, and on the gentle trail 85%, as it always did.
+    assert.ok(paceAt(pace, 10).early >= PACES[pace].early * 0.69, `${pace}: time to jump`);
+    assert.ok(paceAt(pace, 10, { gentle: true }).early >= PACES[pace].early * 0.8, `${pace}: time to jump, gentle`);
+    for (const gentle of [false, true]) {
+      for (const [lanes, delay] of [[true, 0], [true, 0.9], [false, 0.9]]) {
+        const total = (levelNumber) => {
+          const runs = [1, 2, 3, 4, 5].map((seed) => followEverything({ levelNumber, pace, lanes, seed, delay, gentle }));
+          const mean = (field) => runs.reduce((sum, one) => sum + one[field], 0) / runs.length;
+          return { seconds: mean('seconds'), jumps: mean('jumps'), moves: mean('moves'), caught: runs.every(({ lined, all }) => lined >= all * 0.9), clean: runs.every(({ cleared, bumps }) => cleared === 20 && bumps === 0) };
+        };
+        const first = total(1);
+        const last = total(10);
+        const name = `${pace}, ${gentle ? 'gentle' : 'as it comes'}, lanes ${lanes ? 'on' : 'off'}, jumping after ${delay}s`;
+        assert.ok(first.caught && last.caught, `${name}: nearly every star can be caught`);
+        assert.ok(first.clean && last.clean, `${name}: every obstacle cleared, none run into`);
+        // The gentle trail keeps its old, stricter limits, as these are big whole-body moves. As it comes,
+        // level 10 is for an able player: more often, but never more than twice the moves a minute.
+        const most = gentle ? { moves: 1.6, jumps: 1.25 } : { moves: 2, jumps: 1.7 };
+        assert.ok(last.moves <= first.moves * most.moves, `${name}: ${last.moves} moves a minute against ${first.moves}`);
+        assert.ok(last.jumps <= first.jumps * most.jumps, `${name}: ${last.jumps} jumps a minute against ${first.jumps}`);
+        assert.ok(last.seconds <= first.seconds * 1.1, `${name}: ${last.seconds} seconds against ${first.seconds}`);
+        if (lanes && delay === 0.9) console.log(`${name}: level 10 against level 1: ${(last.moves / first.moves).toFixed(2)}x the moves a minute, ${(last.jumps / first.jumps).toFixed(2)}x the jumps, ${(last.seconds / first.seconds).toFixed(2)}x as long`);
+      }
     }
   }
 });
