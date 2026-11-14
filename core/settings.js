@@ -28,6 +28,7 @@ export const OLD_DEFAULTS = {
   puzzlePieces: 'usual', // Giraffe's Puzzles: more pieces now,
   puzzleSnap: 'near', // and a piece has to be let go closer to its place.
   paintBrush: 'medium', // Giraffe's Paint Box: the small brush now.
+  level: 'gentle', // Sky Wings: the sky pirates can shoot the plane down now. Only Sky Wings still has this name.
 };
 
 /**

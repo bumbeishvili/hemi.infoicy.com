@@ -34,7 +34,7 @@ const TOO_HOT = 'Ouch! Too hot!';
 const COOL_IT = 'Hold your hand open to cool it down!';
 // What the voice says at the end. Both have a rendered voice file: see core/audio/voice/lines.json.
 const FINISH = 'You popped them all!';
-const AWAY_FINISH = 'Great job!';
+const AWAY_FINISH = 'So close! Try again!'; // One of the lines every game has: see SO_CLOSE in core/sound.js.
 const AWAY_TITLE = 'The balloons floated away!';
 
 const byId = (id) => document.getElementById(id);

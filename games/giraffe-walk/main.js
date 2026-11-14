@@ -18,7 +18,7 @@ const TO_THE_BRIDGE = ['Bring it to the bridge, and open your hand!', 'ხიდ
 const HOME = 'The giraffe is home!';
 // When the sun goes down first. The card's words are only shown, and the voice says a line it already has.
 const DARK_TITLE = 'The sun went down!';
-const DARK_SAID = 'Great job!';
+const DARK_SAID = 'So close! Try again!'; // One of the lines every game has: see SO_CLOSE in core/sound.js.
 
 const LAST_WORDS_SECONDS = 2.4;
 const HINT_AFTER_SECONDS = 4;

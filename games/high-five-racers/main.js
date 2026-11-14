@@ -80,7 +80,7 @@ function powerPictures() {
 }
 // What the voice says at the finish. Both have a rendered voice file: see core/audio/voice/lines.json.
 const WON_LINE = 'You did it! Great racing!';
-const LOST_LINE = 'Great job!';
+const LOST_LINE = 'So close! Try again!'; // One of the lines every game has: see SO_CLOSE in core/sound.js.
 const WON_TITLE = 'You won the race!';
 const ordinal = (place) => ['1st', '2nd', '3rd', '4th'][place - 1] ?? `${place}th`;
 

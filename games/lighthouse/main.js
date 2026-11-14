@@ -21,7 +21,7 @@ const OPEN_TO_WIPE = 'Open your hand to wipe!';
 const FINISH = 'You saved every ship!';
 // When a ship drifts away first. The card's words are only shown, and the voice says a line it already has.
 const DRIFTED_TITLE = 'A ship drifted away!';
-const DRIFTED_SAID = 'Great job!';
+const DRIFTED_SAID = 'So close! Try again!'; // One of the lines every game has: see SO_CLOSE in core/sound.js.
 
 const NEXT_SHIP_SECONDS = 0.4;
 const LAST_SHIP_SECONDS = 1.6;

@@ -830,7 +830,8 @@ class SkyWings extends BodyGame {
     byElementId('gift-mark').dataset.where = 'none';
     byElementId('power').dataset.on = 'no';
     sound.stopFlying();
-    sound.finish(won ? SAY.won : SAY.lost);
+    // Shot down, there's no fanfare: only what's said.
+    sound.finish(won ? SAY.won : SAY.lost, { lost: !won });
     sky.setLive(null);
     sky.celebrate();
     this.timer = AFTER_FINISH_SECONDS;
