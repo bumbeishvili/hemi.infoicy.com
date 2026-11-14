@@ -26,10 +26,10 @@ const OTHER_HAND = 'Hold up your other hand, for the bow!';
 const TOGETHER_DONE = 'You did it together!';
 const YOU_WON = 'You won the contest!';
 const GREAT_SHOOTING = 'Great shooting!';
-// When the quiver was empty before enough targets were hit. It's only on the card: the voice says the same kind word
-// as any finish.
+// When the quiver was empty before enough targets were hit. It's on the card. The voice says what it says after
+// any game that was lost.
 const OUT_OF_ARROWS = 'Out of arrows! So close!';
-const LOST_LINE = 'Great job!';
+const LOST_LINE = 'So close! Try again!'; // One of the lines every game has: see SO_CLOSE in core/sound.js.
 const PRAISE = ['Nice one!', 'Way to go!', 'Great job!'];
 const PRAISE_EVERY = 3; // Hits between one word of praise and the next.
 const FILM_SECONDS = 30; // The little film of what to do shows until the first hit, or this long.

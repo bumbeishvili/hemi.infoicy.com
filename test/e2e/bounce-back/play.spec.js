@@ -126,6 +126,8 @@ test('a game lost on Medium is "So close!", and the same level comes round again
   await expect(page.locator('#finish-lost')).toHaveText(new RegExp(`^${them} won this one, 5 to \\d+\\. Have another go!$`));
   await expect(page.locator('#play-again')).toHaveText('Try again');
   await expect.poll(() => page.evaluate(() => window.__game.session.hud.confetti.running)).toBe(false);
+  // Nothing is cheered, and the voice says what it says after any game that was lost and has no line of its own.
+  expect(await page.evaluate(() => window.__game.sound.finished)).toEqual({ line: 'So close! Try again!', lost: true });
   expect(await page.evaluate(() => window.__game.session.levels.current)).toBe(3);
   await page.waitForTimeout(500);
   await shot(page, 'bounce-so-close');

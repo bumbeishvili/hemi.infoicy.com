@@ -8,6 +8,7 @@
 // or each freeing their own friends, to see who frees the most.
 import { BODY_KEYS, bodyFrom, bodyList } from '../../core/body/characters.js';
 import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
+import { SO_CLOSE } from '../../core/sound.js';
 import { ROSTER, byId as characterById } from '../../core/body/roster.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { seededRandom } from '../../core/friends.js';
@@ -761,8 +762,10 @@ class MightyLift extends BodyGame {
     this.updateHud();
     sound.strain(0);
     sound.stopYard();
-    // The sun set first: no celebration, and nothing said.
-    if (!lifting.lost) {
+    // The sun set first: no celebration, and the voice says what it says after any game that was lost.
+    if (lifting.lost) {
+      sound.finish(SO_CLOSE, { lost: true });
+    } else {
       sound.finish(SAY.allFree);
       world.celebrate();
     }

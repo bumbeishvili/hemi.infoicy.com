@@ -269,7 +269,7 @@ export class FaceHud {
   }
 
   /** hero is the big number, noun is what to call a round, and rows fills any extra rows, by their ids. */
-  showSummary(stats, { hero, noun, rows = {} }) {
+  showSummary(stats, { hero, noun, rows = {}, won }) {
     const share = stats.seconds > 0 ? stats.openSeconds / stats.seconds : 0;
     byId('sum-open').textContent = `${clockTime(stats.openSeconds)} (${percent(share)})`;
     byId('sum-open-bar').style.width = percent(share);
@@ -279,7 +279,9 @@ export class FaceHud {
     for (const [row, value] of Object.entries(rows)) byId(`sum-${row}`).textContent = String(value);
     byId('finish-hero').textContent = String(hero);
     byId('finish-open').textContent = `Mouth open for ${clockTime(stats.openSeconds)} of a ${clockTime(stats.seconds)} ${noun}`;
-    this.confetti.start();
+    // Confetti is for a game that was won, or that couldn't be lost.
+    if (won === false) this.confetti.stop();
+    else this.confetti.start();
   }
 
   hideSummary() {

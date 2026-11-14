@@ -22,6 +22,8 @@ const SHARED_DEFAULTS = {
 // who really had chosen it has to choose it again.
 export const OLD_DEFAULTS = {
   flapFox: 'tumble', // Flap, Little Chick!: the fox who never catches the chick. He can now.
+  pace: 'slow', // Leap Trail and Smoothie Stand come at a medium pace now. The other games that have a pace still come slow.
+  arrowHelp: 'little', // Arrow Meadow: the arrow goes just where the bow points now, with no help.
 };
 
 /**

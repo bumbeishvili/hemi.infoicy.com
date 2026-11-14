@@ -31,9 +31,9 @@ const SHUT_HINT_AFTER = 1.2; // Seconds of a mouth still open on its food before
 const RESTING_AFTER = 15; // And of doing nothing at all before saying that resting is fine.
 const CHEER_SECONDS = 1.8; // With friends, how long everyone is pleased before the finish card.
 const GOBBLED_SECONDS = 1.6; // A moment to see the creature gobbled up, before the card.
-// When a bigger thing gobbled the creature up. It's only on the card: the voice says the same kind word as any finish.
+// When a bigger thing gobbled the creature up. It's on the card. The voice says what it says after any lost game.
 const GOBBLED = (name) => `${name} gobbled you up!`;
-const LOST_LINE = 'Great job!';
+const LOST_LINE = 'So close! Try again!'; // One of the lines every game has: see SO_CLOSE in core/sound.js.
 const KEEP_AWAY_WITHIN = 0.4; // How near a bigger thing has to come for the label to say to keep away, in field heights.
 const LABELS = {
   tooBig: ['Too big for now!', 'ჯერ ძალიან დიდია!'],

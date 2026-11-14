@@ -8,6 +8,7 @@
 // beside them, copying their children, and a star on the trail is had by whoever gets to it first.
 import { BODY_KEYS, bodyFrom, bodyList } from '../../core/body/characters.js';
 import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
+import { SO_CLOSE } from '../../core/sound.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { seededRandom, Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
@@ -975,9 +976,12 @@ class LeapTrail extends BodyGame {
     this.setCount('');
     this.updateHud();
     sound.stopMusic();
-    // Out of hearts, the runner sits down for a rest, a little dizzy, and nothing is said.
-    if (lost) world.tumbledOut();
-    else {
+    // Out of hearts, the runner sits down for a rest, a little dizzy. Nothing is cheered, and the voice says what
+    // it says after any game that was lost.
+    if (lost) {
+      world.tumbledOut();
+      sound.finish(SO_CLOSE, { lost: true });
+    } else {
       sound.finish(SAY.madeIt);
       world.celebrate();
     }

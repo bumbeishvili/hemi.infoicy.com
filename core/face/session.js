@@ -352,7 +352,8 @@ export class FaceSession {
     this.hud.prompt.clear();
     this.hud.setCount('');
     const summary = this.game.summary();
-    this.sound.finish(summary.line ?? this.finishLine);
+    // A game that was lost isn't cheered, as in the hand games: no fanfare, no clapping and no confetti.
+    this.sound.finish(summary.line ?? this.finishLine, { lost: summary.won === false });
     this.hud.showSummary(this.stats, summary);
     if (summary.countsForLevel === false) {
       this.levels.last = null;

@@ -19,9 +19,9 @@ const CLOSE_ON_ONE = 'Close your hand on a spider!';
 const OPEN_ON_WEB = 'Bring it to the web, and open your hand!';
 const TO_THE_FLOWER = ['Take her to the flower!', 'ყვავილთან მიიყვანე!'];
 const ALL_HOME = 'Every spider is home!';
-// When too many got away. It's only on the card: the voice says the same kind word as for any finish.
+// When too many got away. It's on the card. The voice says what it says after any game that was lost.
 const GOT_AWAY = 'Three little spiders got away!';
-const LOST_LINE = 'Great job!';
+const LOST_LINE = 'So close! Try again!'; // One of the lines every game has: see SO_CLOSE in core/sound.js.
 const AFTER_GOT_AWAY_SECONDS = 1.2; // A moment to see the garden, before the card.
 
 const LAST_WORDS_SECONDS = 2.4;

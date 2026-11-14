@@ -18,9 +18,9 @@ const HOW = 'Swipe through the fruit!';
 const STICKY = 'Yuck! Keep your hand open to shake it off!';
 const OPEN_TO_SLICE = { left: 'Open your left hand to slice!', right: 'Open your right hand to slice!' };
 const WON = 'You won the Golden Cup!';
-// When a customer couldn't wait. It's only on the card: the voice says the same kind word as for any finish.
+// When a customer couldn't wait. It's on the card. The voice says what it says after any game that was lost.
 const WALKED_OFF = (name) => `${name} couldn’t wait, and went home!`;
-const LOST_LINE = 'Great job!';
+const LOST_LINE = 'So close! Try again!'; // One of the lines every game has: see SO_CLOSE in core/sound.js.
 const AFTER_WALKED_OFF_SECONDS = 1.4; // A moment to see the customer go, before the card.
 
 const NEXT_CUSTOMER_SECONDS = 1; // The fruit keeps flying, so nobody's waiting for this.
