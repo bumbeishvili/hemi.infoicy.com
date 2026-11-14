@@ -1,5 +1,6 @@
-// Giraffe's Maze: the mazes, walking towards the hand, what's in the way, the levels, and playing with friends.
-// Everything here runs without a screen, with a pretend child holding their hand where each test says.
+// Giraffe's Maze: the mazes, walking towards the hand, what's in the way, the levels, the sun going down, and playing
+// with friends. Everything here runs without a screen, with a pretend child holding their hand where each test says.
+// The tests of the old kind rules play the gentle maze, with no sun, as soloRun does unless a test says otherwise.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -7,7 +8,7 @@ import { MazeRun } from '../../games/giraffe-maze/play.js';
 import {
   buildMaze, castFor, deadEnds, distances, DX, DY, edgeKey, EXTRAS, featuresFor, FOUND_SECONDS, LABELS, MAZE_COUNTS,
   mazeLevel, mazeNewAt, modeWord, NEWS, newSeedWord, newsIsOn, newWalker, OUT_CELLS, readMode, REACHES, seededRandom,
-  seedOf, SIZES, SLIDE_SECONDS, stepWalker, WALK, walkerAt, wayToward,
+  seedOf, SIZES, SLIDE_SECONDS, stepWalker, SUN, sunSeconds, WALK, walkerAt, wayToward,
 } from '../../games/giraffe-maze/rules.js';
 import { cleanWalker, MAX_RACERS, mostIn, RaceRoom } from '../../server/race-room.js';
 
@@ -64,12 +65,34 @@ function soloRun(options = {}) {
   const mazes = options.mazes ?? 3;
   const log = [];
   const events = new Proxy({}, { get: (_, name) => (...args) => log.push([name, ...args]) });
-  const run = new MazeRun({ seed: 'KQZTRW', size: 'medium', cast: castFor(ROSTER, 'giraffe', mazes, level).map((id) => [id]), random: seededRandom(5), events, ...options, level });
+  const run = new MazeRun({ seed: 'KQZTRW', size: 'medium', sun: 'gentle', cast: castFor(ROSTER, 'giraffe', mazes, level).map((id) => [id]), random: seededRandom(5), events, ...options, level });
   run.log = log;
   return run;
 }
 
 const said = (run, name) => run.log.filter(([event]) => event === name);
+
+/**
+ * A pretend child for a maze with the sun going down, whose hand moves along at speed cells a second, a little ahead
+ * of the character, and who sees to a sheep or a bush as soon as the character is near it, and holds the hand there,
+ * on it or rubbing it, until it's out of the way, as nothing moves by itself then.
+ */
+function hurrying(speed = 99) {
+  let hand = null;
+  return (run, t) => {
+    const at = run.position;
+    const blocker = run.layout.blockers.find((each) => !each.open && each.kind !== 'gate' && Math.hypot(each.x - at.x, each.y - at.y) < 1);
+    const wanted = blocker ? { x: blocker.x + (blocker.kind === 'bush' ? Math.sin(t * 9) * 0.3 : 0), y: blocker.y } : run.wayAhead(run.nextCell(), 1.3);
+    hand ??= { ...wanted };
+    const gap = Math.hypot(wanted.x - hand.x, wanted.y - hand.y);
+    const step = Math.min(gap, speed * FRAME);
+    if (gap > 0) {
+      hand.x += ((wanted.x - hand.x) / gap) * step;
+      hand.y += ((wanted.y - hand.y) / gap) * step;
+    }
+    return { target: { ...hand }, glove: { ...hand }, open: true, gloveSpeed: blocker?.kind === 'bush' ? 2.5 : 1 };
+  };
+}
 
 /* ---------- the mazes ---------- */
 
@@ -666,4 +689,103 @@ test('a resting child is never hurried: nothing in a maze has a time limit, and 
   assert.deepEqual(run.position, run.layout.maze.centre(run.layout.start));
   assert.ok(REACHES.pick < 0.5, 'things are picked up from their own cell only');
   assert.equal(DX.length + DY.length, 8);
+});
+
+/* ---------- the sun going down ---------- */
+
+const sunRun = (options = {}) => soloRun({ sun: 'sets', ...options });
+
+test('on their own the sun goes down over each maze, while the hand is in the picture, open or closed, and not while it isn\'t', () => {
+  const run = sunRun({ level: 1 });
+  run.begin();
+  assert.equal(run.timed, true);
+  const { total } = run.sun;
+  assert.ok(Math.abs(total - sunSeconds(run.layout, 1)) < 1e-9);
+  // No hand: nothing goes down, however long it's away.
+  for (let t = 0; t < 120; t += FRAME) run.update(FRAME, { target: null, glove: null, open: false });
+  assert.equal(run.sun.left, total);
+  // A closed hand in the picture: it goes down all the same.
+  const closed = { target: { x: 1, y: 1 }, glove: { x: 1, y: 1 }, open: false, gloveSpeed: 0 };
+  for (let t = 0; t < 5; t += FRAME) run.update(FRAME, closed);
+  assert.ok(Math.abs(run.sun.left - (total - 5)) < 0.05, `${run.sun.left} left`);
+});
+
+test('the sun setting before the friend is found ends the game, a moment later, and nobody is found', () => {
+  const run = sunRun({ level: 1 });
+  run.begin();
+  const closed = { target: { x: 1, y: 1 }, glove: { x: 1, y: 1 }, open: false, gloveSpeed: 0 };
+  let t = 0;
+  for (; t < 300 && run.phase === 'walking'; t += FRAME) run.update(FRAME, closed);
+  assert.ok(Math.abs(t - run.sun.total) < 0.05, `set after ${t} s`);
+  assert.deepEqual([run.phase, run.lost, run.over, run.sun.left], ['sunset', true, false, 0]);
+  assert.equal(said(run, 'onSunset').length, 1);
+  assert.equal(said(run, 'onSunset')[0][1], run.layout.lost[0]);
+  // A moment for it to be seen, then it's over, whatever the hand does.
+  let after = 0;
+  for (; after < 10 && !run.over; after += FRAME) run.update(FRAME, hurrying()(run, after));
+  assert.ok(Math.abs(after - SUN.setSeconds) < 0.05, `${after} s`);
+  assert.deepEqual([run.over, run.lost, run.stats.found, run.index], [true, true, 0, 0]);
+  assert.equal(said(run, 'onOver').length, 1);
+});
+
+test('with the sun going down a sheep or a bush never gets out of the way by itself', () => {
+  for (const [level, kind] of [[5, 'sheep'], [8, 'bush']]) {
+    const run = sunRun({ level, ways: 'find' });
+    run.begin();
+    const blocker = run.layout.blockers.find((each) => each.kind === kind);
+    const friend = run.layout.lost[0];
+    const far = { target: friend, glove: friend, open: true, gloveSpeed: 0 };
+    for (let t = 0; t < 60 && !run.over; t += FRAME) run.update(FRAME, far);
+    assert.equal(blocker.open, false, `the ${kind} is still there`);
+    assert.equal(run.lost, true, 'and the sun set');
+  }
+});
+
+test('with the sun going down a child who leads the way, and sees to what\'s in it, finds every friend, at every level and size', () => {
+  for (const size of Object.keys(SIZES)) {
+    for (const level of LEVELS) {
+      const run = sunRun({ level, size });
+      playThrough(run, hurrying());
+      assert.ok(run.over && !run.lost, `level ${level} ${size}: ${run.lost ? 'the sun set' : 'not over'}`);
+      assert.equal(run.stats.found, 3);
+    }
+  }
+});
+
+test('the sun is slower at level 1 and quicker at level 10: a slow hand finds everyone at level 1, and not at level 10', () => {
+  for (const size of ['medium', 'hard']) {
+    const first = sunRun({ level: 1, size });
+    playThrough(first, hurrying(0.8));
+    assert.ok(!first.lost && first.stats.found === 3, `level 1 ${size}`);
+    const last = sunRun({ level: 10, size });
+    playThrough(last, hurrying(0.8));
+    assert.ok(last.lost, `level 10 ${size}`);
+  }
+  // The same maze has less time at each level up, and level 10 has under half of level 1's.
+  const layout = sunRun({ level: 1, size: 'hard' }).layout;
+  const times = LEVELS.map((level) => sunSeconds(layout, level));
+  for (const level of LEVELS.slice(1)) assert.ok(times[level - 1] < times[level - 2]);
+  assert.ok(times[9] < times[0] / 2, `${times[0].toFixed(1)} s at level 1, ${times[9].toFixed(1)} s at level 10`);
+  assert.equal(mazeLevel(1).sunBase, SUN.base[0]);
+  assert.equal(mazeLevel(10).sunSlack, SUN.slack[1]);
+});
+
+test('the gentle maze has no sun, and in a race there\'s none either: the race is the contest', () => {
+  const gentle = soloRun({ level: 10, sun: 'gentle' });
+  gentle.begin();
+  assert.deepEqual([gentle.timed, gentle.sun], [false, null]);
+  const closed = { target: { x: 1, y: 1 }, glove: { x: 1, y: 1 }, open: false, gloveSpeed: 0 };
+  for (let t = 0; t < 400; t += FRAME) gentle.update(FRAME, closed);
+  assert.deepEqual([gentle.phase, gentle.lost], ['walking', false]);
+  const race = new MazeRun({ seed: 'MAZEGO', size: 'medium', level: 10, mazes: 2, race: true, sun: 'sets', random: seededRandom(9) });
+  race.begin();
+  assert.deepEqual([race.timed, race.sun], [false, null]);
+  for (let t = 0; t < 400; t += FRAME) race.update(FRAME, closed);
+  assert.deepEqual([race.phase, race.lost], ['walking', false]);
+});
+
+test('the grown-ups\' settings: the sun going down and the big maze come first, and the gentle maze can be chosen', () => {
+  const source = readFileSync(new URL('../../games/giraffe-maze/main.js', import.meta.url), 'utf8');
+  assert.match(source, /defaults: \{ mazeSize: 'hard', mazeSun: 'sets', /);
+  assert.match(source, /choice\('mazeSun', 'gentle', 'Gentle: /);
 });

@@ -14,7 +14,7 @@ import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { FOLLOW_SPACING, MazeRun } from './play.js';
 import {
   castFor, facingOf, FOUND_SECONDS, LABELS, MAZE_COUNTS, mazeNewAt, modeWord, NEWS, newSeedWord, REACH, readMode,
-  SIZE_NAMES, SLIDE_SECONDS, Trail, WAYS,
+  SIZE_NAMES, SLIDE_SECONDS, SUNS, Trail, WAYS,
 } from './rules.js';
 import { MazeView } from './view.js';
 import { renderWalkers } from './walkers.js';
@@ -22,6 +22,9 @@ import { renderWalkers } from './walkers.js';
 const byId = (id) => document.getElementById(id);
 const HINT = 'Lead the way with your open hand!';
 const FINISH = 'Everyone is found!';
+// On the card when the sun sets before a friend is found. It's only shown, not said.
+const SUNSET = 'The sun went down before everyone was found!';
+const TRY_AGAIN = 'Try again';
 const RACE_FINISH = 'You did it! Great racing!'; // The end of a race with friends: one of the lines every game shares.
 const PRAISE = ['Nice one!', 'Great job!', 'Way to go!'];
 // What each friend calls out as their maze begins, in their own voice: see audio/voice/lines.json.
@@ -148,7 +151,12 @@ class MazeGame {
 
   size() {
     const { mazeSize } = this.session.settings;
-    return SIZE_NAMES.includes(mazeSize) ? mazeSize : 'medium';
+    return SIZE_NAMES.includes(mazeSize) ? mazeSize : 'hard';
+  }
+
+  /** Whether the sun goes down over each maze, or it's the gentle maze, as a grown-up chose. */
+  sun() {
+    return SUNS.includes(this.session.settings.mazeSun) ? this.session.settings.mazeSun : 'sets';
   }
 
   mazeCount() {
@@ -203,7 +211,7 @@ class MazeGame {
     const { screen } = this.session;
     const between = screen !== 'playing' && screen !== 'countdown';
     // A new character, size or number of friends to find starts with the next game, and the title shows it now.
-    if (between && ('fighter' in change || 'mazeSize' in change || 'mazes' in change)) {
+    if (between && ('fighter' in change || 'mazeSize' in change || 'mazes' in change || 'mazeSun' in change)) {
       this.run = this.soloRun(this.session.level);
       this.artFor([this.myCharacter().id, ...this.run.cast.flat()]);
       this.view.setLayout(this.run.layout);
@@ -222,7 +230,7 @@ class MazeGame {
   /** A game on their own: a new maze for each friend to find, each with a friend who isn't the child's own character. */
   soloRun(level) {
     const cast = castFor(ids, this.myCharacter().id, this.mazeCount(), level).map((id) => [id]);
-    return new MazeRun({ seed: newSeedWord(), size: this.size(), level, cast, ways: this.ways(), events: this.events });
+    return new MazeRun({ seed: newSeedWord(), size: this.size(), level, cast, ways: this.ways(), sun: this.sun(), events: this.events });
   }
 
   prepare(level) {
@@ -254,6 +262,9 @@ class MazeGame {
     this.showFruit();
     this.showPrizes();
     this.showRace();
+    this.session.sound.lost = false;
+    byId('chip-sun-box').hidden = !this.run.timed;
+    this.showSun();
     // Prizes only come from level 2, on the child's own.
     document.body.dataset.prizes = !friendly && level >= 2 ? 'on' : 'off';
   }
@@ -341,6 +352,12 @@ class MazeGame {
       onSlide: () => {
         sound().play('whoosh', { gain: 0.25, rate: 0.9 });
       },
+      // The sun has set before the friend was found: a soft sound, and the game is over a moment later.
+      onSunset: () => {
+        sound().play('whoosh', { gain: 0.2, rate: 0.7 });
+        this.story.hide();
+        this.showSun();
+      },
     };
   }
 
@@ -384,7 +401,32 @@ class MazeGame {
     this.blockedFor = this.run.waitingAt ? this.blockedFor + dt : 0;
     this.showFilm();
     this.footsteps();
-    if (this.run.over && this.session.screen === 'playing') this.session.finish();
+    this.showSun();
+    if (this.run.over && this.session.screen === 'playing') this.end();
+  }
+
+  /** The game is over. One the sun set on is told kindly, with no party, and Try again on the big button. */
+  end() {
+    const { session, run } = this;
+    session.sound.lost = run.lost;
+    session.finish();
+    // After the card is filled in, which puts back the usual title.
+    if (this.mode === 'solo') document.querySelector('#screen-finish h2').textContent = run.lost ? SUNSET : FINISH;
+    if (run.lost) {
+      session.hud.hideSummary();
+      byId('play-again').textContent = TRY_AGAIN;
+    }
+  }
+
+  /** How much of the sun's time is left for this maze, as a bar that goes down. */
+  showSun() {
+    const { sun } = this.run;
+    const share = sun ? sun.left / sun.total : 1;
+    const shown = Math.round(share * 200) / 2;
+    if (this.sunShown === shown) return;
+    this.sunShown = shown;
+    byId('sun-left').style.width = `${shown}%`;
+    byId('chip-sun-box').classList.toggle('is-low', share < 0.25);
   }
 
   /** The glove follows the hand in play over the maze. Reach help makes it go further than the hand does. */
@@ -747,8 +789,9 @@ class MazeGame {
     const { session, run } = this;
     const needed = session.handsPrompt(snapshot, dt);
     if (run.phase !== 'walking') return needed && !needed.key.startsWith('closed') ? needed : null;
-    // The hand can rest whenever it likes: the character just waits. After a while, it's said that's fine.
-    if (this.restFor > RESTING_AFTER) return { key: 'resting', text: SPOKEN.resting, side: null };
+    // In the gentle maze the hand can rest whenever it likes: the character just waits. After a while, it's said that's
+    // fine. With the sun going down that isn't said, as the sun doesn't wait for a closed hand.
+    if (!run.timed && this.restFor > RESTING_AFTER) return { key: 'resting', text: SPOKEN.resting, side: null };
     if (needed && !needed.key.startsWith('closed')) return needed;
     if (needed && this.restFor > ASK_OPEN_AFTER) return needed;
     // Held up by something in the way: what to do about it, shown rather than said, every time.
@@ -786,11 +829,22 @@ class MazeGame {
       hero: stats.fruit,
       noun: 'game',
       rows: { found: row(stats.found), prizes: row(prizes) },
-      // Nobody can lose: every friend is found in the end, and in a race everyone gets out.
-      won: true,
+      // On their own, the sun can set before a friend is found, and that game comes round again at the same level. In
+      // the gentle maze nobody can lose, and in a race everyone gets out.
+      won: !this.run.lost,
       // A game with friends is on the host's level, so it doesn't move the child's own level on.
       countsForLevel: !this.friends.current,
     };
+  }
+}
+
+/** The game's sounds. A game the sun set on ends softly, with no fanfare and nothing said. */
+class MazeSound extends Sound {
+  lost = false;
+
+  finish(line) {
+    if (this.lost) this.play('sparkle', { gain: 0.3 });
+    else super.finish(line);
   }
 }
 
@@ -813,6 +867,7 @@ new GameSession({
         <ol id="maze-found" class="maze-found" aria-label="Friends to find"></ol>
         <div class="chip chip-fruit"><span class="chip-label">Fruit</span><span id="chip-fruit" class="chip-value">0</span></div>
         <div class="chip chip-prizes"><span class="chip-label">Prizes</span><span id="chip-prizes" class="chip-value">0</span></div>
+        <div id="chip-sun-box" class="chip chip-sun" hidden><span class="chip-label">Sun</span><span class="thin-meter sun-meter"><span id="sun-left"></span></span></div>
         <ol id="maze-race" class="maze-race" aria-label="The race" hidden></ol>
       </div>
       ${STORY_BOX}
@@ -844,6 +899,11 @@ new GameSession({
         ${choice('mazeSize', 'hard', 'Hard: a bigger maze with narrower paths')}
       </fieldset>
       <fieldset class="choice">
+        <legend>The sun going down</legend>
+        ${choice('mazeSun', 'sets', 'The sun sets over each maze: find the friend before it does')}
+        ${choice('mazeSun', 'gentle', 'Gentle: no sun, all the time it takes, and a sheep or a bush moves by itself')}
+      </fieldset>
+      <fieldset class="choice">
         <legend>Reach help (the middle of the camera picture covers the whole maze, so a smaller movement goes further)</legend>
         ${choice('mazeReach', 'none', 'None')}
         ${choice('mazeReach', 'little', 'A little')}
@@ -865,13 +925,13 @@ new GameSession({
         ${characterChoices}
       </fieldset>`,
   },
-  defaults: { mazeSize: 'medium', mazeReach: 'little', mazeWays: 'lead', mazes: 3, fighter: ROSTER[0].id },
-  choices: { mazeSize: String, mazeReach: String, mazeWays: String, mazes: Number, fighter: String },
+  defaults: { mazeSize: 'hard', mazeSun: 'sets', mazeReach: 'little', mazeWays: 'lead', mazes: 3, fighter: ROSTER[0].id },
+  choices: { mazeSize: String, mazeSun: String, mazeReach: String, mazeWays: String, mazes: Number, fighter: String },
   tagline: (side) => `Friends are lost in the maze! Lead the way to them with your open ${side} hand.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),
   portraits: () => renderPortraits(ROSTER),
-  createSound: (options) => new Sound({
+  createSound: (options) => new MazeSound({
     ...options,
     sounds: {
       crunch: new URL('../giraffe-walk/audio/crunch.ogg', import.meta.url),

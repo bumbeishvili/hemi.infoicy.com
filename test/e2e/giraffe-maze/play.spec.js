@@ -1,8 +1,9 @@
 // Playing Giraffe's Maze on their own, with real photos of hands going through the real tracker: an open hand leads
 // the character along the paths, a closed or missing one never moves it, resting is never punished, and finding
-// every friend ends the game.
+// every friend ends the game. As it comes, the sun goes down over each maze, and setting before the friend is found
+// ends the game, which the gentle maze, a grown-up's choice, takes away.
 import { expect, openGame, show, shot, test, waitForScreen } from '../helpers.js';
-import { expectSoon, FIST, GAME, gloveAt, leadHand, NO_HAND, OPEN, startPlaying, state, stopHand } from './helpers.js';
+import { expectSoon, FIST, GAME, GENTLE, gloveAt, judge, leadHand, NO_HAND, OPEN, startPlaying, state, stopHand, watchBrightness } from './helpers.js';
 
 const prompt = (page) => page.locator('#prompt-text');
 
@@ -76,9 +77,9 @@ for (const [name, scene] of [['closed', FIST], ['missing', NO_HAND]]) {
   });
 }
 
-test('a hand resting closed for a while is told resting is fine, and the character is still there waiting', async ({ page }) => {
+test('in the gentle maze, a hand resting closed for a while is told resting is fine, and the character is still there waiting', async ({ page }) => {
   test.setTimeout(180_000);
-  await startPlaying(page);
+  await startPlaying(page, GENTLE);
   await show(page, ...FIST);
   await expect(prompt(page)).toHaveText('Open your right hand!', { timeout: 20_000 });
   const before = await state(page);
@@ -278,10 +279,12 @@ test('with reduced motion, nothing in the maze bobs, sways or waves by itself, a
   await stopHand(page);
 });
 
-test('the grown-ups\' panel has how hard, reach help, finding the way, the friends to find and who plays, and a way back', async ({ page }) => {
+test('the grown-ups\' panel has how hard, the sun, reach help, finding the way, the friends to find and who plays, and a way back', async ({ page }) => {
   await openGame(page, {}, GAME);
   await page.locator('#open-panel').click();
-  await expect(page.locator('input[name="mazeSize"][value="medium"]')).toBeChecked();
+  // The big maze and the sun going down, as it comes.
+  await expect(page.locator('input[name="mazeSize"][value="hard"]')).toBeChecked();
+  await expect(page.locator('input[name="mazeSun"][value="sets"]')).toBeChecked();
   await expect(page.locator('input[name="mazeReach"][value="little"]')).toBeChecked();
   await expect(page.locator('input[name="mazeWays"][value="lead"]')).toBeChecked();
   await expect(page.locator('input[name="mazes"][value="3"]')).toBeChecked();
@@ -304,4 +307,52 @@ test('the grown-ups\' panel has how hard, reach help, finding the way, the frien
   const playing = await state(page);
   expect([playing.cols, playing.rows, playing.mazes]).toEqual([5, 3, 2]);
   await shot(page, 'maze-easy');
+});
+
+/* ---------- the sun going down ---------- */
+
+test('the sun goes down while the hand is in the picture and waits while it isn\'t, and setting before the friend is found ends the game kindly', async ({ page }) => {
+  test.setTimeout(180_000);
+  await startPlaying(page, { mazes: 2 });
+  await expect(page.locator('#chip-sun-box')).toBeVisible();
+  const start = await state(page);
+  expect(start.timed).toBe(true);
+  expect(start.sun.total).toBeGreaterThan(20);
+  // No hand: the sun waits.
+  await show(page, ...NO_HAND);
+  await page.waitForTimeout(1500);
+  const away = (await state(page)).sun.left;
+  await page.waitForTimeout(3000);
+  expect((await state(page)).sun.left).toBe(away);
+  // A closed hand in the picture: it goes on.
+  await show(page, ...FIST);
+  await expectSoon(async () => (await state(page)).sun.left, { timeout: 10_000 }).toBeLessThan(away - 1);
+  // Near the end, it goes orange, and setting ends the game. Nothing flashes as it does.
+  await page.evaluate(() => {
+    window.__game.run.sun.left = 3;
+  });
+  await expect(page.locator('#chip-sun-box')).toHaveClass(/is-low/);
+  await page.waitForTimeout(400);
+  await shot(page, 'maze-sun-low');
+  const setting = judge(await watchBrightness(page, 300));
+  console.log('the sun setting over a maze', JSON.stringify(setting));
+  expect(setting.biggestStep).toBeLessThan(4);
+  expect(setting.flickeringShare).toBeLessThan(0.01);
+  await waitForScreen(page, 'finish');
+  const end = await state(page);
+  expect([end.sunset, end.found]).toEqual([true, 0]);
+  await expect(page.locator('#screen-finish h2')).toHaveText('The sun went down before everyone was found!');
+  await expect(page.locator('#play-again')).toHaveText('Try again');
+  await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 1 again!');
+  await page.waitForTimeout(800);
+  await shot(page, 'maze-sunset');
+});
+
+test('in the gentle maze there is no sun, and a closed hand can rest as long as it likes', async ({ page }) => {
+  await startPlaying(page, GENTLE);
+  await expect(page.locator('#chip-sun-box')).toBeHidden();
+  await show(page, ...FIST);
+  await page.waitForTimeout(3000);
+  const gentle = await state(page);
+  expect([gentle.timed, gentle.sun, gentle.phase]).toEqual([false, null, 'walking']);
 });
