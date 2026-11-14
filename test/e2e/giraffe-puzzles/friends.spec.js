@@ -50,7 +50,7 @@ test('friends together: one puzzle for everyone, a piece one holds can\'t be tak
   test.setTimeout(420_000);
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
-  await openGame(page, { levels: { [GAME]: 5 } }, GAME);
+  await openGame(page, { puzzlePieces: 'usual', levels: { [GAME]: 5 } }, GAME);
   const code = await makeGame(page, 'Ana');
   expect(page.url()).toContain(`#puzzle=${code}`);
   // Together is how it comes, and whoever made the game can change it.

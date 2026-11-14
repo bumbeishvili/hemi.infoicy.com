@@ -161,3 +161,9 @@ body[data-screen='playing']:has(.story.is-visible) .prompt {
 }
 .puzzle-score-bar i { display: block; height: 100%; background: var(--good); }
 .puzzle-score-flag { font-size: 1.1em; line-height: 1; }
+
+/* ---------- the clock on the wall: a bar that shortens, and goes orange near the end ---------- */
+.chip-clock .chip-label::before { content: '🕰️ '; }
+.clock-meter { width: clamp(56px, 7vw, 96px); margin: 6px 0 4px; }
+.clock-meter span { width: 100%; background: #5aa9e6; transition: background-color 1.5s ease; }
+.chip-clock.is-low .clock-meter span { background: #e8743b; }

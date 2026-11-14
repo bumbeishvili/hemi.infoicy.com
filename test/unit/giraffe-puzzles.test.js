@@ -1,11 +1,12 @@
-// Giraffe's Puzzles: pieces an open hand picks up and carries to their places, what each level brings, that a hand
-// which closes or rests loses nothing, and the same puzzle on every friend's computer. Everything here runs without a
-// screen, with a pretend child moving a glove over the table.
+// Giraffe's Puzzles: pieces an open hand picks up and carries to their places, what each level brings, the clock on
+// the wall, that in the gentle puzzle a hand which closes or rests loses nothing, and the same puzzle on every
+// friend's computer. Everything here runs without a screen, with a pretend child moving a glove over the table. The
+// tests of the old kind rules play the gentle puzzle, as makePuzzle does unless a test says otherwise.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  choosePictures, cutEdges, CUTS, EXTRAS, GRAB, GRABS, GRACE, HINT_AFTER, LABELS, layoutFor, MENDED_SECONDS, NEWS, newsIsOn,
+  choosePictures, CLOCK, cutEdges, CUTS, EXTRAS, GRAB, GRABS, GRACE, HINT_AFTER, LABELS, layoutFor, MENDED_SECONDS, NEWS, newsIsOn,
   PARTY_SECONDS, PICTURES, PIECE_CHOICES, Puzzle, puzzleLevel, puzzleNewAt, puzzlePlan, REACH, seededRandom, sidesOf, SNAPS,
   TABLE,
 } from '../../games/giraffe-puzzles/puzzle.js';
@@ -20,7 +21,7 @@ const AWAY = { x: 1, y: 0.03 }; // Somewhere on the table with nothing to pick u
 
 function makePuzzle(options = {}) {
   const log = [];
-  const puzzle = new Puzzle({ seed: 7, onEvent: (event) => log.push(event), ...options });
+  const puzzle = new Puzzle({ seed: 7, clock: 'gentle', onEvent: (event) => log.push(event), ...options });
   puzzle.log = log;
   return puzzle;
 }
@@ -1004,4 +1005,83 @@ test('the puzzles\' rooms are known to both servers, and a friend\'s glove and p
   }
   const friends = readFileSync(new URL('../../core/friends.js', import.meta.url), 'utf8');
   assert.match(friends, /'jigsaw'[^\]]*\]\.includes\(message\.t\)/);
+});
+
+/* ---------- the clock on the wall ---------- */
+
+const ticking = (options = {}) => makePuzzle({ clock: 'ticks', ...options });
+
+/** Plays until it's over, or a long time has gone, with a pretend child, and says how long it took. */
+function solve(puzzle, options = {}, seconds = 900) {
+  const hand = child(puzzle, options);
+  return run(puzzle, seconds, () => hand(), () => puzzle.done);
+}
+
+test('on their own the clock gives each picture its time, and goes round while the hand is in the picture, open or closed', () => {
+  const puzzle = ticking({ level: 1 });
+  assert.equal(puzzle.timed, true);
+  const { total } = puzzle.clock;
+  assert.ok(Math.abs(total - (CLOCK.base[0] + puzzle.pieces.length * CLOCK.each[0])) < 1e-9, `${total} s for ${puzzle.pieces.length} pieces`);
+  // No hand: it waits, however long the hand is away.
+  run(puzzle, 120, NO_HAND);
+  assert.equal(puzzle.clock.left, total);
+  // A closed hand in the picture: it goes round all the same.
+  run(puzzle, 5, closed(AWAY));
+  assert.ok(Math.abs(puzzle.clock.left - (total - 5)) < 0.05);
+  // Each picture has its own time, wound up as it comes.
+  const hand = child(puzzle, { speed: 1.5 });
+  run(puzzle, 120, () => hand(), () => puzzle.index > 0);
+  assert.equal(puzzle.index, 1);
+  assert.equal(puzzle.clock.left, puzzle.clock.total);
+});
+
+test('the clock running out before the picture is back together ends the game, a moment later, and the piece in the hand is put down', () => {
+  const puzzle = ticking({ level: 1 });
+  pickUp(puzzle, plainPiece(puzzle));
+  let t = 0;
+  for (; t < 300 && puzzle.phase === 'play'; t += FRAME) puzzle.update(FRAME, open(AWAY));
+  assert.ok(Math.abs(t + 0.1 - puzzle.clock.total) < 0.1, `ran out after ${t} s`);
+  assert.deepEqual([puzzle.phase, puzzle.lost, puzzle.done, puzzle.held], ['timeup', true, false, null]);
+  assert.equal(said(puzzle, 'timeup').length, 1);
+  // Nothing more can be done, and then it's over.
+  const placed = puzzle.stats.placed;
+  run(puzzle, CLOCK.timeUpSeconds - 0.1, open(plainPiece(puzzle) ?? AWAY));
+  assert.equal(puzzle.stats.placed, placed);
+  assert.equal(puzzle.done, false);
+  run(puzzle, 0.2, NO_HAND);
+  assert.deepEqual([puzzle.done, puzzle.lost], [true, true]);
+});
+
+test('a quick child mends every picture at every level in time, and a slow one does at level 1 and not at level 10', () => {
+  for (const level of LEVELS) {
+    for (const pieces of CHOICES) {
+      const puzzle = ticking({ level, pieces });
+      solve(puzzle, { speed: 1.5 });
+      assert.ok(puzzle.done && !puzzle.lost, `level ${level}, ${pieces}: ${puzzle.lost ? 'the clock ran out' : 'not over'}`);
+    }
+  }
+  const first = ticking({ level: 1, pieces: 'more' });
+  solve(first, { speed: 0.2 });
+  assert.ok(first.done && !first.lost, 'level 1, slowly');
+  const last = ticking({ level: 10, pieces: 'more' });
+  solve(last, { speed: 0.2 });
+  assert.equal(last.lost, true, 'level 10, slowly');
+  // Each piece has less time each level, and at level 10 under a quarter of level 1's.
+  assert.ok(CLOCK.each[1] < CLOCK.each[0] / 4 && CLOCK.base[1] < CLOCK.base[0] / 2);
+});
+
+test('the gentle puzzle, and puzzles with friends, have no clock', () => {
+  const gentle = makePuzzle({ clock: 'gentle', level: 10 });
+  run(gentle, 400, closed(AWAY));
+  assert.deepEqual([gentle.timed, gentle.clock, gentle.phase, gentle.lost], [false, null, 'play', false]);
+  for (const options of [{ friends: true }, { friends: true, shared: { claim: () => {} } }]) {
+    const friends = makePuzzle({ clock: 'ticks', ...options });
+    assert.deepEqual([friends.timed, friends.clock], [false, null]);
+  }
+});
+
+test('the grown-ups\' settings: the clock, more pieces and a closer snap come first, and the gentle puzzle can be chosen', () => {
+  const source = readFileSync(new URL('../../games/giraffe-puzzles/main.js', import.meta.url), 'utf8');
+  assert.match(source, /defaults: \{ puzzlePieces: 'more', puzzleSnap: 'closer', puzzleClock: 'ticks', /);
+  assert.match(source, /choice\('puzzleClock', 'gentle', 'Gentle: /);
 });

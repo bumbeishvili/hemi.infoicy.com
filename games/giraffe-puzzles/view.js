@@ -566,7 +566,8 @@ export class PuzzleView {
   drawFrames(puzzle) {
     const { ctx, scale } = this;
     const { round } = puzzle;
-    const whole = puzzle.phase !== 'play';
+    // A picture the clock ran out on isn't whole: it stays as far as it got.
+    const whole = puzzle.phase === 'mended' || (puzzle.phase === 'done' && !puzzle.lost);
     if (this.leaving) {
       ctx.save();
       ctx.globalAlpha = 1 - ease(clamp(this.leaving.t / FADE_SECONDS, 0, 1));

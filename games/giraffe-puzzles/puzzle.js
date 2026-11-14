@@ -6,8 +6,13 @@
 //
 // The rules are here, with no screen, so they run in the unit tests. main.js says where the glove is and whether the
 // hand is open, and view.js draws what this says. Places are in table units: the table is TABLE.width wide and 1 high,
-// x across from the left and y down from the top, the same on every screen. Nothing in a puzzle has a time limit and
-// nothing goes away: a resting child comes back to it just as they left it.
+// x across from the left and y down from the top, the same on every screen.
+//
+// On their own, as it comes, the clock on the playroom wall gives each picture its time, and a picture not back
+// together when it runs out ends the game. It only goes round while the hand is in the picture, so a child who goes
+// away, or whose hand the camera loses, comes back to it as they left it. A grown-up can choose the gentle puzzle
+// instead, which is the game as it always was: nothing has a time limit and nothing goes away, and a resting child
+// comes back to it just as they left it. With friends there's no clock.
 //
 // With friends, together, everyone works on the same puzzle, each on their own computer. A hand that comes to a
 // loose piece claims it, and the server says whose each claim is (claimed), the first having it, so a piece one
@@ -30,6 +35,13 @@ export const REACH = { none: 1, little: 1.25, lots: 1.6 };
 export const GRAB = { none: 0.012, little: 0.03, lots: 0.06 };
 // The pictures there are, by name: pictures.js draws them. A game takes different ones each time.
 export const PICTURES = ['meadow', 'stall', 'lighthouse', 'balloons', 'racer', 'picnic', 'ship', 'rocket'];
+// The clock on the wall, as a grown-up chooses: it gives each picture its time (the default), or the gentle puzzle,
+// with no clock.
+export const CLOCKS = ['ticks', 'gentle'];
+// A picture's time: base seconds, and so many for each of its pieces, each from level 1's to level 10's. A piece the
+// wrong way up, under a leaf or in a bubble has extra seconds more. timeUpSeconds is how long the clock is looked at
+// once it has run out, before the finish card.
+export const CLOCK = { base: [12, 3], each: [9, 2], extra: 1.5, timeUpSeconds: 2.4 };
 
 // The frame on the easel, when there's one picture, and when there are two side by side.
 const FRAME_ONE = { width: 0.72, height: 0.54 };
@@ -257,9 +269,14 @@ export class Puzzle {
    * play it together, with me this child's id among them. seed lays the puzzle out, the same from the same seed,
    * and avoid is pictures to leave till last, as the ones in the game before. onEvent hears what happens: see main.js.
    */
-  constructor({ level = 1, pieces = 'usual', snap = 'near', reach = 'little', side = 'right', friends = false, shared = null, me = 'me', seed = null, avoid = [], onEvent = () => {} } = {}) {
+  constructor({ level = 1, pieces = 'usual', snap = 'near', reach = 'little', side = 'right', friends = false, clock = 'ticks', shared = null, me = 'me', seed = null, avoid = [], onEvent = () => {} } = {}) {
     Object.assign(this, { side, shared, me, onEvent });
     this.level = clampLevel(level);
+    // Whether the clock gives each picture its time: on their own, unless the gentle puzzle was chosen.
+    this.timed = !friends && !shared && clock !== 'gentle';
+    this.clock = null; // { left, total }, in seconds, while a picture is being put together.
+    this.lost = false;
+    this.timeUpFor = 0;
     this.plan = puzzlePlan(level, pieces, { friends });
     this.snapShare = SNAPS[snap] ?? SNAPS.near;
     this.grab = GRAB[reach] ?? GRAB.little;
@@ -270,7 +287,7 @@ export class Puzzle {
     this.sure = false; // With friends: the server has said the piece in the hand is this child's.
     this.openAt = -Infinity;
     this.lastGlove = null;
-    this.phase = 'play'; // play, mended while a finished picture is looked at, or done.
+    this.phase = 'play'; // play, mended while a finished picture is looked at, timeup once the clock has run out, or done.
     this.mendedFor = 0;
     this.stats = { placed: 0, pictures: 0, picks: 0, carried: 0, longest: 0, peeks: 0, prizes: { star: 0, gem: 0 } };
     this.carryFor = 0;
@@ -278,6 +295,17 @@ export class Puzzle {
     this.mine = new Map(); // With friends: the pieces this child last held, by number, as { k, s }: see report().
     this.rounds = this.lay(avoid);
     this.index = 0;
+    this.windClock();
+  }
+
+  /** The clock is set for the picture being put together now: see CLOCK. */
+  windClock() {
+    if (!this.timed) return;
+    const at = (this.level - 1) / 9;
+    const mix = ([first, last]) => first + (last - first) * at;
+    const tricky = this.pieces.filter((piece) => piece.angle !== 0 || piece.leaf || piece.floating).length;
+    const total = mix(CLOCK.base) + this.pieces.length * mix(CLOCK.each) + tricky * CLOCK.extra;
+    this.clock = { left: total, total };
   }
 
   /** Every picture of the game, cut and scattered, from the seed. */
@@ -481,6 +509,15 @@ export class Puzzle {
     this.time += dt;
     if (this.shared) this.askAgain();
     if (this.phase === 'done') return;
+    if (this.phase === 'timeup') {
+      // The clock has run out: a moment for it to be seen, and the game is over.
+      this.timeUpFor += dt;
+      if (this.timeUpFor >= CLOCK.timeUpSeconds) {
+        this.phase = 'done';
+        this.onEvent({ type: 'done' });
+      }
+      return;
+    }
     if (this.phase === 'mended') {
       this.mendedFor += dt;
       if (this.mendedFor >= (this.index === this.rounds.length - 1 ? PARTY_SECONDS : MENDED_SECONDS)) this.nextRound();
@@ -509,6 +546,20 @@ export class Puzzle {
       const lit = piece.state === 'held' && piece.holder === this.me && piece.carried >= HINT_AFTER;
       piece.hint = clamp(piece.hint + (lit ? dt : -dt) * HINT_RATE, 0, 1);
     }
+    if (this.phase === 'play') this.tick(dt, glove);
+  }
+
+  /** The clock goes round while the hand is in the picture, open or not, and running out ends the game. */
+  tick(dt, glove) {
+    const { clock } = this;
+    if (!clock || !glove) return;
+    clock.left = Math.max(0, clock.left - dt);
+    if (clock.left > 0) return;
+    this.drop();
+    this.phase = 'timeup';
+    this.timeUpFor = 0;
+    this.lost = true;
+    this.onEvent({ type: 'timeup', round: this.round });
   }
 
   /** The piece in the hand goes with it, turns the right way up if it wasn't, and snaps in once it's near its place. */
@@ -618,6 +669,7 @@ export class Puzzle {
     this.index += 1;
     this.phase = 'play';
     this.held = null;
+    this.windClock();
     this.onEvent({ type: 'round', round: this.round });
     // With friends, a piece of the next picture a friend put in while this one was still being looked at.
     if (this.pieces.every((each) => each.state === 'placed')) this.mend();
