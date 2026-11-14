@@ -175,6 +175,38 @@ Level 1 plays the way each game always has. After that, levels bring more going 
 
 **A lost game is short, and kind.** It ends there, with a card that says what happened in the game's own story and the button to try again. It isn't cheered: there's no fanfare, no clapping and no confetti. The voice says the game's own line for it, or, where a game has none, "So close! Try again!".
 
+**What can be lost in each game, and its gentle setting.** Each is under the gear icon, by this name, and its gentle choice is the game as it was:
+
+| Game | What can be lost, as the game comes | The setting, and its gentle choice |
+|---|---|---|
+| High Five Racers | Another car gets to the finish line first | **The other cars**: Gentle |
+| Balloon Pop | Too many balloons float away | **Balloons that float away**: Gentle |
+| Mighty Moves | The other fighter wins the fight | **The computer's strength**: Gentle |
+| Leap Trail | The runner's hearts run out, one for each stumble | **Running out of hearts**: Gentle |
+| Sky Wings | The sky pirates shoot the plane down | **How hard the sky pirates are**: Gentle |
+| Robot Rescue | The goo stops the tram when the hearts run out | **How hard the robots' goo comes**: Gentle |
+| Tank Patrol | The robot tanks' shells win when the hearts run out | **How hard the robots' shells come**: Gentle |
+| Cannon Bay | The pirates sink the ship when the hearts run out | **How hard the pirates fight**: Gentle |
+| The Lighthouse Keeper | A ship drifts away before its window is clean | **How long the ships can wait**: Gentle |
+| Giraffe's Long Walk Home | It gets dark before Giraffe is home | **The sun going down**: Gentle |
+| Giraffe's Smoothie Stand | A customer who isn't served in time goes home | **Customers' patience**: Gentle |
+| Spider Catcher | Three spiders get away | **Spiders getting away**: Gentle |
+| Bounce Back | The computer wins the match | **How hard**: Gentle |
+| Giraffe's Maze | The sun sets before the friend is found | **The sun going down**: Gentle |
+| Giraffe's Garden | A plant is left too long in the sun, and wilts | **The sun drying the garden**: Gentle |
+| Giraffe's Goal | The other team wins the shoot-out | **The other team's kicks**: Gentle |
+| Frost Arena | The other team wins the match | **How hard**: Easy |
+| Arrow Meadow | The quiver is empty before enough targets are hit | **Arrows in the quiver**: Gentle |
+| Giraffe's Puzzles | The clock runs out before the picture is mended | **The clock on the wall**: Gentle |
+| Flap, Little Chick! | The fox catches the chick | **The fox**: He never catches it, or He keeps his distance |
+| Mighty Lift | The sun sets before everyone is freed | **Before sunset**: Gentle |
+| Gobble and Grow | A bigger thing catches the creature three times | **Bigger things**: Gentle |
+| Giraffe's Paint Box | Another painter finishes the picture first | **Another painter**: Gentle |
+| Moto Mountain | The race: fourth or worse, and the level is to be tried again | **The ride**: Gentle |
+| Rooftop Rope | Three drops into the net | **Drops into the net**: Gentle, any number |
+
+Playing with friends, most games still can't be lost, as each computer would have to agree on the moment it was. Tank Patrol and Cannon Bay can be lost together. All of this has only been tried by scripted players in the tests: see **Not tested yet**.
+
 **What a level never changes:** anything a grown-up or therapist chose. That's the hand in play, how open a hand has to be, how far there is to reach, how big a movement has to be, a gentle setting, help like a car that steers itself, and how long a game was set to be. With nobody in the picture, or no hand to see, a game waits, and so does whatever threatens in it: a child who walks away isn't caught for it. Every level-10 game is also tested to make sure nothing flashes. How much harder level 10 is than level 1 is in each game's section. It's no longer held to 70% of level 1's time to react, as it was when nothing could be lost.
 
 **Settings saved before the games changed.** A game's settings are saved all together, in this browser. So a child who had played before 14 November 2026 has the way each game came then saved, though nobody chose it. Where that way was changed, what was saved is dropped, once, so that the game comes as it does now. A grown-up who really had chosen the old way has to choose it again, under the gear icon. Which settings these are is in `OLD_DEFAULTS` in `core/settings.js`.
