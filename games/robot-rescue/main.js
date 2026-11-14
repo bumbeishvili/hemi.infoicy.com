@@ -266,6 +266,8 @@ class RescueGame {
     // The level doesn't move on, and the big button says so.
     const again = document.getElementById('play-again');
     if (lost && again) again.textContent = TRY_AGAIN[language];
+    // And no confetti for the goo winning.
+    if (lost) session.hud.confetti?.stop();
   }
 
   /**

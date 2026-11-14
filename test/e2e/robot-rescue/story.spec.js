@@ -147,6 +147,8 @@ test('as it comes, the goo can win: five hits stop the tram at level 3, and leve
   await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 3 again!');
   await page.waitForTimeout(600);
   await shot(page, 'x-goo-won');
+  // No confetti for losing.
+  expect(await page.evaluate(() => window.__game.session.hud.confetti.running)).toBe(false);
   await show(page, ...OPEN);
   await page.locator('#play-again').click();
   await waitForScreen(page, 'playing');
