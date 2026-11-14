@@ -19,6 +19,9 @@ import { GRID, PATCHES, SHIPS, Storm, newAt } from './storm.js';
 
 const OPEN_TO_WIPE = 'Open your hand to wipe!';
 const FINISH = 'You saved every ship!';
+// When a ship drifts away first. The card's words are only shown, and the voice says a line it already has.
+const DRIFTED_TITLE = 'A ship drifted away!';
+const DRIFTED_SAID = 'Great job!';
 
 const NEXT_SHIP_SECONDS = 0.4;
 const LAST_SHIP_SECONDS = 1.6;
@@ -63,6 +66,9 @@ class LighthouseGame {
   constructor(session) {
     this.session = session;
     this.story = new StoryBox(session);
+    // When a ship drifted away, a line on the finish card saying what happened.
+    document.querySelector('#screen-finish .finish-hero')?.insertAdjacentHTML('beforebegin', '<p id="finish-story" class="finish-story" hidden></p>');
+    this.lost = false;
     this.storm = null;
     this.timer = 0;
     this.after = null;
@@ -144,12 +150,20 @@ class LighthouseGame {
     this.room.calm = 0;
     this.room.shownCalm = 0;
     const ships = friendly ? (SHIP_CHOICES.includes(friendly.length) ? friendly.length : SHIPS.length) : this.session.settings.ships;
+    // On their own, a ship only waits so long, unless a grown-up chose Gentle. With friends they always wait.
+    const waits = !friendly && this.session.settings.storm !== 'gentle';
     this.storm = new Storm({
       ships,
       level: friendly?.level ?? level,
       shared: Boolean(friendly),
+      waits,
+      size: this.session.settings.reach,
       onEvent: (event) => this.onStorm(event),
     });
+    this.lost = false;
+    this.session.finishLine = FINISH;
+    byId('chip-wait-box').hidden = !waits;
+    this.waitShown = null;
     this.room.swell = this.storm.level.swell;
     this.room.lumps = this.storm.lumps;
     this.room.storm = this.storm;
@@ -284,6 +298,7 @@ class LighthouseGame {
       },
       'ship-home': () => this.onShipHome(),
       'all-home': () => this.onAllHome(),
+      drifted: () => this.onDrifted(event),
     };
     handlers[event.type]?.();
   }
@@ -321,6 +336,18 @@ class LighthouseGame {
     this.later(NEXT_SHIP_SECONDS, () => this.storm.nextShip());
   }
 
+  /**
+   * The window wasn't clean in time, and the ship drifted off into the storm: the game ends there, kindly,
+   * and that level comes round again. The lifeboat will bring them in, so nobody is left out at sea.
+   */
+  onDrifted({ ship }) {
+    const { session } = this;
+    this.lost = true;
+    this.driftedWho = characterWithId(ship.who)?.name ?? 'The ship';
+    session.finishLine = DRIFTED_SAID;
+    session.finish();
+  }
+
   onAllHome() {
     this.room.calm = 1;
     this.later(LAST_SHIP_SECONDS, () => this.session.finish());
@@ -332,6 +359,13 @@ class LighthouseGame {
     byId('chip-treasure').textContent = `🐚 ${storm.treasure}`;
     const windowShare = storm.mud && storm.index >= 0 && storm.index < storm.ships.length ? storm.mud.share : 0;
     byId('race-progress-fill').style.width = `${Math.round(((storm.home + Math.min(1, windowShare) * 0.999) / storm.ships.length) * 100)}%`;
+    // How long this ship can still wait, as a bar that empties slowly.
+    const shown = Math.round(storm.waitShare * 100);
+    if (shown !== this.waitShown) {
+      this.waitShown = shown;
+      byId('wait-fill').style.width = `${shown}%`;
+      byId('chip-wait-box').dataset.low = storm.waitShare < 0.25 ? 'yes' : 'no';
+    }
   }
 
   wipe = (x, y, sizeX, sizeY, moved, how) => this.storm.wipe(x, y, sizeX, sizeY, moved, how);
@@ -349,6 +383,12 @@ class LighthouseGame {
     // Only with a ship waiting, so that the story is heard first.
     const wiping = Boolean(storm.ship) && Boolean(room.mud) && !room.mudFading && room.sailing === 0;
     storm.update(dt, { still: room.reducedMotion, hand: wiping ? room.handOnGlass() : null });
+    // The ship drifts only while its window is there to wipe and the camera can see the hand, so a child who
+    // is out of the picture isn't hurried.
+    const hand = snapshot?.[this.session.settings.hands];
+    const seen = Boolean(hand) && hand.status !== 'missing' && hand.reason !== 'edge' && hand.reason !== 'small';
+    if (wiping && seen) storm.passTime(dt);
+    if (this.session.screen !== 'playing') return;
     room.update(dt, snapshot, { aspect: this.session.camera.aspect, wiping, showHands: true, wipe: this.wipe });
     this.session.sound.setLoopLevel('wipe', wiping ? room.wipeSpeed * WIPE_LEVEL : 0);
     // With friends, the patches just wiped are claimed, and everyone sees everyone's glove.
@@ -557,8 +597,15 @@ class LighthouseGame {
     const { hands } = this.session.settings;
     const byHand = (count) => ({ left: hands === 'left' ? count : 0, right: hands === 'right' ? count : 0 });
     this.friends.showResults();
-    // A game with friends is on the host's level, so it doesn't move the child's own level on.
-    return { hero: home, noun: 'storm', rows: { ships: byHand(home), treasure: byHand(treasure) }, countsForLevel: !this.friends.current };
+    const story = byId('finish-story');
+    if (!this.friends.current) {
+      document.querySelector('#screen-finish h2').textContent = this.lost ? DRIFTED_TITLE : FINISH;
+      story.textContent = this.lost ? `${this.driftedWho}’s boat drifted off into the storm before the window was clean. The lifeboat will bring them in.` : '';
+    }
+    story.hidden = !this.lost || Boolean(this.friends.current);
+    // A ship drifting away means that level again. A game with friends is on the host's level, so it doesn't
+    // move the child's own level on.
+    return { hero: home, noun: 'storm', won: !this.lost, rows: { ships: byHand(home), treasure: byHand(treasure) }, countsForLevel: !this.friends.current };
   }
 }
 
@@ -578,6 +625,7 @@ new GameSession({
         <div class="chips">
           <div class="chip"><span class="chip-label">Ships home</span><span id="chip-ships" class="chip-value">0 of 4</span></div>
           <div id="chip-treasure-box" class="chip" hidden><span class="chip-label">Treasure</span><span id="chip-treasure" class="chip-value">🐚 0</span></div>
+          <div id="chip-wait-box" class="chip chip-wait" hidden><span class="chip-label">⛵ Ship waiting</span><span class="wait-bar"><span id="wait-fill" class="wait-fill"></span></span></div>
         </div>
         <div class="race-progress" aria-hidden="true"><div id="race-progress-fill" class="race-progress-fill"></div></div>
         <ol id="light-scores" class="light-scores" aria-label="How much each one has cleaned" hidden></ol>
@@ -601,13 +649,18 @@ new GameSession({
         <label><input type="radio" name="reach" value="lots"> Small</label>
       </fieldset>
       <fieldset class="choice">
+        <legend>How long the ships can wait</legend>
+        <label><input type="radio" name="storm" value="drift"> Not for ever: a ship drifts away if its window isn’t clean in time</label>
+        <label><input type="radio" name="storm" value="gentle"> Gentle: they wait as long as it takes, as before</label>
+      </fieldset>
+      <fieldset class="choice">
         <legend>Ships to bring home</legend>
         <label><input type="radio" name="ships" value="2"> Two</label>
         <label><input type="radio" name="ships" value="4"> All four</label>
       </fieldset>`,
   },
-  defaults: { reach: 'little', ships: 4 },
-  choices: { reach: String, ships: Number },
+  defaults: { reach: 'little', ships: 4, storm: 'drift' },
+  choices: { reach: String, ships: Number, storm: String },
   tagline: (side) => `Ships are lost in the storm! Wipe the mud off the lighthouse windows with your open ${side} hand, and bring them home.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

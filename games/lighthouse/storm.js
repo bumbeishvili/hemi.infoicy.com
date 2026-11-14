@@ -6,6 +6,12 @@
 // plain storm, and keeps the patches of mud its child's hand wipes for the game to claim. Each patch is
 // whoever's hand wiped it first, which the server decides, and a friend's patches come off the glass
 // here too, so every game has the same mud left, and its windows come clean together.
+//
+// What's at stake, on their own: each ship can only wait so long in the storm. While its window is muddy and
+// the camera can see the hand, the ship drifts towards the fog, and if the window isn't clean before it gets
+// there, the ship drifts away and the game ends there, kindly (see shipWaits). On Gentle, a grown-up's
+// choice, the ships wait as long as it takes, as they always did. With friends the ships always wait, as
+// each game would count its own time.
 import { clampLevel, ramp, stepsAt } from '../../core/levels.js';
 
 export const SHIPS = [
@@ -75,6 +81,17 @@ export const NEW_AT = {
   9: ['gull'],
   10: ['chest'],
 };
+
+// How long a ship waits for its window, in seconds: at level 1 and at level 10, for a medium window, and a
+// little more for each thing the storm throws on it, as each takes a moment more. A big window has longer,
+// and a small one less, as there's more or less to wipe.
+export const WAITS = { base: [50, 16], splat: 3, lump: 5, chest: 4, crab: 0, size: { none: 1.25, little: 1, lots: 0.8 } };
+
+/** How long a ship waits for a window, at a level, with what the storm has planned for it and a size of window. */
+export function shipWaits(level, coming = [], size = 'little') {
+  const extra = coming.reduce((sum, { what }) => sum + (what === 'splat' ? WAITS.splat : what === 'chest' ? WAITS.chest : ['weed', 'star', 'clam'].includes(what) ? WAITS.lump : 0), 0);
+  return ramp(level, WAITS.base[0], WAITS.base[1]) * (WAITS.size[size] ?? 1) + extra;
+}
 
 /** What's new at a level, as the title card and the countdown show it. Nothing at level 1. */
 export function newAt(level) {
@@ -244,9 +261,17 @@ export class Storm {
   /**
    * ships says how many come in, and level is from 1 to 10. shared is with friends: the plain storm, and
    * the patches the hand wipes are kept for the game to claim (see takeWiped), while a friend's come off
-   * with wipePatches.
+   * with wipePatches. waits false is Gentle: the ships wait for as long as it takes. size is the size of the
+   * window, as the grown-ups' reach setting has it, for how long a ship waits.
    */
-  constructor({ ships = SHIPS.length, level = 1, shared = false, random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ ships = SHIPS.length, level = 1, shared = false, waits = true, size = 'little', random = Math.random, onEvent = () => {} } = {}) {
+    this.levelNumber = clampLevel(level);
+    // With friends the ships always wait: see the top of this file.
+    this.waits = waits && !shared;
+    this.size = size;
+    this.waitTotal = Infinity;
+    this.waitLeft = Infinity;
+    this.drifted = false;
     // Always the last one too, as that's where the story ends.
     this.ships = ships >= SHIPS.length ? SHIPS : [...SHIPS.slice(0, ships - 1), SHIPS.at(-1)];
     this.level = shared ? plainStorm(level) : stormAt(level);
@@ -307,6 +332,8 @@ export class Storm {
     this.prizes = this.hideShells();
     this.lastWipe = null;
     this.coming = this.plan(this.index);
+    this.waitTotal = this.waits ? shipWaits(this.levelNumber, this.coming, this.size) : Infinity;
+    this.waitLeft = this.waitTotal;
     this.emit('ship', { ship: this.ship, index: this.index, total: this.ships.length });
   }
 
@@ -589,6 +616,24 @@ export class Storm {
       lump.x = Math.min(MIDDLE.right, Math.max(MIDDLE.left, lump.x));
       lump.y = Math.min(MIDDLE.bottom, Math.max(MIDDLE.top, lump.y));
     }
+  }
+
+  /** How long the ship has still to wait, from 1 as it comes to 0 as it drifts away. Always 1 on Gentle. */
+  get waitShare() {
+    return Number.isFinite(this.waitTotal) ? this.waitLeft / this.waitTotal : 1;
+  }
+
+  /**
+   * The ship drifts while its window is muddy. The game only calls this while the window is being played on
+   * and the camera can see the hand. When the time runs out, the ship drifts away and the game is over.
+   */
+  passTime(dt) {
+    if (this.drifted || this.clean || !this.mud || !Number.isFinite(this.waitTotal)) return;
+    this.waitLeft = Math.max(0, this.waitLeft - dt);
+    if (this.waitLeft > 0) return;
+    this.drifted = true;
+    this.coming = [];
+    this.emit('drifted', { ship: this.ship });
   }
 
   shipHome() {
