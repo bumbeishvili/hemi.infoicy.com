@@ -10,6 +10,8 @@ export const GAME = 'giraffe-puzzles';
 export const OPEN = [null, 'open', { scale: 0.62, sameHand: true }];
 export const FIST = [null, 'fist', { scale: 0.62, sameHand: true }];
 export const NO_HAND = [null, null, { scale: 0.62 }];
+// The gentle puzzle, which is the game as it always was: no clock, and nobody can lose.
+export const GENTLE = { puzzleClock: 'gentle' };
 
 /** Gets through the hand check with an open hand, and on into play. */
 export async function startPlaying(page, settings = {}, hash = '') {
@@ -27,6 +29,9 @@ export const state = (page) => page.evaluate(() => {
   return {
     level: puzzle.level,
     phase: puzzle.phase,
+    timed: puzzle.timed,
+    lost: puzzle.lost,
+    clock: puzzle.clock ? { ...puzzle.clock } : null,
     index: puzzle.index,
     rounds: puzzle.rounds.length,
     done: puzzle.done,

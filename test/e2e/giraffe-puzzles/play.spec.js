@@ -2,7 +2,7 @@
 // open, and brought near its place it snaps in. A hand that closes, or goes, leaves the piece where it is. With real
 // photos of a hand, open and closed, through the real tracker.
 import { openGame, shot } from '../helpers.js';
-import { expect, expectSoon, FIST, GAME, handNow, leadHand, NO_HAND, OPEN, show, startPlaying, state, stopHand, test, waitForScreen } from './helpers.js';
+import { expect, expectSoon, FIST, GAME, GENTLE, handNow, judge, leadHand, NO_HAND, OPEN, show, startPlaying, state, stopHand, test, waitForScreen, watchBrightness } from './helpers.js';
 
 const gap = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 // Somewhere under the easel that's nobody's place, to take a piece to and put it down.
@@ -118,9 +118,9 @@ test('a shaking hand that\'s read as closed now and then still puts every piece 
   expect(end.stats.picks).toBeGreaterThanOrEqual(6);
 });
 
-test('what to do is asked for in few words: to pick a piece up, to open a closed hand, and that resting is fine', async ({ page }) => {
+test('what to do is asked for in few words: to pick a piece up, to open a closed hand, and in the gentle puzzle that resting is fine', async ({ page }) => {
   test.setTimeout(120_000);
-  await openGame(page, {}, GAME);
+  await openGame(page, GENTLE, GAME);
   await show(page, ...OPEN);
   await page.locator('#start').click();
   // The hand closes once the hand check is done, so it has no piece as the game starts.
@@ -232,4 +232,47 @@ test.describe('on a big sharp screen', () => {
     await shot(page, 'puzzles-big-screen');
     await stopHand(page);
   });
+});
+
+/* ---------- the clock on the wall ---------- */
+
+test('the clock goes round while the hand is in the picture and waits while it isn\'t, and running out ends the game kindly', async ({ page }) => {
+  test.setTimeout(180_000);
+  await startPlaying(page);
+  await expect(page.locator('#chip-clock-box')).toBeVisible();
+  const start = await state(page);
+  expect(start.timed).toBe(true);
+  expect(start.clock.total).toBeGreaterThan(30);
+  await show(page, ...NO_HAND);
+  await page.waitForTimeout(1500);
+  const away = (await state(page)).clock.left;
+  await page.waitForTimeout(3000);
+  expect((await state(page)).clock.left).toBe(away);
+  await show(page, ...FIST);
+  await expectSoon(async () => (await state(page)).clock.left, { timeout: 10_000 }).toBeLessThan(away - 1);
+  await page.evaluate(() => {
+    window.__game.puzzle.clock.left = 3;
+  });
+  await expect(page.locator('#chip-clock-box')).toHaveClass(/is-low/);
+  const running = judge(await watchBrightness(page, 300));
+  console.log('the clock running out', JSON.stringify(running));
+  expect(running.biggestStep).toBeLessThan(4);
+  expect(running.flickeringShare).toBeLessThan(0.01);
+  await waitForScreen(page, 'finish');
+  expect((await state(page)).lost).toBe(true);
+  await expect(page.locator('#screen-finish h2')).toHaveText('The clock ran out before the picture was mended!');
+  await expect(page.locator('#play-again')).toHaveText('Try again');
+  await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 1 again!');
+  await page.waitForTimeout(800);
+  await shot(page, 'puzzle-time-up');
+});
+
+test('in the gentle puzzle there is no clock, and the panel has the clock, more pieces and a closer snap as they come', async ({ page }) => {
+  await startPlaying(page, GENTLE);
+  await expect(page.locator('#chip-clock-box')).toBeHidden();
+  expect((await state(page)).clock).toBe(null);
+  await page.locator('#open-panel').click();
+  await expect(page.locator('input[name="puzzleClock"][value="gentle"]')).toBeChecked();
+  await expect(page.locator('input[name="puzzlePieces"][value="more"]')).toBeChecked();
+  await expect(page.locator('input[name="puzzleSnap"][value="closer"]')).toBeChecked();
 });

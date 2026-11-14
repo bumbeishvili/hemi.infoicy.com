@@ -181,3 +181,12 @@ body:not([data-prizes='on']) tr:has(#sum-left-prizes) { display: none; }
   .story { display: none !important; }
   .maze-found li { width: 28px; height: 28px; }
 }
+
+/* ---------- the sun going down over each maze: a bar that shortens, and goes orange near the end ---------- */
+/* A slim pill just under the friends to find, so the band at the top is no wider. */
+.maze-hud .chip-sun { position: absolute; left: 0; top: calc(100% + 6px); display: flex; align-items: center; gap: 8px; min-width: 0; padding: 3px 12px; border-radius: 999px; }
+.maze-hud .chip-sun[hidden] { display: none; }
+.chip-sun .chip-label::before { content: '☀️ '; }
+.sun-meter { width: clamp(64px, 8vw, 120px); margin: 0; }
+.sun-meter span { width: 100%; background: #f5b82e; transition: background-color 1.5s ease; }
+.chip-sun.is-low .sun-meter span { background: #e8743b; }

@@ -12,12 +12,15 @@ import { GameSession, SPOKEN } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { flowFor, TURN_TARGETS, TurnReader } from '../../core/turn.js';
-import { BEE_SECONDS, Garden, gardenNewAt, NEWS, PARTY_SECONDS, PLANT_COUNTS, SIP, SPREADS, SPREAD_NAMES, STREAM } from './garden.js';
+import { BEE_SECONDS, Garden, gardenNewAt, NEWS, PARTY_SECONDS, PLANT_COUNTS, SIP, SPREADS, SPREAD_NAMES, STREAM, SUNS } from './garden.js';
 import { giraffePixels, renderGiraffe } from './giraffe.js';
 import { GardenView, GIRAFFE, POURING } from './view.js';
 
 const byId = (id) => document.getElementById(id);
 const FINISH = 'The garden is in bloom!';
+// On the card when a plant wilts in the sun. It's only shown, not said.
+const WILTED = 'A plant wilted in the sun!';
+const TRY_AGAIN = 'Try again';
 const INTRO = 'My garden is so thirsty! Can you water it?';
 const TURN_HINT = 'Turn your hand over to pour!';
 const OPEN_TO_HOLD = 'Open your hand to hold the can!';
@@ -164,6 +167,11 @@ class GardenGame {
     return SPREAD_NAMES.includes(this.settings.spread) ? this.settings.spread : 'middle';
   }
 
+  /** Whether the sun dries the garden, or it's the gentle garden, as a grown-up chose. */
+  sun() {
+    return SUNS.includes(this.settings.gardenSun) ? this.settings.gardenSun : 'dries';
+  }
+
   /** Which way the can's spout points: across the screen from the hand that holds it, towards the garden. */
   get spoutSide() {
     return this.settings.hands === 'left' ? 1 : -1;
@@ -175,6 +183,7 @@ class GardenGame {
       level: friendly?.level ?? level,
       plants: friendly ? (PLANT_COUNTS.includes(friendly.length) ? friendly.length : 6) : this.plantCount(),
       spread: this.spread(),
+      sun: this.sun(),
       plain: Boolean(friendly),
       shared: friendly ? { claim: (k) => this.friends.claim(k) } : null,
       me: friendly ? this.friends.room.you : 'me',
@@ -204,7 +213,7 @@ class GardenGame {
   settingChanged(change) {
     const { screen } = this.session;
     // A new number of plants, or how far apart they are, starts with the next garden, and the title shows it now.
-    if (screen !== 'playing' && screen !== 'countdown' && ('plants' in change || 'spread' in change)) this.garden = this.newGarden(this.session.level);
+    if (screen !== 'playing' && screen !== 'countdown' && ('plants' in change || 'spread' in change || 'gardenSun' in change)) this.garden = this.newGarden(this.session.level);
   }
 
   /* ---------- a new garden ---------- */
@@ -232,6 +241,7 @@ class GardenGame {
     this.view.reset();
     this.resetCounts();
     this.story.hide();
+    this.session.sound.lost = false;
     this.showProgress();
     // Prizes only come from level 2.
     const prizes = this.garden.plan.bees;
@@ -322,6 +332,11 @@ class GardenGame {
       case 'cloud':
         sound.handsOpen();
         break;
+      case 'wilted':
+        // A plant left too long in the sun droops: a soft sound, and the garden is over a moment later.
+        sound.play('whoosh', { gain: 0.22, rate: 0.7 });
+        this.story.hide();
+        break;
       case 'all-bloomed':
         this.partyIn = PARTY_SECONDS;
         view.cheer(PARTY_SECONDS + 1);
@@ -399,7 +414,21 @@ class GardenGame {
     }
     if (this.partyIn !== null) {
       this.partyIn -= dt;
-      if (this.partyIn <= 0 && session.screen === 'playing') session.finish();
+      if (this.partyIn <= 0 && session.screen === 'playing') this.end();
+    }
+    if (garden.lost && garden.done && session.screen === 'playing') this.end();
+  }
+
+  /** The garden is over. One a plant wilted in is told kindly, with no party, and Try again on the big button. */
+  end() {
+    const { session, garden } = this;
+    session.sound.lost = garden.lost;
+    session.finish();
+    // After the card is filled in, which puts back the usual title.
+    if (this.mode === 'solo') document.querySelector('#screen-finish h2').textContent = garden.lost ? WILTED : FINISH;
+    if (garden.lost) {
+      session.hud.hideSummary();
+      byId('play-again').textContent = TRY_AGAIN;
     }
   }
 
@@ -590,10 +619,11 @@ class GardenGame {
   prompt(snapshot, dt) {
     const { session } = this;
     const needed = session.handsPrompt(snapshot, dt);
-    if (this.partyIn !== null) return null;
+    if (this.partyIn !== null || this.garden.wilted) return null;
     if (needed && !needed.key.startsWith('closed')) return needed;
-    // The hand can rest whenever it likes: the can just waits. After a while, it's said that's fine.
-    if (this.restFor > RESTING_AFTER) return { key: 'resting', text: SPOKEN.resting, side: null };
+    // In the gentle garden the hand can rest whenever it likes: the can just waits. After a while, it's said that's
+    // fine. With the sun drying the garden that isn't said, as the sun doesn't wait for a closed hand.
+    if (!this.garden.drying && this.restFor > RESTING_AFTER) return { key: 'resting', text: SPOKEN.resting, side: null };
     if (!this.holding && this.closedFor > CLOSED_PROMPT_AFTER) return { key: 'open-to-hold', text: OPEN_TO_HOLD, side: null, asks: 'open' };
     // Holding the can and not pouring: how to.
     if (this.dryFor > TURN_HINT_AFTER) return { key: 'turn-hint', text: TURN_HINT, side: null };
@@ -621,11 +651,22 @@ class GardenGame {
       hero: stats.flowers,
       noun: 'garden',
       rows: { flowers: row(stats.flowers), pours: row(stats.pours), prizes: row(prizes) },
-      // Nobody can lose: every plant flowers in the end.
-      won: true,
+      // On their own, a plant can wilt in the sun, and that garden comes round again at the same level. In the gentle
+      // garden, and with friends, every plant flowers in the end.
+      won: !this.garden.lost,
       // A garden with friends is on the host's level, so it doesn't move the child's own level on.
       countsForLevel: !this.friends.current,
     };
+  }
+}
+
+/** The game's sounds. A garden a plant wilted in ends softly, with no fanfare and nothing said. */
+class GardenSound extends Sound {
+  lost = false;
+
+  finish(line) {
+    if (this.lost) this.play('sparkle', { gain: 0.3 });
+    else super.finish(line);
   }
 }
 
@@ -688,19 +729,24 @@ new GameSession({
         ${choice('spread', 'wide', 'Far apart')}
       </fieldset>
       <fieldset class="choice">
+        <legend>The sun drying the garden</legend>
+        ${choice('gardenSun', 'dries', 'The sun dries it: a plant left too long without water wilts')}
+        ${choice('gardenSun', 'gentle', 'Gentle: nothing dries out, take all the time you need')}
+      </fieldset>
+      <fieldset class="choice">
         <legend>Plants to grow</legend>
         ${choice('plants', '4', '4')}
         ${choice('plants', '6', '6')}
         ${choice('plants', '8', '8')}
       </fieldset>`,
   },
-  defaults: { turn: 'little', spread: 'middle', plants: 6 },
-  choices: { turn: String, spread: String, plants: Number },
+  defaults: { turn: 'little', spread: 'middle', plants: 6, gardenSun: 'dries' },
+  choices: { turn: String, spread: String, plants: Number, gardenSun: String },
   tagline: (side) => `Giraffe’s garden is thirsty! Hold the watering can with your open ${side} hand, and turn your hand over to pour.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),
   portraits: () => renderPortraits(ROSTER),
-  createSound: (options) => new Sound({
+  createSound: (options) => new GardenSound({
     ...options,
     sounds: {
       pour: new URL('./audio/pour.ogg', import.meta.url),

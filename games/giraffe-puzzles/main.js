@@ -16,11 +16,14 @@ import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { giraffePixels, renderGiraffe } from '../giraffe-garden/giraffe.js';
 import { playerPixels, renderPlayers } from '../giraffe-goal/players.js';
 import { CAST } from './pictures.js';
-import { NEWS, PIECE_CHOICES, Puzzle, puzzleNewAt, puzzlePlan, REACH, SNAPS, TABLE } from './puzzle.js';
+import { CLOCKS, NEWS, PIECE_CHOICES, Puzzle, puzzleNewAt, puzzlePlan, REACH, SNAPS, TABLE } from './puzzle.js';
 import { GIRAFFE, PuzzleView } from './view.js';
 
 const byId = (id) => document.getElementById(id);
 const FINISH = 'The pictures are back together!';
+// On the card when the clock runs out before a picture is back together. It's only shown, not said.
+const TIME_UP = 'The clock ran out before the picture was mended!';
+const TRY_AGAIN = 'Try again';
 const INTRO = 'My picture fell and broke! Can you put it back together?';
 const PICK_HINT = 'Pick up a piece with your open hand!';
 const OPEN_TO_PICK = 'Open your hand to pick up a piece!';
@@ -161,11 +164,16 @@ class PuzzleGame {
   }
 
   piecesChoice() {
-    return this.settings.puzzlePieces in PIECE_CHOICES ? this.settings.puzzlePieces : 'usual';
+    return this.settings.puzzlePieces in PIECE_CHOICES ? this.settings.puzzlePieces : 'more';
   }
 
   snapChoice() {
-    return this.settings.puzzleSnap in SNAPS ? this.settings.puzzleSnap : 'near';
+    return this.settings.puzzleSnap in SNAPS ? this.settings.puzzleSnap : 'closer';
+  }
+
+  /** Whether the clock on the wall gives each picture its time, or it's the gentle puzzle, as a grown-up chose. */
+  clockChoice() {
+    return CLOCKS.includes(this.settings.puzzleClock) ? this.settings.puzzleClock : 'ticks';
   }
 
   reachChoice() {
@@ -191,6 +199,7 @@ class PuzzleGame {
       pieces,
       snap: this.snapChoice(),
       reach: this.reachChoice(),
+      clock: this.clockChoice(),
       // With friends, everything is where it would be for the right hand, so it's the same on every screen.
       side: friendly ? 'right' : this.settings.hands,
       friends: Boolean(friendly),
@@ -262,7 +271,7 @@ class PuzzleGame {
   restage(change) {
     const { screen } = this.session;
     if (screen === 'playing' || screen === 'countdown' || !this.puzzle) return;
-    if ('puzzlePieces' in change || 'hands' in change) {
+    if ('puzzlePieces' in change || 'hands' in change || 'puzzleClock' in change) {
       this.puzzle = this.newPuzzle(this.session.level);
       this.artFor(this.puzzle);
     }
@@ -334,6 +343,9 @@ class PuzzleGame {
     this.placeFilm();
     this.showProgress();
     this.showScores();
+    this.session.sound.lost = false;
+    byId('chip-clock-box').hidden = !this.puzzle.timed;
+    this.showClock();
     // Prizes only come from level 2, on their own.
     const prizes = this.puzzle.plan.golden;
     byId('chip-prizes-box').hidden = !prizes;
@@ -457,6 +469,12 @@ class PuzzleGame {
       case 'done':
         this.doneMs = this.sinceGo;
         break;
+      case 'timeup':
+        // The clock has run out before the picture was back together: a soft sound, and the game is over a moment later.
+        sound.play('whoosh', { gain: 0.2, rate: 0.7 });
+        this.story.hide();
+        this.showClock();
+        break;
       default:
     }
   }
@@ -503,7 +521,32 @@ class PuzzleGame {
       this.storyFor -= dt;
       if (this.storyFor <= 0) this.story.hide();
     }
-    if (puzzle.done && session.screen === 'playing') session.finish();
+    this.showClock();
+    if (puzzle.done && session.screen === 'playing') this.end();
+  }
+
+  /** The game is over. One the clock ran out on is told kindly, with no party, and Try again on the big button. */
+  end() {
+    const { session, puzzle } = this;
+    session.sound.lost = puzzle.lost;
+    session.finish();
+    // After the card is filled in, which puts back the usual title.
+    if (this.mode === 'solo') document.querySelector('#screen-finish h2').textContent = puzzle.lost ? TIME_UP : FINISH;
+    if (puzzle.lost) {
+      session.hud.hideSummary();
+      byId('play-again').textContent = TRY_AGAIN;
+    }
+  }
+
+  /** How much of the clock's time is left for this picture, as a bar that goes down. */
+  showClock() {
+    const { clock } = this.puzzle;
+    const share = clock ? clock.left / clock.total : 1;
+    const shown = Math.round(share * 200) / 2;
+    if (this.clockShown === shown) return;
+    this.clockShown = shown;
+    byId('clock-left').style.width = `${shown}%`;
+    byId('chip-clock-box').classList.toggle('is-low', share < 0.25);
   }
 
   idle(dt, snapshot) {
@@ -692,8 +735,9 @@ class PuzzleGame {
     // While a finished picture is being looked at there's nothing to ask for.
     if (puzzle.phase !== 'play') return null;
     if (needed && !needed.key.startsWith('closed')) return needed;
-    // The hand can rest whenever it likes: the pieces just wait. After a while, it's said that's fine.
-    if (this.restFor > RESTING_AFTER) return { key: 'resting', text: SPOKEN.resting, side: null };
+    // In the gentle puzzle the hand can rest whenever it likes: the pieces just wait. After a while, it's said that's
+    // fine. With the clock going round that isn't said, as the clock doesn't wait for a closed hand.
+    if (!puzzle.timed && this.restFor > RESTING_AFTER) return { key: 'resting', text: SPOKEN.resting, side: null };
     if (this.closedFor > CLOSED_PROMPT_AFTER) return { key: 'open-to-pick', text: OPEN_TO_PICK, side: null, asks: 'open' };
     // The first piece: how to pick one up, and then where to take it.
     if (puzzle.stats.placed > 0 || puzzle.index > 0) return null;
@@ -729,11 +773,22 @@ class PuzzleGame {
       hero: stats.placed,
       noun: 'game',
       rows: { pieces: row(stats.placed), pictures: row(stats.pictures), carried: row(`${Math.round(stats.carried)} s`), prizes: row(prizes) },
-      // Nobody can lose: every piece goes in, in the end.
-      won: true,
+      // On their own, the clock can run out before a picture is back together, and that game comes round again at the
+      // same level. In the gentle puzzle, and with friends, every piece goes in, in the end.
+      won: !this.puzzle.lost,
       // A game with friends is on the host's level, so it doesn't move the child's own level on.
       countsForLevel: !this.friends.current,
     };
+  }
+}
+
+/** The game's sounds. A game the clock ran out on ends softly, with no fanfare and nothing said. */
+class PuzzleSound extends Sound {
+  lost = false;
+
+  finish(line) {
+    if (this.lost) this.play('sparkle', { gain: 0.3 });
+    else super.finish(line);
   }
 }
 
@@ -754,6 +809,7 @@ new GameSession({
       <div class="puzzle-hud">
         <div class="chip chip-pieces"><span class="chip-label">Pieces</span><span id="chip-pieces" class="chip-value">0 of 12</span></div>
         <div id="chip-prizes-box" class="chip chip-prizes" hidden><span class="chip-label">Prizes</span><span id="chip-prizes" class="chip-value">0</span></div>
+        <div id="chip-clock-box" class="chip chip-clock" hidden><span class="chip-label">Clock</span><span class="thin-meter clock-meter"><span id="clock-left"></span></span></div>
         <ol id="puzzle-scores" class="puzzle-scores" aria-label="How far everyone has got" hidden></ol>
       </div>
       ${STORY_BOX}
@@ -779,6 +835,11 @@ new GameSession({
       </div>`,
     panelSettings: `
       <fieldset class="choice">
+        <legend>The clock on the wall</legend>
+        ${choice('puzzleClock', 'ticks', 'The clock gives each picture its time: mend it before it runs out')}
+        ${choice('puzzleClock', 'gentle', 'Gentle: no clock, take all the time you need')}
+      </fieldset>
+      <fieldset class="choice">
         <legend>How many pieces each picture is cut into, for its level. Fewer are bigger, and make a shorter game</legend>
         ${choice('puzzlePieces', 'fewer', 'Fewer')}
         ${choice('puzzlePieces', 'usual', 'Usual')}
@@ -802,13 +863,13 @@ new GameSession({
         ${choice('puzzleFriends', 'against', 'Against each other: the same puzzle each, and the first to finish wins')}
       </fieldset>`,
   },
-  defaults: { puzzlePieces: 'usual', puzzleSnap: 'near', puzzleReach: 'little', puzzleFriends: 'together' },
-  choices: { puzzlePieces: String, puzzleSnap: String, puzzleReach: String, puzzleFriends: String },
+  defaults: { puzzlePieces: 'more', puzzleSnap: 'closer', puzzleClock: 'ticks', puzzleReach: 'little', puzzleFriends: 'together' },
+  choices: { puzzlePieces: String, puzzleSnap: String, puzzleClock: String, puzzleReach: String, puzzleFriends: String },
   tagline: (side) => `Giraffe’s picture fell and broke! Pick up each piece with your open ${side} hand, and put it back in its place.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),
   portraits: () => renderPortraits(ROSTER),
-  createSound: (options) => new Sound({
+  createSound: (options) => new PuzzleSound({
     ...options,
     sounds: {
       birds: new URL('../spider-catcher/audio/birds.ogg', import.meta.url),

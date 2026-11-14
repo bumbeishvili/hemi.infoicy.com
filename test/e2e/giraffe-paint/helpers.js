@@ -9,6 +9,8 @@ export const GAME = 'giraffe-paint';
 export const OPEN = [null, 'open', { scale: 0.62 }];
 export const FIST = [null, 'fist', { scale: 0.62 }];
 export const NO_HAND = [null, null, { scale: 0.62 }];
+// The gentle picture, which is the game as it always was: nobody to beat, and nobody can lose.
+export const GENTLE = { paintRival: 'gentle' };
 
 /** Gets through the hand check with an open hand, as anyone would, and on into play. */
 export async function startPlaying(page, settings = {}, hash = '') {
@@ -25,6 +27,8 @@ export const state = (page) => page.evaluate(() => {
     level: painting.level,
     page: painting.page.id,
     done: painting.done,
+    lost: painting.lost,
+    rival: painting.rival ? { ...painting.rival } : null,
     progress: painting.progress,
     rule: painting.rule,
     parts: painting.parts.map(({ id, kind, colour, cells, covered, done, magic, dot }) => ({ id, kind, colour, cells, covered, done, magic, dot })),

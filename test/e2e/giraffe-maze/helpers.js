@@ -8,6 +8,8 @@ export const FIST = [null, 'fist', { scale: 0.62 }];
 export const NO_HAND = [null, null, { scale: 0.62 }];
 // Reach help a lot, so the photo of the hand never has to go so near the edge of the picture that it's cut off.
 export const EASY_REACH = { mazeReach: 'lots' };
+// The gentle maze, which is the game as it always was: no sun, and nobody can lose.
+export const GENTLE = { mazeSun: 'gentle' };
 
 /** Gets through the hand check with an open hand, as anyone would, and on into play. */
 export async function startPlaying(page, settings = {}, hash = '') {
@@ -23,6 +25,9 @@ export const state = (page) => page.evaluate(() => {
   const at = run.position;
   return {
     phase: run.phase,
+    timed: run.timed,
+    sunset: run.lost,
+    sun: run.sun ? { ...run.sun } : null,
     index: run.index,
     mazes: run.mazes,
     at: { x: at.x, y: at.y },

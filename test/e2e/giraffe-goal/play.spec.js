@@ -1,8 +1,12 @@
-// Playing Giraffe's Goal: a kicker shoots once the hand is open and held up, the glove at the ring saves the ball,
-// and enough saves win the match. An open hand with its wrist dropped, or hanging down, doesn't count, unless a
+// Playing Giraffe's Goal: the glove at the ring saves the ball, and enough saves win the match. In a real match, as it
+// comes, a kicker shoots on the clock and the other team can win; in the gentle match a kicker shoots once the hand is
+// open and held up, and nothing is lost. An open hand with its wrist dropped, or hanging down, doesn't count, unless a
 // grown-up says any open hand will do. With real photos of hands through the real tracker.
 import { openGame, shot } from '../helpers.js';
-import { DROPPED, expect, expectSoon, FIST, GAME, HANGING, keeperHand, NO_HAND, PALM, show, startPlaying, state, stopHand, test, waitForScreen } from './helpers.js';
+import {
+  DROPPED, expect, expectSoon, FIST, GAME, GENTLE, HANGING, judge, keeperHand, NO_HAND, PALM, show, startPlaying, state, stopHand, test, waitForScreen,
+  watchBrightness,
+} from './helpers.js';
 
 const HOLD_UP = 'Hold your hand up, like a high five!';
 const labelShown = (page, key) => page.evaluate((wanted) => window.__game.view.introduced.has(wanted), key);
@@ -51,9 +55,10 @@ test('the open hand held up brings the kicker, the glove at the ring saves the b
   await shot(page, 'goal-finish');
 });
 
-for (const [name, scene] of [['closed', FIST], ['missing', NO_HAND]]) {
-  test(`with a ${name} hand the kicker waits, for as long as it takes, and shoots once the hand is held up`, async ({ page }) => {
-    await openGame(page, {}, GAME);
+// In the gentle match the kicker waits for a closed hand too. In a real match, only for a hand that isn't there.
+for (const [name, scene, settings, match] of [['closed', FIST, GENTLE, 'in the gentle match'], ['missing', NO_HAND, {}, 'in a real match']]) {
+  test(`${match}, with a ${name} hand the kicker waits, for as long as it takes, and shoots once the hand is held up`, async ({ page }) => {
+    await openGame(page, settings, GAME);
     await show(page, ...PALM);
     await page.locator('#start').click();
     // From the countdown on, so nothing is kicked before the hand goes.
@@ -71,9 +76,9 @@ for (const [name, scene] of [['closed', FIST], ['missing', NO_HAND]]) {
 }
 
 for (const [name, scene, why] of [['its wrist dropped', DROPPED, 'tipped'], ['its fingers hanging down', HANGING, 'down']]) {
-  test(`an open hand with ${name} is not ready: the kicker waits, the glove is yellow, and the child is shown how`, async ({ page }) => {
+  test(`an open hand with ${name} is not ready: in the gentle match the kicker waits, the glove is yellow, and the child is shown how`, async ({ page }) => {
     test.setTimeout(120_000);
-    await openGame(page, {}, GAME);
+    await openGame(page, GENTLE, GAME);
     await show(page, ...PALM);
     await page.locator('#start').click();
     await waitForScreen(page, 'countdown');
@@ -104,7 +109,8 @@ for (const [name, scene, why] of [['its wrist dropped', DROPPED, 'tipped'], ['it
 
 test('a ball on its way is not saved by a hand whose wrist drops, and is saved by one held up at its ring', async ({ page }) => {
   test.setTimeout(120_000);
-  await startPlaying(page);
+  // The gentle match, so the kicker waits for the hand after the first goes in.
+  await startPlaying(page, GENTLE);
   // The first: the hand is led to the ring, but with its wrist dropped by the time the ball comes.
   await keeperHand(page);
   await expectSoon(async () => (await state(page)).shots[0]?.t ?? 0, { timeout: 20_000 }).toBeGreaterThan(0.4);
@@ -207,7 +213,8 @@ test('a real hand wobbles: tipping to and fro, turning and shaking, it stays rea
 
 test('a hand check made with the wrist dropped is not believed: that hand still has to come up to play', async ({ page }) => {
   test.setTimeout(120_000);
-  await openGame(page, {}, GAME);
+  // The gentle match, whose kicker waits for a hand that's ready.
+  await openGame(page, GENTLE, GAME);
   await show(page, ...DROPPED);
   await page.locator('#start').click();
   await waitForScreen(page, 'playing');
@@ -287,4 +294,69 @@ test('with the left hand, the balls go out to the left and across to the right, 
   expect(end.stats.across).toBeGreaterThanOrEqual(1);
   await expect(page.locator('#sum-left-saves')).toHaveText(/^6 of \d+$/);
   await expect(page.locator('#sum-right-saves')).toHaveText('');
+});
+
+/* ---------- a real match, which the other team can win ---------- */
+
+test('in a real match the kicker shoots at a closed hand too, the goals count, and enough of them lose the match kindly', async ({ page }) => {
+  test.setTimeout(180_000);
+  await startPlaying(page, { goalSaves: 6 });
+  await expect(page.locator('#chip-goals-box')).toBeVisible();
+  await expect(page.locator('#chip-goals')).toHaveText('0 of 4');
+  // A closed hand: nobody waits for it. The first ball comes, and goes in.
+  await show(page, ...FIST);
+  await expectSoon(async () => (await state(page)).stats.shots, { timeout: 10_000 }).toBe(1);
+  await expectSoon(async () => (await state(page)).stats.goals, { timeout: 10_000 }).toBe(1);
+  await expect(page.locator('#chip-goals')).toHaveText('1 of 4');
+  // Three more, and the other team has won. Nothing flashes as the last goes in and they cheer.
+  await expectSoon(async () => (await state(page)).stats.goals, { timeout: 40_000 }).toBe(3);
+  const reading = judge(await watchBrightness(page, 400));
+  console.log('the last goal and the other team cheering', JSON.stringify(reading));
+  expect(reading.biggestStep).toBeLessThan(4);
+  expect(reading.flickeringShare).toBeLessThan(0.01);
+  await waitForScreen(page, 'finish');
+  const end = await state(page);
+  expect(end.phase).toBe('lost');
+  expect(end.stats.goals).toBe(4);
+  expect(end.stats.saves).toBe(0);
+  await expect(page.locator('#screen-finish h2')).toHaveText('The other team won the shoot-out!');
+  await expect(page.locator('#play-again')).toHaveText('Try again');
+  await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 1 again!');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('camera-games-settings')).levels?.['giraffe-goal'] ?? 1)).toBe(1);
+  await page.waitForTimeout(800);
+  await shot(page, 'goal-lost');
+  // Trying again is the same level, and the same real match.
+  await show(page, ...PALM);
+  await page.locator('#play-again').click();
+  await waitForScreen(page, 'playing');
+  expect((await state(page)).level).toBe(1);
+  await expect(page.locator('#chip-goals')).toHaveText('0 of 4');
+});
+
+test('in a real match a ball on its way stops where it is while the hand is out of the picture, and goes on when it is back', async ({ page }) => {
+  test.setTimeout(120_000);
+  await startPlaying(page);
+  await expectSoon(async () => (await state(page)).shots[0]?.t ?? 0, { timeout: 15_000 }).toBeGreaterThan(0.2);
+  await show(page, ...NO_HAND);
+  await page.waitForTimeout(1000);
+  const away = (await state(page)).shots[0];
+  await page.waitForTimeout(4000);
+  const later = await state(page);
+  expect(later.shots[0].t).toBe(away.t);
+  expect(later.stats.goals).toBe(0);
+  // Back, and the glove at its ring saves it.
+  await show(page, ...PALM);
+  await keeperHand(page);
+  await expectSoon(async () => (await state(page)).stats.saves, { timeout: 20_000 }).toBe(1);
+  await stopHand(page);
+});
+
+test('the gentle match can be chosen under the gear icon: no goals are counted, and the kicker waits', async ({ page }) => {
+  await startPlaying(page, GENTLE);
+  await expect(page.locator('#chip-goals-box')).toBeHidden();
+  await show(page, ...FIST);
+  await page.waitForTimeout(5000);
+  expect((await state(page)).stats.shots).toBe(0);
+  await page.locator('#open-panel').click();
+  await expect(page.locator('input[name="goalStakes"][value="gentle"]')).toBeChecked();
 });

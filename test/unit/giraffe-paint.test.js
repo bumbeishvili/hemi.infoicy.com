@@ -1,6 +1,8 @@
 // Giraffe's Paint Box: paint that goes down where the open hand moves and never over the lines, pots that give their
 // paint to a hand that dips in them, parts that fill themselves in, what each level brings, and that resting costs
-// nothing. Everything here runs without a screen, with a pretend child moving a hand over the sheet.
+// nothing. Everything here runs without a screen, with a pretend child moving a hand over the sheet. The tests of the
+// old kind rules paint the gentle picture, with nobody to beat, as makePainting does unless a test says otherwise. The
+// contest with another painter is tested at the end.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -8,7 +10,7 @@ import { cleanBrush, MAX_RACERS, MOST_BYTES, MOST_STROKE_NUMBERS, mostIn } from 
 import { COLOUR_NAMES, COLOURS, boxOf, insideOutline, mixes, mixOf, outlineOf, PAGES, RAINBOW, recipeFor, SHEET } from '../../games/giraffe-paint/pages.js';
 import {
   BRUSHES, CLAIM_LATE, DESK, DIP_SECONDS, DONE_SHARES, EXTRAS, FREE_SHARE, LABELS, modeWord, NEWS, newsIsOn, Painting, paintLevel,
-  paintNewAt, REACH, readMode, ROW, STROKE_NUMBERS,
+  paintNewAt, REACH, readMode, RIVAL_PAINTERS, ROW, STROKE_NUMBERS,
 } from '../../games/giraffe-paint/paint.js';
 
 const FRAME = 1 / 60;
@@ -17,7 +19,7 @@ const OPEN = true;
 
 function makePainting(options = {}) {
   const log = [];
-  const painting = new Painting({ onEvent: (event) => log.push(event), ...options });
+  const painting = new Painting({ rival: 'gentle', onEvent: (event) => log.push(event), ...options });
   painting.log = log;
   return painting;
 }
@@ -1174,4 +1176,75 @@ test('every line the game says has its English and Georgian voice files, and the
   }
   const source = readFileSync(new URL('../../games/giraffe-paint/main.js', import.meta.url), 'utf8');
   for (const { text } of lines) assert.ok(source.includes(text), `"${text}" is said by the game`);
+});
+
+/* ---------- the other painter ---------- */
+
+const contest = (options = {}) => makePainting({ rival: 'contest', ...options });
+
+test('on their own another painter paints the same picture while the hand is in the picture, and waits while it isn\'t', () => {
+  const painting = contest({ level: 1 });
+  const { rival } = painting;
+  assert.ok(rival && rival.who === RIVAL_PAINTERS[0] && rival.who !== 'giraffe');
+  assert.ok(rival.seconds > 100, `${rival.seconds} s at level 1`);
+  for (let t = 0; t < 120; t += FRAME) away(painting);
+  assert.equal(rival.progress, 0);
+  // A hand in the picture, painting or resting closed: they paint on.
+  hold(painting, 10, { x: 75, y: 50 }, false);
+  assert.ok(Math.abs(rival.progress - 10 / rival.seconds) < 0.01, `${rival.progress}`);
+});
+
+test('the other painter finishing first ends the contest, lost, and nothing more is painted', () => {
+  const painting = contest({ level: 1 });
+  let t = 0;
+  for (; t < 400 && !painting.lost; t += FRAME) painting.update(FRAME, { at: { x: 75, y: 50 }, open: false });
+  assert.ok(Math.abs(t - painting.rival.seconds) < 0.05, `beaten after ${t} s`);
+  assert.equal(said(painting, 'beaten').length, 1);
+  assert.deepEqual([painting.lost, painting.done], [true, false]);
+  const cells = painting.stats.cells;
+  playThrough(painting, { seconds: 5 });
+  assert.equal(painting.stats.cells, cells);
+  assert.equal(painting.done, false);
+});
+
+test('in a contest the brush is never given the right paint: the part only shows which pot it wants', () => {
+  const painting = contest({ level: 1 });
+  // Yellow on the orange muzzle, for a long while: still yellow, nothing lands, and the hint stays up.
+  hold(painting, EXTRAS.helpAfter + 3, { x: 63, y: 72 });
+  assert.equal(painting.stats.helped, 0);
+  assert.equal(painting.brush.colour, 'yellow');
+  assert.equal(part(painting, 'muzzle').covered, 0);
+  assert.equal(painting.hint?.colour, 'orange');
+});
+
+test('a quick painter beats the other painter at every level, and a slow one does at level 1 and not at level 10', () => {
+  for (const level of LEVELS) {
+    const painting = contest({ level, brush: 'small' });
+    playThrough(painting, { speed: 100 });
+    assert.ok(painting.done && !painting.lost, `level ${level}: ${painting.lost ? 'beaten' : 'not done'}`);
+  }
+  const first = contest({ level: 1, brush: 'small' });
+  playThrough(first, { speed: 20 });
+  assert.ok(first.done && !first.lost, 'level 1, slowly');
+  const last = contest({ level: 10, brush: 'small' });
+  playThrough(last, { speed: 20 });
+  assert.equal(last.lost, true, 'level 10, slowly');
+  // They're quicker each level, and at level 10 take under a third of level 1's time.
+  const times = LEVELS.map((level) => contest({ level }).rival.seconds);
+  for (const level of LEVELS.slice(1)) assert.ok(times[level - 1] < times[level - 2]);
+  assert.ok(times[9] < times[0] / 3, `${times[0]} s and ${times[9]} s`);
+});
+
+test('the gentle picture, and painting with friends, have nobody to beat', () => {
+  assert.equal(makePainting({ rival: 'gentle' }).rival, null);
+  assert.equal(makePainting({ rival: 'contest', plain: true, shared: { claim: () => {} } }).rival, null);
+  const gentle = makePainting({ rival: 'gentle', level: 10 });
+  hold(gentle, 300, { x: 75, y: 50 }, false);
+  assert.equal(gentle.lost, false);
+});
+
+test('the grown-ups\' settings: the contest and the small brush come first, and the gentle picture can be chosen', () => {
+  const source = readFileSync(new URL('../../games/giraffe-paint/main.js', import.meta.url), 'utf8');
+  assert.match(source, /defaults: \{ paintBrush: 'small', paintDone: 'most', paintRival: 'contest', /);
+  assert.match(source, /choice\('paintRival', 'gentle', 'Gentle: /);
 });

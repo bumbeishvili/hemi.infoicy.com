@@ -504,8 +504,10 @@ export class GardenView {
     const tall = garden.heightOf({ ...plant, water: grown * plant.need }) * h;
     const sway = this.reducedMotion ? 0 : Math.sin(this.time * 1.3 + plant.id) * tall * 0.02 * grown;
     const top = { x: base.x + sway, y: base.y - tall };
-    // From dry and drooping to fresh green as it drinks.
-    const green = `rgb(${Math.round(190 - 125 * grown)} ${Math.round(165 + 5 * grown)} ${Math.round(60 - 5 * grown)})`;
+    // From dry and drooping to fresh green as it drinks, and back towards straw as the sun dries it.
+    const dry = garden.drying && !plant.bloomed ? ease(clamp((plant.thirst - 0.5) / 0.5, 0, 1)) * 0.8 : 0;
+    const fresh = grown * (1 - dry);
+    const green = `rgb(${Math.round(190 - 125 * fresh)} ${Math.round(165 + 5 * fresh)} ${Math.round(60 - 5 * fresh)})`;
     const thick = Math.max(4, h * (plant.look === 'flower' ? 0.008 : 0.012));
     ctx.save();
     ctx.lineCap = 'round';
@@ -536,7 +538,7 @@ export class GardenView {
       const size = h * (plant.look === 'flower' ? 0.034 : 0.045) * (0.85 + grown * 0.15);
       ctx.save();
       ctx.translate(at.x, at.y);
-      ctx.rotate(way * (0.9 - grown * 0.5) + (grown < 0.25 ? way * 0.5 : 0));
+      ctx.rotate(way * (0.9 - fresh * 0.5) + (fresh < 0.25 ? way * 0.5 : 0));
       ctx.fillStyle = green;
       ctx.beginPath();
       ctx.ellipse(way * size * 0.6, 0, size * 0.65, size * 0.28, 0, 0, Math.PI * 2);
@@ -545,6 +547,42 @@ export class GardenView {
     }
     ctx.restore();
     this.drawHead(plant, top, grown);
+    if (garden.drying && !plant.bloomed) this.drawThirst(plant, base);
+  }
+
+  /**
+   * With the sun drying the garden, a drop by each plant not yet in flower, full when it's just been watered and
+   * emptying as it gets thirsty, its edge going orange when it's nearly dry. It changes slowly, and it's small.
+   */
+  drawThirst(plant, base) {
+    const { ctx, height: h } = this;
+    const r = h * 0.017;
+    const x = base.x + h * 0.04;
+    const y = base.y + (plant.hanging ? h * 0.05 : h * 0.035);
+    const full = clamp(1 - plant.thirst, 0, 1);
+    const drop = () => {
+      ctx.beginPath();
+      ctx.moveTo(x, y - r * 1.9);
+      ctx.bezierCurveTo(x + r * 0.5, y - r * 1.1, x + r, y - r * 0.5, x + r, y);
+      ctx.arc(x, y, r, 0, Math.PI);
+      ctx.bezierCurveTo(x - r, y - r * 0.5, x - r * 0.5, y - r * 1.1, x, y - r * 1.9);
+      ctx.closePath();
+    };
+    ctx.save();
+    drop();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.fill();
+    ctx.save();
+    drop();
+    ctx.clip();
+    ctx.fillStyle = '#4aa3df';
+    ctx.fillRect(x - r * 1.2, y + r - full * r * 2.9, r * 2.4, full * r * 2.9);
+    ctx.restore();
+    drop();
+    ctx.lineWidth = Math.max(1.5, h * 0.003);
+    ctx.strokeStyle = plant.thirst > 0.7 ? '#e8743b' : '#2f7fb8';
+    ctx.stroke();
+    ctx.restore();
   }
 
   /** A plant's top: nothing while it's a shoot, then a bud that swells and colours, then its flower opening. */

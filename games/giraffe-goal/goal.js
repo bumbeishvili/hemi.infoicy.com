@@ -7,10 +7,13 @@
 // shares of the screen, x across from the left and y down from the top, and sizes and distances are in screen
 // heights.
 //
-// Nothing here can be lost, and nothing is taken away. A ball that goes in costs nothing: the match is won by
-// saves, however many shots it takes. A kicker only runs up once the hand is ready to save, so every shot starts
-// with the hand open and held up, and a resting child comes back to a kicker who has waited. And after a ball goes
-// in, the next ones come slower and nearer the glove.
+// It's a real match, as it comes: a kicker runs up on a clock, whether the hand is ready or not, and the other team
+// wins if enough balls go in before the saves that win it for Giraffe's team. Only a hand that isn't in the picture
+// at all stops the clock, and the balls with it, so a child who goes away isn't scored against for it. A grown-up can
+// choose the gentle match instead, which is the game as it always was: nothing can be lost there, as a ball that
+// goes in costs nothing and the match is won by saves, however many shots it takes. A kicker only runs up once the
+// hand is ready to save, so every shot starts with the hand open and held up, and a resting child comes back to a
+// kicker who has waited. And after a ball goes in, the next ones come slower and nearer the glove.
 //
 // The balls go where they do on purpose: near the hand, far out to its own side, across the middle of the picture
 // to the other side, which is reaching across the body, and up high.
@@ -25,6 +28,14 @@ export const REACHES = {
 };
 export const REACH_NAMES = Object.keys(REACHES);
 export const SAVES_CHOICES = [6, 10, 14]; // How many saves win the match.
+// What's at stake, as a grown-up chooses: a real match, which the other team can win (the default), or the gentle
+// one, which nobody can lose.
+export const STAKES = ['match', 'gentle'];
+// In a real match, the other team wins once this many balls have gone in: a share of the saves that win it, which
+// goes down from level 1 to level 10, and never fewer than least.
+export const LET_IN = { first: 0.6, last: 0.3, least: 2 };
+export const LOST_SECONDS = 2.2; // The other team's cheering once they've won, before the finish card.
+const FIRST_WAIT_MATCH = 1.6; // In a real match, the first kicker gives the child a moment to see the pitch.
 
 export const SPOT = { x: 0.5, y: 0.6 }; // The penalty spot, where a ball is kicked from.
 export const SPOTS_FOR_TWO = [0.43, 0.57]; // Where two kickers' balls are, across.
@@ -77,13 +88,26 @@ export function bigFor(thumb, open) {
   return open ? Math.min(1, Math.max(0, (thumb - BIG.from) / (BIG.to - BIG.from))) : 0;
 }
 
-/** What changes from level 1 to 10. Each level from 2 brings something new: see NEWS. */
-export function goalLevel(level) {
+/** How many goals win the match for the other team, in a real match at a level, with so many saves to win it. */
+export function goalsToLose(level, saves) {
+  return Math.max(LET_IN.least, Math.round(saves * ramp(level, LET_IN.first, LET_IN.last)));
+}
+
+/**
+ * What changes from level 1 to 10. Each level from 2 brings something new: see NEWS. gentle is the gentle match,
+ * whose pace is the game's as it always was.
+ */
+export function goalLevel(level, { gentle = false } = {}) {
   const at = clampLevel(level);
   return {
-    // Seconds a ball takes to arrive, and between one shot and the next: a little quicker each level.
-    flight: ramp(at, 3.4, 2.5),
-    gap: ramp(at, 1.3, 0.8),
+    // Seconds a ball takes to arrive, and between one shot and the next, quicker each level: at level 10 a real
+    // match leaves about half of level 1's time to get there, and the gentle one three quarters.
+    flight: gentle ? ramp(at, 3.4, 2.5) : ramp(at, 3.4, 1.5),
+    gap: gentle ? ramp(at, 1.3, 0.8) : ramp(at, 1.3, 0.5),
+    // Seconds a ball that has arrived can still be saved, at the line.
+    linger: gentle ? LINGER : ramp(at, LINGER, 0.2),
+    // Seconds between the two balls of a double shot, which come from level 5: quicker in a real match.
+    doubleGap: gentle ? EXTRAS.doubleGap : ramp(at, EXTRAS.doubleGap, 0.8),
     // From level 2, each save knocks a star out of the ball, to touch.
     stars: at >= 2,
     // From level 3, the fox's curling shot, which bends on its way.
@@ -166,15 +190,19 @@ export class Goal {
    * grown-up chose. side is the hand in play, 'left' or 'right', which is on that side of the picture, as in a
    * mirror. aspect is the screen's width for its height. onEvent hears what happens: see main.js.
    */
-  constructor({ level = 1, saves = 10, reach = 'middle', side = 'right', aspect = 16 / 9, random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ level = 1, saves = 10, reach = 'middle', side = 'right', stakes = 'match', aspect = 16 / 9, random = Math.random, onEvent = () => {} } = {}) {
     Object.assign(this, { aspect, random, onEvent });
     this.level = clampLevel(level);
-    this.plan = goalLevel(level);
+    // A real match, which can be lost, unless the gentle one was chosen.
+    this.real = stakes !== 'gentle';
+    this.plan = goalLevel(level, { gentle: !this.real });
     this.target = SAVES_CHOICES.includes(saves) ? saves : 10;
+    // In a real match, the goals that win it for the other team.
+    this.toLose = this.real ? goalsToLose(this.level, this.target) : Infinity;
     this.box = REACHES[reach] ?? REACHES.middle;
     this.sign = side === 'left' ? -1 : 1;
     this.time = 0;
-    this.phase = 'play'; // Then 'cup', at level 10, and 'won'.
+    this.phase = 'play'; // Then 'cup', at level 10, and 'won', or in a real match 'lost'.
     this.done = false;
     this.shots = [];
     this.stars = [];
@@ -183,7 +211,7 @@ export class Goal {
     this.kickers = [];
     this.pending = []; // The second ball of a double shot, waiting for its moment.
     this.runUp = null;
-    this.wait = FIRST_WAIT;
+    this.wait = this.real ? FIRST_WAIT_MATCH : FIRST_WAIT;
     this.readyFor = 0;
     this.glove = null; // Where the glove was last seen.
     this.count = 0; // How many shots have been taken, for which comes next.
@@ -326,15 +354,18 @@ export class Goal {
     if (glove?.visible) this.glove = { x: glove.x, y: glove.y };
     this.readyFor = glove?.ready ? this.readyFor + dt : 0;
     if (glove?.ready) this.stats.held += dt;
+    // In a real match, with no hand in the picture the kickers wait and the balls stop where they are, so a child
+    // who goes away, or whose hand the camera loses, isn't scored against for it.
+    const away = this.real && !glove?.visible;
 
-    if (this.phase === 'play') this.playOn(dt);
-    for (const shot of this.shots) this.fly(shot, dt, glove);
+    if (this.phase === 'play' && !away) this.playOn(dt);
+    for (const shot of this.shots) this.fly(shot, away ? 0 : dt, glove);
     this.shots = this.shots.filter((shot) => !(shot.state === 'saved' && shot.gone >= SHOWN.saved) && !(shot.state === 'in' && shot.gone >= SHOWN.in));
     this.floatPrizes(dt, glove);
 
     if (this.phase === 'play' && this.stats.saves >= this.target) this.matchWon();
     if (this.phase === 'cup') this.floatCup(dt, glove);
-    if (this.phase === 'won') {
+    if (this.phase === 'won' || this.phase === 'lost') {
       this.partyLeft -= dt;
       if (this.partyLeft <= 0) this.done = true;
     }
@@ -364,8 +395,9 @@ export class Goal {
     }
     if (this.live.length || this.pending.length) return;
     this.wait -= dt;
-    // The kicker waits for the hand to be ready: nobody shoots at a child who's resting.
-    if (this.wait > 0 || this.readyFor < READY_FOR) return;
+    // In a real match the kicker shoots on the clock, ready or not. In the gentle one, the kicker waits for the hand to
+    // be ready: nobody shoots at a child who's resting.
+    if (this.wait > 0 || (!this.real && this.readyFor < READY_FOR)) return;
     this.runUp = { t: 0 };
     for (const kicker of this.kickers) Object.assign(kicker, { state: 'runup', t: 0 });
     this.onEvent({ type: 'runup', kickers: this.kickers });
@@ -383,7 +415,7 @@ export class Goal {
       // One to the hand's own side, and then one across.
       this.launch('double', 'out', { x: first.x, y: first.y });
       second.state = 'waiting';
-      this.pending.push({ left: EXTRAS.doubleGap, kind: 'double', zone: 'across', kicker: second });
+      this.pending.push({ left: this.plan.doubleGap, kind: 'double', zone: 'across', kicker: second });
     } else {
       this.launch(kind, kind === 'trick' ? 'out' : zone, { x: first.x, y: first.y });
     }
@@ -433,11 +465,12 @@ export class Goal {
     if (!heavy && this.touching(glove, ball)) {
       this.save(shot, ball);
     } else if (shot.t >= 1) {
-      shot.t = Math.min(shot.t, 1 + LINGER / shot.flight);
+      const linger = this.plan.linger / shot.flight;
+      shot.t = Math.min(shot.t, 1 + linger);
       if (heavy) {
         shot.state = 'pushing';
         this.onEvent({ type: 'thud', shot });
-      } else if (shot.t >= 1 + LINGER / shot.flight) {
+      } else if (shot.t >= 1 + linger) {
         this.letIn(shot);
       }
     }
@@ -486,16 +519,25 @@ export class Goal {
     this.afterShot();
   }
 
-  /** The ball goes in. Nothing is lost: the next ones come slower, and nearer the glove. */
+  /**
+   * The ball goes in. In a real match it's a goal to the other team, and enough of them win it. In the gentle match
+   * nothing is lost: the next ones come slower, and nearer the glove.
+   */
   letIn(shot) {
     this.stats.goals += 1;
     this.stats.run = 0;
-    this.misses += 1;
+    if (!this.real) this.misses += 1;
     shot.state = 'in';
     shot.gone = 0;
     shot.covered = false;
     this.onEvent({ type: 'goal', shot });
     this.afterShot();
+    if (this.phase === 'play' && this.stats.goals >= this.toLose) this.matchLost();
+  }
+
+  /** Whether the other team has won the match. */
+  get lost() {
+    return this.phase === 'lost';
   }
 
   /** Once no ball is on its way, the next kickers come to their spots, and wait a moment. */
@@ -576,13 +618,25 @@ export class Goal {
     this.bubbles = this.bubbles.filter((bubble) => !bubble.taken && bubble.left > 0);
   }
 
-  /** Enough saves: the match is won. At level 10 the cup comes down first. */
-  matchWon() {
-    // Anything still on its way is over, and nothing more is kicked.
+  /** Anything still on its way is over, and nothing more is kicked. */
+  stopKicking() {
     this.shots = this.shots.filter((shot) => shot.state === 'saved' || shot.state === 'in');
     this.pending = [];
     this.runUp = null;
     for (const kicker of this.kickers) Object.assign(kicker, { state: 'ready', t: 0 });
+  }
+
+  /** In a real match, enough balls have gone in: the other team cheers, and the match is over. */
+  matchLost() {
+    this.stopKicking();
+    this.phase = 'lost';
+    this.partyLeft = LOST_SECONDS;
+    this.onEvent({ type: 'lost' });
+  }
+
+  /** Enough saves: the match is won. At level 10 the cup comes down first. */
+  matchWon() {
+    this.stopKicking();
     if (this.plan.cup) {
       const { y: [top, bottom] } = this.box;
       this.phase = 'cup';

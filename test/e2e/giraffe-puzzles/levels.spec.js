@@ -14,7 +14,8 @@ const NEW_AT = {
   9: ['Two pictures at once'],
   10: ['A picture that comes to life'],
 };
-const atLevel = (level, more = {}) => ({ levels: { [GAME]: level }, ...more });
+// The levels' own number of pieces, as the levels table says, rather than the more pieces a game has as it comes.
+const atLevel = (level, more = {}) => ({ levels: { [GAME]: level }, puzzlePieces: 'usual', ...more });
 
 // Where a pretend child takes the hand, to try one thing a level brings: with a piece in the hand, to its place,
 // and otherwise to whatever this finds on the table, or nowhere once there's none.

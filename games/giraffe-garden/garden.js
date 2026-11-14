@@ -4,8 +4,13 @@
 //
 // The rules are here, with no screen, so they run in the unit tests. main.js says where the can is and how much it
 // pours, from the hand (see core/turn.js), and view.js draws what this says. Places are in shares of the screen, x
-// across from the left and y down from the top. Nothing in a garden has a time limit, nothing dries out and nothing
-// can be missed: a resting child comes back to it just as they left it.
+// across from the left and y down from the top.
+//
+// On their own, the sun dries the garden as it comes: every plant not yet in flower gets thirstier, and a splash of
+// water puts that right, but a plant left too long wilts, and that's the end of the garden. It only gets thirstier
+// while the hand is in the picture, so a child who goes away, or whose hand the camera loses, comes back to it as they
+// left it. A grown-up can choose the gentle garden instead, which is the game as it always was: nothing has a time
+// limit, nothing dries out and nothing can be missed.
 //
 // With friends, everyone waters the same garden, each on their own computer. The water goes to a plant a sip at a
 // time: each game claims the sips its child's can pours, and the server says whose each one is (claimed), the first
@@ -29,6 +34,11 @@ export const SEEDLING = 0.07; // And how tall it starts, as a little dry shoot.
 export const KINDS = ['daisy', 'tulip', 'poppy', 'cornflower', 'pansy', 'marigold'];
 export const BASKET_Y = 0.44; // Where a hanging basket's plant stands.
 export const TOUCH = 0.09; // How near the can has to come to the sprinkler or the cloud to take it, in screen heights.
+// The sun drying the garden, as a grown-up chooses: it does (the default), or the gentle garden, in which it doesn't.
+export const SUNS = ['dries', 'gentle'];
+// How the sun dries it: seconds of the hand in the picture before a plant nobody waters wilts, from level 1's to level
+// 10's, and the seconds of water that make a thirsty plant quite fresh again.
+export const DRYING = { wilt: [45, 16], fresh: 0.4, wiltedSeconds: 2.4 };
 
 // What the levels bring. Missing any of it never costs anything.
 export const EXTRAS = {
@@ -58,6 +68,8 @@ export function gardenLevel(level) {
   return {
     // Seconds of water a flower needs, turned all the way: a little more each level, so each turn is held longer.
     need: ramp(at, 1.6, 2.4),
+    // On their own, with the sun drying the garden: seconds before a plant nobody waters wilts.
+    wilt: ramp(at, DRYING.wilt[0], DRYING.wilt[1]),
     // From level 2, a bee comes to each new flower and takes its honey to the tally.
     bees: at >= 2,
     // From level 3, a snail munching a plant, which won't grow until a splash sends it sliding off. Two from 9.
@@ -125,8 +137,14 @@ export class Garden {
    * for its height, for how near the can comes to things. shared is { claim(k) } with friends, and me this child's
    * id among them. onEvent hears what happens: see main.js.
    */
-  constructor({ level = 1, plants = 6, spread = 'middle', plain = false, shared = null, me = 'me', aspect = 16 / 9, random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ level = 1, plants = 6, spread = 'middle', plain = false, sun = 'dries', shared = null, me = 'me', aspect = 16 / 9, random = Math.random, onEvent = () => {} } = {}) {
     Object.assign(this, { aspect, random, onEvent, shared, me });
+    // Whether the sun dries the garden: on their own, unless the gentle garden was chosen. With friends it doesn't, as
+    // each computer would judge a wilting plant a moment apart.
+    this.drying = !plain && !shared && sun !== 'gentle';
+    this.wilted = null; // The plant that wilted, which ends the garden.
+    this.lost = false;
+    this.wiltedFor = 0;
     this.tally = new Map(); // With friends, how many sips each one has given, by their id.
     this.level = clampLevel(level);
     const full = gardenLevel(level);
@@ -151,6 +169,7 @@ export class Garden {
       x: count > 1 ? from + step * index : (from + to) / 2,
       y: GROUND,
       water: 0,
+      thirst: 0, // With the sun drying the garden, from 0, fresh, to 1, which is wilted.
       need: plan.need,
       bloomed: false,
       stage: 0,
@@ -218,6 +237,13 @@ export class Garden {
       return;
     }
     this.time += dt;
+    if (this.wilted) {
+      // A plant has wilted: a moment for it to be seen, and the garden is over.
+      this.splash = null;
+      this.wiltedFor += dt;
+      if (this.wiltedFor >= DRYING.wiltedSeconds) this.done = true;
+      return;
+    }
     const flow = water ? clamp(water.flow, 0, 1) : 0;
     // A pour is the can tipped far enough for most of the water: counted each time, for the finish card.
     const pouring = flow >= 0.5;
@@ -235,6 +261,24 @@ export class Garden {
       this.done = true;
       this.onEvent({ type: 'all-bloomed' });
     }
+    if (!this.done && this.drying && can) this.dry(dt);
+  }
+
+  /** The sun dries every plant not yet in flower, a little at a time, and one left too long wilts. */
+  dry(dt) {
+    for (const plant of this.thirsty) {
+      plant.thirst = Math.min(1, plant.thirst + dt / this.plan.wilt);
+      if (plant.thirst < 1) continue;
+      this.wilted = plant;
+      this.lost = true;
+      this.onEvent({ type: 'wilted', plant });
+      return;
+    }
+  }
+
+  /** Water on a plant, whatever else it does, puts its thirst right, a little at a time. */
+  freshen(plant, amount) {
+    if (this.drying) plant.thirst = Math.max(0, plant.thirst - amount / DRYING.fresh);
   }
 
   /** The can coming near the sprinkler, or the cloud, takes it. */
@@ -301,6 +345,7 @@ export class Garden {
   wet(hit, amount) {
     const { thing, kind } = hit;
     if (kind === 'plant') {
+      this.freshen(thing, amount);
       const snail = this.snails.find((each) => each.plant === thing && !each.off);
       if (snail) {
         snail.splash += amount;

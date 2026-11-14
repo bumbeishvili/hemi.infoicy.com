@@ -4,11 +4,15 @@
 //
 // With friends it's a race. Everyone's game makes the same mazes from the host's seed, with nobody lost in them,
 // and each child leads their character to the way out on the right of each maze, one maze after another, at their
-// own pace: whoever gets out of the last maze first has won. Each child has all the fruit in their own mazes, so a
+// own pace: whoever gets out of the last maze first has won.
+//
+// On their own, the sun goes down over each maze, and setting before the friend is found ends the game: see SUN in
+// rules.js. With sun: 'gentle' there's no sun, and nothing can be lost, as it always was, and a sheep or a bush gets
+// out of the way by itself after a while. In a race there's no sun: the race is the contest. Each child has all the fruit in their own mazes, so a
 // child behind never finds less of it, and the race needs nothing from the server but who's where.
 import {
   buildMaze, distances, edgeKey, EXTRAS, facingOf, featuresFor, FOUND_SECONDS, mazeLevel, newWalker, OUT_CELLS, REACHES,
-  SLIDE_SECONDS, stepWalker, Trail, WALK, walkerAt, wayBetween, wayToward,
+  SLIDE_SECONDS, stepWalker, SUN, sunSeconds, Trail, WALK, walkerAt, wayBetween, wayToward,
 } from './rules.js';
 
 export const FOLLOW_SPACING = 0.72; // Cells between each friend following along behind.
@@ -24,8 +28,12 @@ export class MazeRun {
    * leads, or 'find', to find the way to the hand. race is true with friends, for a race out of mazes mazes, with
    * nobody lost in them. events are told what happens: see main.js.
    */
-  constructor({ seed, size = 'medium', level = 1, cast = [], mazes = cast.length, ways = 'lead', race = false, events = {}, random = Math.random }) {
+  constructor({ seed, size = 'medium', level = 1, cast = [], mazes = cast.length, ways = 'lead', race = false, sun = 'sets', events = {}, random = Math.random }) {
     Object.assign(this, { seed, size, level, cast, ways, race, random });
+    // Whether the sun goes down over each maze: on their own, unless the gentle maze was chosen.
+    this.timed = !race && sun !== 'gentle';
+    this.sun = null; // { left, total }, in seconds, while there's a maze to walk.
+    this.lost = false;
     this.events = new Proxy(events, { get: (target, name) => target[name] ?? nothing });
     this.mazes = mazes;
     this.plan = mazeLevel(level);
@@ -102,6 +110,10 @@ export class MazeRun {
     this.place();
     this.phase = 'walking';
     this.phaseTime = 0;
+    if (this.timed) {
+      const total = sunSeconds(this.layout, this.level);
+      this.sun = { left: total, total };
+    }
     this.events.onMazeStart(index, this.layout);
   }
 
@@ -135,8 +147,10 @@ export class MazeRun {
   update(dt, input = {}) {
     this.time += dt;
     this.phaseTime += dt;
-    if (this.phase === 'walking') this.walk(dt, input);
-    else if (this.phase === 'out') this.walkOut(dt);
+    if (this.phase === 'walking') {
+      this.walk(dt, input);
+      this.sunGoesDown(dt, input);
+    } else if (this.phase === 'out') this.walkOut(dt);
     else this.moving = false;
     this.updateFollowers();
     this.updateButterflies(dt, input);
@@ -154,7 +168,29 @@ export class MazeRun {
       }
     } else if (this.phase === 'sliding' && this.phaseTime >= SLIDE_SECONDS) {
       this.startMaze(this.index + 1);
+    } else if (this.phase === 'sunset' && this.phaseTime >= SUN.setSeconds) {
+      this.phase = 'over';
+      this.phaseTime = 0;
+      this.events.onOver();
     }
+  }
+
+  /**
+   * The sun goes down while the hand is in the picture, open or not, and waits while it isn't, so a child who goes
+   * away, or whose hand the camera loses, isn't caught out for it. Setting before the friend is found ends the game.
+   */
+  sunGoesDown(dt, input) {
+    const { sun } = this;
+    if (!sun || this.phase !== 'walking' || !input.glove) return;
+    sun.left = Math.max(0, sun.left - dt);
+    if (sun.left > 0) return;
+    this.lost = true;
+    this.phase = 'sunset';
+    this.phaseTime = 0;
+    this.power = null;
+    this.stuckFor = 0;
+    this.moving = false;
+    this.events.onSunset(this.layout.lost.find((each) => !each.found) ?? null);
   }
 
   walk(dt, input) {
@@ -295,12 +331,14 @@ export class MazeRun {
     for (const blocker of this.layout.blockers) {
       if (blocker.open) continue;
       const near = Math.hypot(blocker.x - at.x, blocker.y - at.y);
-      // Standing right up against it.
-      if (near < 0.5 - WALK.cap + 0.12) this.waitingAt = blocker;
+      // Standing right up against it. With the sun going down, also standing still near it, as at a corner just
+      // before it, so what to do about it is shown: nothing gets out of the way by itself then.
+      if (near < 0.5 - WALK.cap + 0.12 || (this.timed && near < 1 && !this.moving)) this.waitingAt = blocker;
       const glove = input.glove;
       const onIt = glove && input.open && Math.hypot(blocker.x - glove.x, blocker.y - glove.y) < REACHES.touch;
-      // Waiting right by it: a sheep wakes and a bush goes by themselves after a while, so nobody gets stuck.
-      if (near < 1) blocker.waited += dt;
+      // Waiting right by it: in the gentle maze a sheep wakes and a bush goes by themselves after a while, so nobody
+      // gets stuck. With the sun going down they don't: the hand has to see to them.
+      if (near < 1 && !this.timed) blocker.waited += dt;
       if (blocker.kind === 'gate') {
         if (near < REACHES.gate) {
           if (this.hasKey) this.open(blocker);

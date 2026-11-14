@@ -138,3 +138,10 @@ body[data-screen='playing']:has(.story.is-visible) .prompt { left: 50%; max-widt
 .paint-scores img { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-soft); }
 .paint-score-name { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .paint-score { margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+/* ---------- the other painter: their face and name, and a bar that fills as they paint ---------- */
+.chip-rival .chip-label { display: flex; align-items: center; gap: 4px; }
+.rival-face { width: clamp(18px, 1.8vw, 24px); height: clamp(18px, 1.8vw, 24px); border-radius: 50%; object-fit: cover; }
+.rival-meter { width: clamp(64px, 8vw, 110px); margin: 6px 0 4px; }
+.rival-meter span { background: #9b7bd4; transition: background-color 1.5s ease; }
+.chip-rival.is-near .rival-meter span { background: #e8743b; }

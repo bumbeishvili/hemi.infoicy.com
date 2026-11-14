@@ -2,7 +2,7 @@
 // dipping it in a pot takes that pot's paint, and every part painted ends the picture. With real photos of hands
 // through the real tracker.
 import { shot } from '../helpers.js';
-import { dipIn, dotOf, expect, expectSoon, FIST, GAME, leadHand, paintAt, part, potOf, show, startPlaying, state, stopHand, test, waitForScreen } from './helpers.js';
+import { dipIn, dotOf, expect, expectSoon, FIST, GAME, GENTLE, judge, leadHand, NO_HAND, paintAt, part, potOf, show, startPlaying, state, stopHand, test, waitForScreen, watchBrightness } from './helpers.js';
 
 /** How far the brush is from a place on the sheet, or a long way if it can't be seen. */
 const farFrom = async (page, where) => {
@@ -39,7 +39,8 @@ const spilt = (page, colour) => page.evaluate((paint) => {
 
 test('the open hand is the brush: paint goes down where it moves and never over the lines, parts fill themselves in, and the last one ends the picture', async ({ page }) => {
   test.setTimeout(300_000);
-  await startPlaying(page);
+  // The medium brush, as the places below where paint does and doesn't land were measured for it.
+  await startPlaying(page, { paintBrush: 'medium' });
   const start = await state(page);
   expect([start.page, start.level, start.toPaint, start.rule]).toEqual(['giraffe', 1, 9, 'own']);
   expect(start.brush).toMatchObject({ tool: 'paint', colour: 'yellow' });
@@ -174,9 +175,9 @@ test('with the wrong paint a part shows the pot it wants, and the open hand dipp
   await stopHand(page);
 });
 
-test('a child who keeps the wrong paint on a part is given the right one after a while, so nobody is stuck', async ({ page }) => {
+test('in the gentle picture, a child who keeps the wrong paint on a part is given the right one after a while, so nobody is stuck', async ({ page }) => {
   test.setTimeout(120_000);
-  await startPlaying(page);
+  await startPlaying(page, GENTLE);
   await leadHand(page, { target: dotOf('balloon') });
   await expectSoon(async () => (await state(page)).stats.helped, { timeout: 40_000 }).toBe(1);
   expect((await state(page)).brush.colour).toBe('red');
@@ -323,4 +324,47 @@ test('a hand that wobbles a good deal as it goes still paints the whole picture'
   expect(end.done).toBe(true);
   expect(end.stats.helped).toBe(0);
   expect(GAME).toBe('giraffe-paint');
+});
+
+/* ---------- the other painter ---------- */
+
+test('the other painter paints while the hand is in the picture and waits while it isn\'t, and finishing first wins the contest', async ({ page }) => {
+  test.setTimeout(180_000);
+  await startPlaying(page);
+  await expect(page.locator('#chip-rival-box')).toBeVisible();
+  await expect(page.locator('#rival-name')).toHaveText('Truffle');
+  const start = await state(page);
+  expect(start.rival.who).toBe('truffle');
+  await show(page, ...NO_HAND);
+  await page.waitForTimeout(1500);
+  const away = (await state(page)).rival.progress;
+  await page.waitForTimeout(3000);
+  expect((await state(page)).rival.progress).toBe(away);
+  await show(page, ...FIST);
+  await expectSoon(async () => (await state(page)).rival.progress, { timeout: 10_000 }).toBeGreaterThan(away + 0.005);
+  await page.evaluate(() => {
+    window.__game.painting.rival.progress = 0.98;
+  });
+  await expect(page.locator('#chip-rival-box')).toHaveClass(/is-near/);
+  await shot(page, 'paint-rival-near');
+  const beaten = judge(await watchBrightness(page, 300));
+  console.log('the other painter finishing first', JSON.stringify(beaten));
+  expect(beaten.biggestStep).toBeLessThan(4);
+  expect(beaten.flickeringShare).toBeLessThan(0.01);
+  await waitForScreen(page, 'finish');
+  expect((await state(page)).lost).toBe(true);
+  await expect(page.locator('#screen-finish h2')).toHaveText('Truffle finished painting first!');
+  await expect(page.locator('#play-again')).toHaveText('Try again');
+  await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 1 again!');
+  await page.waitForTimeout(800);
+  await shot(page, 'paint-beaten');
+});
+
+test('in the gentle picture there is nobody to beat, and the panel has the contest and the small brush as they come', async ({ page }) => {
+  await startPlaying(page, GENTLE);
+  await expect(page.locator('#chip-rival-box')).toBeHidden();
+  expect((await state(page)).rival).toBe(null);
+  await page.locator('#open-panel').click();
+  await expect(page.locator('input[name="paintRival"][value="gentle"]')).toBeChecked();
+  await expect(page.locator('input[name="paintBrush"][value="small"]')).toBeChecked();
 });

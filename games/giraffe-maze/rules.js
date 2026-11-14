@@ -65,6 +65,14 @@ export const EXTRAS = {
   gems: 2, // In the dead ends, at most.
 };
 
+// The sun, playing on their own: it goes down over each maze, and if it sets before the friend lost there is found,
+// the game is over. It only moves while the hand is in the picture, and only while there's a maze to walk. A maze's
+// time is base seconds, and slack times what it takes to walk straight to the friend, by way of the key if there's a
+// gate, and to deal with what's in the way at once: work is the seconds for each thing, coming to it included. Both go
+// from level 1's to level 10's. A grown-up can choose the gentle maze instead, with no sun, as it always was.
+export const SUN = { base: [20, 3], slack: [3.5, 1.35], work: { sheep: 2.2, bush: 2.6, gate: 0.4 }, setSeconds: 2.4 };
+export const SUNS = ['sets', 'gentle'];
+
 export const FOUND_SECONDS = 1.3; // A friend found, or the way out reached in a race, cheers this long before the next maze.
 export const SLIDE_SECONDS = 1.1; // The last maze fades away and the next comes in, over this long.
 export const OUT_CELLS = 1.6; // Out of a maze in a race, the character walks on this far past the middle of the last cell.
@@ -96,7 +104,24 @@ export function mazeLevel(level) {
     magnet: at >= 9,
     // At level 10, a treasure chest with a crown in it.
     chest: at >= 10,
+    // How long the sun takes to set over a maze: see SUN and sunSeconds.
+    sunBase: ramp(at, SUN.base[0], SUN.base[1]),
+    sunSlack: ramp(at, SUN.slack[0], SUN.slack[1]),
   };
+}
+
+/**
+ * Seconds the sun takes to set over a maze, at a level: base, and slack times the walk straight to the friend, by way
+ * of the key if there's a gate, at the character's own pace, and the work of what's in the way.
+ */
+export function sunSeconds(layout, level) {
+  const { maze, start, goal, items, blockers } = layout;
+  const open = (a, d) => maze.isOpen(a, d);
+  const key = items.find((item) => item.kind === 'key');
+  const steps = key ? distances(maze, start, open)[key.cell] + distances(maze, key.cell, open)[goal] : distances(maze, start, open)[goal];
+  const work = blockers.reduce((sum, blocker) => sum + (SUN.work[blocker.kind] ?? 0), 0);
+  const plan = mazeLevel(level);
+  return plan.sunBase + plan.sunSlack * (steps / WALK.speed + work);
 }
 
 // What each level brings that's new, for the title card, the countdown and the finish card. key says which part of
