@@ -299,9 +299,11 @@ export const PLAYER = { run: 4.4, sprint: 6.4, ease: 14, walking: 1.6, sprinting
 // nothing, and red can't win.
 export const LEVELS = {
   gentle: { aim: 0.35, hit: 10, react: 1, burst: [3, 5], rest: [1, 1.6], canLose: false },
-  medium: { aim: 0.6, hit: 15, react: 0.7, burst: [4, 7], rest: [0.5, 0.9], canLose: true },
-  tough: { aim: 0.75, hit: 18, react: 0.45, burst: [5, 8], rest: [0.35, 0.7], canLose: true },
+  medium: { aim: 0.68, hit: 17, react: 0.6, burst: [4, 7], rest: [0.45, 0.8], canLose: true },
+  tough: { aim: 0.82, hit: 20, react: 0.4, burst: [5, 8], rest: [0.3, 0.6], canLose: true },
 };
+// However the level and how hard it is add up, a shot of theirs never lands more often than this.
+export const MOST_LANDS = 0.95;
 
 // The help with aiming, for those who want it: with the sights on someone, or nearly, the view turns less for
 // the hand, so it's easier to stay on them. It never moves the sights for anyone. within is how many times
@@ -337,6 +339,8 @@ export const BOT = { walk: 3.3, turn: 3.2, aimWithin: degrees(9), every: 0.2, re
 const DODGING = { walking: 0.65, sprinting: 0.45, near: 8, far: 22, atFar: 0.5 };
 // Something in the way of one of them: these turns to either side are tried, the least first.
 const SLIDES = [0.35, 0.7, 1.05, 1.4, 1.75];
+const HUNT_SECONDS = 4; // How lately the other team must have seen the player to go after them.
+const HUNT_MOVED = 3; // How far the player must have gone from where a hunter was going for it to think again.
 
 /**
  * What each level changes, from level 1, the plain match, up to level 10. The numbers are shares of what was
@@ -361,6 +365,28 @@ export function levelPlan(level = 1) {
     boots: level >= 9, // A crate of snow boots turns up too: walking is quicker for a while.
     champions: level >= 10, // The other team are the champions, in gold helmets, and all take more hits.
     trophy: level >= 10, // And beating them wins the trophy.
+  };
+}
+
+/**
+ * How much more dangerous and cleverer the other team is on Medium and Tough, level by level, on top of levelPlan.
+ * Easy is left just as it always was. Level 1 is the plain match on every setting. hit is how much more each of
+ * their shots takes off the player. lead is how much of the help moving gives the player they take away, by
+ * firing where the player is going. From level 3 they all go for the player first when they can see them, rather
+ * than whoever is nearest. From level 5 they hunt: with nobody in sight, they go where their team last saw the
+ * player, in the last few seconds. From level 7 they all side-step while firing, as a runner does.
+ */
+export function challengePlan(level = 1, canLose = true) {
+  if (!canLose) return { aim: 1, react: 1, health: 1, hit: 1, lead: 0, focus: false, hunt: false, strafe: false };
+  return {
+    aim: ramp(level, 1, 1.12), // With levelPlan's, their shots land two thirds more often at level 10 than at level 1.
+    react: ramp(level, 1, 0.8), // With levelPlan's, they start firing in under half of level 1's time.
+    health: ramp(level, 1, 1.1), // With levelPlan's, each takes 43% more hits.
+    hit: ramp(level, 1, 1.15), // Each of their shots takes 15% more off the player.
+    lead: ramp(level, 0, 0.5), // Moving helps the player only half as much by level 10.
+    focus: level >= 3,
+    hunt: level >= 5,
+    strafe: level >= 7,
   };
 }
 
@@ -451,7 +477,10 @@ export class Match {
 
   /** How hard it is, and the help with aiming, can change at any time, from the panel. */
   configure({ level, assist }) {
-    if (level !== undefined) this.level = LEVELS[level] ?? LEVELS.gentle;
+    if (level !== undefined) {
+      this.level = LEVELS[level] ?? LEVELS.gentle;
+      this.challenge = challengePlan(this.levelNumber, this.level.canLose);
+    }
     if (assist !== undefined) this.assist = Boolean(assist);
   }
 
@@ -538,7 +567,7 @@ export class Match {
     reds.forEach((trooper, index) => {
       const part = parts[index] ?? null;
       trooper.part = part;
-      let health = HEALTH * plan.health * (plan.champions ? CHAMPION_HEALTH : 1);
+      let health = HEALTH * plan.health * this.challenge.health * (plan.champions ? CHAMPION_HEALTH : 1);
       if (part === 'captain') health *= CAPTAIN.health;
       if (part === 'runner') health *= RUNNER.health;
       trooper.most = trooper.health = Math.round(health);
@@ -807,6 +836,8 @@ export class Match {
     trooper.health = 0;
     trooper.state = 'out';
     trooper.outLeft = OUT_SECONDS;
+    // A player tagged out isn't there to be hunted any more: see hunt in challengePlan.
+    if (!trooper.bot) this.spotted = null;
     trooper.firing = false;
     trooper.burstLeft = 0;
     trooper.speed = 0;
@@ -874,7 +905,10 @@ export class Match {
     // Whoever it can see of the other team that's near enough to fire at, nearest first, sticking with the one it
     // has while it can still see them. Someone who has just hit it counts from however far off.
     const others = this.foesOf(bot).filter((other) => (gapBetween(bot, other) <= BOT.fightWithin || other === bot.angryAt) && this.sees(bot, other));
-    const seen = others.includes(bot.seen) ? bot.seen : others.sort((a, b) => gapBetween(bot, a) - gapBetween(bot, b))[0] ?? null;
+    // From level 3 on Medium and Tough, the player is who they go for first, whenever they can see them.
+    const player = this.challenge.focus ? others.find((other) => !other.bot) : null;
+    const seen = player ?? (others.includes(bot.seen) ? bot.seen : others.sort((a, b) => gapBetween(bot, a) - gapBetween(bot, b))[0] ?? null);
+    if (seen && !seen.bot && bot.team === 1) this.spotted = { x: seen.x, z: seen.z, at: this.time };
     bot.seenFor = seen && seen === bot.seen ? bot.seenFor + dt : 0;
     bot.seen = seen;
     bot.firing = false;
@@ -882,10 +916,11 @@ export class Match {
       // It stops, turns to them, and fires a few at a time once it has had a moment to take aim.
       const off = turnBetween(headingTo(seen.x - bot.x, seen.z - bot.z), bot.heading);
       bot.heading += clamp(off, -BOT.turn * dt, BOT.turn * dt);
-      // A runner never stands still: it keeps on the move, from side to side, while it fires.
-      if (bot.part === 'runner') this.dodge(bot, dt);
+      // A runner never stands still: it keeps on the move, from side to side, while it fires, and from level 7 on
+      // Medium and Tough so does everyone but the shield carrier.
+      if (bot.part === 'runner' || (this.challenge.strafe && bot.part !== 'shield')) this.dodge(bot, dt);
       else this.walk(bot, 0, dt);
-      const aimed = Math.abs(off) <= BOT.aimWithin && bot.seenFor >= this.level.react * this.plan.react;
+      const aimed = Math.abs(off) <= BOT.aimWithin && bot.seenFor >= this.level.react * this.plan.react * this.challenge.react;
       if (!aimed || bot.reloadLeft > 0 || bot.restLeft > 0) return;
       if (bot.rounds === 0) {
         this.reload(bot, false);
@@ -907,8 +942,16 @@ export class Match {
     // Nobody in sight: it goes somewhere worth going, by the way round, and then somewhere else.
     bot.burstLeft = 0;
     bot.wayIn -= dt;
-    if (!bot.haunt || gapBetween(bot, bot.haunt) < BOT.reach || bot.stuckFor > BOT.stuckAfter) {
+    // From level 5 on Medium and Tough, they hunt: they go where their team last saw the player, if that was lately.
+    const lead = this.challenge.hunt && bot.team === 1 && this.spotted && this.time - this.spotted.at <= HUNT_SECONDS ? this.spotted : null;
+    if (lead && gapBetween(bot, lead) >= BOT.reach && !(bot.hunting && bot.haunt && gapBetween(bot.haunt, lead) < HUNT_MOVED)) {
+      bot.haunt = { x: lead.x, z: lead.z };
+      bot.hunting = true;
+      bot.way = null;
+      bot.stuckFor = 0;
+    } else if (!bot.haunt || gapBetween(bot, bot.haunt) < BOT.reach || bot.stuckFor > BOT.stuckAfter) {
       bot.haunt = HAUNTS[Math.floor(this.random() * HAUNTS.length)];
+      bot.hunting = false;
       bot.way = null;
       bot.stuckFor = 0;
     }
@@ -932,15 +975,17 @@ export class Match {
   chanceOn(target, from = null) {
     if (target.bot) return BOT.lands;
     const going = clamp(target.speed / PLAYER.run, 0, 1);
-    const moving = target.sprinting ? DODGING.sprinting : 1 - (1 - DODGING.walking) * going;
+    const dodged = target.sprinting ? DODGING.sprinting : 1 - (1 - DODGING.walking) * going;
+    // On Medium and Tough they lead a player on the move more, the higher the level.
+    const moving = dodged + (1 - dodged) * this.challenge.lead;
     const away = from ? gapBetween(from, target) : DODGING.near;
     const far = 1 - (1 - DODGING.atFar) * clamp((away - DODGING.near) / (DODGING.far - DODGING.near), 0, 1);
-    return this.level.aim * this.plan.aim * moving * far;
+    return Math.min(MOST_LANDS, this.level.aim * this.plan.aim * this.challenge.aim * moving * far);
   }
 
   /** How much a shot from a player the computer plays takes off someone: the player, as much as how hard it is says. */
   botHit(bot, target) {
-    return target.bot ? BOT.hits : this.level.hit;
+    return target.bot ? BOT.hits : this.level.hit * this.challenge.hit;
   }
 
   /** A runner's side-step: a few paces one way, and then the other, still facing whoever it's firing at. */

@@ -610,6 +610,37 @@ for (const level of [1, 10]) {
   });
 }
 
+test('level 10 on Medium: nothing flashes with the other team side-stepping as they fire, tagging the player out, or the player coming back', async ({ page }) => {
+  test.setTimeout(180_000);
+  await startMatch(page, { levels: { [GAME]: 10 }, arenaWin: 15, arenaHard: 'medium' });
+  // The player in the alley down one side, and the other team, played by the computer, coming up it at them.
+  await page.evaluate(() => {
+    const { match } = window.__game;
+    Object.assign(match.child, { x: -21, z: 13, heading: 0, vx: 0, vz: 0 });
+    match.troopers.filter(({ team }) => team === 1).forEach((red, index) => Object.assign(red, { x: -21 + (index - 1) * 0.9, z: 4, heading: Math.PI, safeLeft: 0, haunt: null, way: null }));
+    for (const mate of match.troopers.filter(({ team, bot }) => team === 0 && bot)) Object.assign(mate, { bot: false, x: 200, z: 200 });
+    window.__strafed = 0;
+    window.__hurt = 0;
+    let health = match.child.health;
+    window.__watch = setInterval(() => {
+      if (match.child.health < health) window.__hurt += 1;
+      health = match.child.health;
+      for (const red of match.troopers.filter(({ team, part }) => team === 1 && part !== 'runner')) if (red.firing && red.speed > 0.5) window.__strafed += 1;
+    }, 50);
+  });
+  await hands(page, { aim: THUMB });
+  const fight = await brightnessThrough(page, 300);
+  console.log('level 10 on Medium, fighting: biggest brightness step', biggestStep(fight));
+  expect(biggestStep(fight)).toBeLessThan(4);
+  // They really were side-stepping while they fired, and hitting the player, who was tagged out and came back
+  // behind the veil.
+  expect(await page.evaluate(() => window.__strafed)).toBeGreaterThan(0);
+  expect((await matchIs(page)).canLose).toBe(true);
+  expect(await page.evaluate(() => window.__hurt)).toBeGreaterThan(0);
+  expect((await matchIs(page)).stats.out).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.__game.match.child.state)).toBe('in');
+});
+
 test('the higher levels bring what they say: a shield carrier, three a side, a crate, snow and the champions, each named on the title card', async ({ page }) => {
   await openGame(page, { levels: { [GAME]: 10 }, arenaHard: 'gentle' }, GAME);
   await expect(page.locator('#screen-welcome')).toContainText('Champions');
