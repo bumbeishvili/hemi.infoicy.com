@@ -33,6 +33,8 @@ import {
   PLACES,
   REFILL_SECONDS,
   REST_AFTER_SECONDS,
+  CHALLENGE_GOO_LEAST_SECONDS,
+  challengePlan,
   readHand,
 } from '../../games/robot-rescue/rescue.js';
 import { RescueSound } from '../../games/robot-rescue/rescue-sound.js';
@@ -64,7 +66,8 @@ function steady(seed = 7) {
 
 const makeMission = (options = {}) => {
   const log = logged();
-  const mission = new Mission({ random: steady(), onEvent: log.onEvent, ...options });
+  // Gentle, the game as it always was, unless a test says otherwise: the challenge has its own tests.
+  const mission = new Mission({ random: steady(), onEvent: log.onEvent, level: 'gentle', ...options });
   mission.start();
   return { mission, log };
 };
@@ -760,7 +763,7 @@ test('harder settings have more weak spots', () => {
 test('settings saved by an older version don\'t break anything', () => {
   const { mission } = makeMission({ pace: 'warp', level: 'impossible' });
   assert.equal(mission.pace, PACES.slow);
-  assert.equal(mission.level, LEVELS.gentle);
+  assert.equal(mission.level, LEVELS.medium); // How it comes.
 });
 
 test('speed, difficulty and reloading can change in the middle of a game', () => {
@@ -1075,7 +1078,7 @@ test('level 10 asks no more than twice the movements a minute of level 1, and la
   // On Gentle, so that every game gets to the end and they can be compared.
   for (const [pace, stops] of [['slow', 5], ['medium', 5], ['fast', 3]]) {
     const play = (levelNumber) => [3, 7, 11, 19].map((seed) => {
-      const mission = new Mission({ pace, stops, levelNumber, random: steady(seed) });
+      const mission = new Mission({ pace, stops, levelNumber, level: 'gentle', random: steady(seed) });
       mission.start();
       return playLikeAChild(mission);
     });
@@ -1090,9 +1093,9 @@ test('level 10 asks no more than twice the movements a minute of level 1, and la
   }
 });
 
-test('at level 10 there\'s still at least 70% of the time to react that level 1 gives', () => {
+test('on Gentle, at level 10 there\'s still at least 70% of the time to react that level 1 gives', () => {
   for (const pace of Object.keys(PACES)) {
-    for (const level of Object.keys(LEVELS)) {
+    for (const level of ['gentle']) {
       const first = makeMission({ pace, level, levelNumber: 1 }).mission;
       const last = makeMission({ pace, level, levelNumber: 10 }).mission;
       assert.ok(last.gooSeconds >= first.gooSeconds * 0.7, `${pace} ${level}: goo`);
@@ -1850,4 +1853,127 @@ test('a triple shot\'s three balls landing together are heard as one hit', () =>
   sound.context.currentTime = 10.2;
   sound.hit();
   assert.equal(played.length, 2, 'the next shot\'s is heard');
+});
+
+/* ---------- the challenge: Medium, how it comes, and Tough, where the goo can win ---------- */
+
+/**
+ * A made-up player. warn is how long before goo arrives they see it coming, closeTakes how long their
+ * hand takes to read as closed after that, aimSeconds how long getting onto a new robot takes, and a
+ * careless one never raises the shield at all, only closing to reload.
+ */
+function playAs(mission, { warn = 0.7, closeTakes = 0, aimSeconds = 0.6, reloadSeconds = 0.9, shield = true } = {}) {
+  let target = null;
+  let aimingFor = 0;
+  let closedFor = 0;
+  let closing = -1;
+  for (let seconds = 0; seconds < 1500 && !['won', 'lost'].includes(mission.phase); seconds += DT) {
+    if (closedFor <= 0 && closing < 0) {
+      const arriving = shield && mission.goo.find((goo) => (1 - goo.t) * goo.seconds < warn);
+      if (mission.blaster.empty) closedFor = reloadSeconds;
+      else if (arriving) {
+        closing = closeTakes;
+        closedFor = (1 - arriving.t) * arriving.seconds + 0.25;
+      }
+    }
+    let hand = 'open';
+    if (closing >= 0) closing -= DT;
+    if (closedFor > 0 && closing < 0) {
+      closedFor -= DT;
+      hand = 'closed';
+    } else if (closing < 0) {
+      const robots = mission.targets().filter(({ kind }) => kind !== 'goo');
+      if (!robots.includes(target)) {
+        target = robots[0] ?? null;
+        if (target) aimingFor = aimSeconds;
+      }
+      aimingFor -= DT;
+    }
+    mission.update(DT, { hand, target: hand === 'open' && aimingFor <= 0 ? target : null });
+  }
+  return mission.phase;
+}
+
+const PLAYERS = {
+  careless: { shield: false },
+  slowChild: { warn: 1, closeTakes: 0.35, aimSeconds: 1, reloadSeconds: 1.2 },
+  adult: { warn: 0.9, closeTakes: 0.15, aimSeconds: 0.5 },
+  sharp: { warn: 0.7, closeTakes: 0 },
+};
+
+const wins = (options, player) => [3, 7, 11, 19].filter((seed) => {
+  const mission = new Mission({ random: steady(seed), ...options });
+  mission.start();
+  return playAs(mission, PLAYERS[player]) === 'won';
+}).length;
+
+test('it comes on Medium, where the goo can win: a player who never raises the shield loses, even at level 1', () => {
+  const mission = new Mission({ random: steady(3) });
+  assert.equal(mission.level, LEVELS.medium);
+  assert.equal(mission.level.canLose, true);
+  assert.equal(wins({}, 'careless'), 0);
+  assert.equal(wins({ level: 'gentle' }, 'careless'), 4, 'Gentle still can\'t be lost');
+});
+
+test('level 1 on Medium can be learnt: a slow, careful child wins it', () => {
+  assert.equal(wins({ levelNumber: 1 }, 'slowChild'), 4);
+});
+
+test('level 10 needs real skill: a fair grown-up loses it, and only a sharp player wins', () => {
+  for (const level of ['medium', 'tough']) {
+    assert.equal(wins({ level, levelNumber: 10 }, 'adult'), 0, `${level} adult`);
+    assert.equal(wins({ level, levelNumber: 10 }, 'sharp'), 4, `${level} sharp`);
+  }
+  assert.equal(wins({ level: 'tough', levelNumber: 10 }, 'slowChild'), 0);
+  // And on Gentle, the game as it was, every one of them gets there.
+  for (const player of Object.keys(PLAYERS)) assert.equal(wins({ level: 'gentle', levelNumber: 10 }, player), 4, player);
+});
+
+test('on Medium and Tough the levels ramp: by level 10 goo comes about twice as often and takes about half as long', () => {
+  for (const pace of Object.keys(PACES)) {
+    for (const level of ['medium', 'tough']) {
+      const first = makeMission({ pace, level, levelNumber: 1 }).mission;
+      const last = makeMission({ pace, level, levelNumber: 10 }).mission;
+      assert.equal(first.gooSeconds, LEVELS[level].gooSeconds, 'level 1 is as it always was');
+      assert.equal(first.throwEvery, LEVELS[level].throwEvery);
+      assert.ok(last.gooSeconds <= first.gooSeconds * 0.6 && last.gooSeconds >= first.gooSeconds * 0.5, `${pace} ${level}: ${last.gooSeconds}`);
+      assert.ok(last.gooSeconds >= CHALLENGE_GOO_LEAST_SECONDS);
+      assert.ok(last.throwEvery <= first.throwEvery * 0.5, `${pace} ${level}: throws`);
+      assert.equal(last.gooInAir, first.gooInAir + 2);
+    }
+  }
+  assert.deepEqual(challengePlan(10, false), challengePlan(1, false), 'Gentle never ramps more than it did');
+});
+
+test('on Medium from level 4 the robots hold on to their goo while the shield is up, and throw as it comes down', () => {
+  for (const [level, levelNumber, waits] of [['medium', 4, true], ['tough', 10, true], ['medium', 3, false], ['gentle', 10, false]]) {
+    const { mission, log } = makeMission({ level, levelNumber });
+    mission.holdThrows = 0;
+    mission.throwIn = 0;
+    run(mission, 1.5, { hand: 'closed' });
+    assert.equal(log.count('windup') === 0, waits, `${level} ${levelNumber}`);
+    if (!waits) continue;
+    run(mission, 0.2, { hand: 'open' });
+    assert.ok(log.count('windup') > 0, `${level} ${levelNumber}: throws once it's down`);
+  }
+});
+
+test('only level 1 has the quiet start at the first stop on Medium, and every level on Gentle', () => {
+  const quiet = (level, levelNumber) => makeMission({ level, levelNumber }).mission.holdThrows > 0;
+  assert.equal(quiet('medium', 1), true);
+  assert.equal(quiet('medium', 2), false);
+  assert.equal(quiet('tough', 10), false);
+  assert.equal(quiet('gentle', 10), true);
+});
+
+test('resting still stops the goo on Tough at level 10, so a child who walks away is never caught for it', () => {
+  const { mission } = makeMission({ level: 'tough', levelNumber: 10 });
+  run(mission, 2, { hand: 'open', aim: firstTarget });
+  run(mission, REST_AFTER_SECONDS + 0.1, { hand: 'none' });
+  assert.equal(mission.resting, true);
+  const rested = mission.hearts;
+  run(mission, 60, { hand: 'none' });
+  assert.equal(mission.phase, 'fighting');
+  assert.equal(mission.hearts, rested);
+  assert.equal(mission.goo.length, 0);
 });

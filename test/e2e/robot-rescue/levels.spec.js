@@ -104,7 +104,7 @@ test('a higher level on Gentle still can\'t be lost, and winning it moves on to 
 
 test('running out of hearts on Tough tries the same level again', async ({ page }) => {
   test.setTimeout(150_000);
-  await reachRescue(page, atLevel(6, { rescueLevel: 'tough' }), NO_HAND);
+  await reachRescue(page, atLevel(6, { rescueGoo: 'tough' }), NO_HAND);
   await stayAwake(page);
   await page.evaluate(() => {
     const { mission } = window.__game;
@@ -116,7 +116,8 @@ test('running out of hearts on Tough tries the same level again', async ({ page 
     });
   });
   await waitForScreen(page, 'finish');
-  await expect(page.locator('#screen-finish h2')).toHaveText('So close!');
+  await expect(page.locator('#screen-finish h2')).toHaveText('The goo stopped the tram!');
+  await expect(page.locator('#play-again')).toHaveText('Try again');
   await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 6 again!');
   await page.waitForTimeout(600);
   await shot(page, 'robot-rescue-level6-so-close');

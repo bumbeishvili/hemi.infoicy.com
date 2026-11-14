@@ -16,6 +16,9 @@ const CLOSE_FOR_SHIELD = 'Close your hand for the shield!';
 const GOLD_STARS = 'Shoot the gold stars on the big robot!';
 const FINISH = 'You saved everyone!';
 const SO_CLOSE = 'So close!';
+// What the card says when the goo wins, in the story. It's only shown, as "So close!" is what's said.
+const GOO_WON = { en: 'The goo stopped the tram!', ka: 'ლორწომ ტრამვაი გააჩერა!' };
+const TRY_AGAIN = { en: 'Try again', ka: 'კიდევ სცადე' };
 const GIRAFFE_ASKS = 'Help! The robots caught all of us!';
 
 const BY_THE_END = {
@@ -95,8 +98,8 @@ class RescueGame {
     this.applySettings();
     if (this.preview) return;
     if ('pace' in change) this.mission.configure({ pace: change.pace });
-    if ('rescueLevel' in change) {
-      this.mission.configure({ level: change.rescueLevel });
+    if ('rescueGoo' in change) {
+      this.mission.configure({ level: change.rescueGoo });
       this.showHearts();
     }
     if ('reloading' in change) this.mission.configure({ reloading: change.reloading === 'on' });
@@ -126,7 +129,7 @@ class RescueGame {
     this.mission = new Mission({
       stops: settings.stops,
       pace: settings.pace,
-      level: settings.rescueLevel,
+      level: settings.rescueGoo,
       levelNumber: level,
       reloading: settings.reloading !== 'off',
       onEvent: (event) => this.onEvent(event),
@@ -253,11 +256,16 @@ class RescueGame {
     this.ended = words;
     const { session } = this;
     const { mark, one, many } = BY_THE_END[words === SO_CLOSE ? 'lost' : 'won'];
+    const lost = words === SO_CLOSE;
+    const language = session.settings.language === 'ka' ? 'ka' : 'en';
     session.finishLine = words;
-    document.querySelector('#screen-finish h2').textContent = session.translate(words);
+    document.querySelector('#screen-finish h2').textContent = lost ? GOO_WON[language] : session.translate(words);
     document.querySelector('#screen-finish .hero-mark').textContent = mark;
     document.querySelector('#screen-finish .finish-hero').lastChild.textContent = ` ${this.heroCount() === 1 ? one : many}`;
     session.finish();
+    // The level doesn't move on, and the big button says so.
+    const again = document.getElementById('play-again');
+    if (lost && again) again.textContent = TRY_AGAIN[language];
   }
 
   /**
@@ -602,10 +610,10 @@ new GameSession({
         ${choice('reloading', 'off', 'Off: it never runs out, for a child who can’t close their hand easily')}
       </fieldset>
       <fieldset class="choice">
-        <legend>How hard it is</legend>
-        ${choice('rescueLevel', 'gentle', 'Gentle: the goo is slow, and it can’t be lost')}
-        ${choice('rescueLevel', 'medium', 'Medium')}
-        ${choice('rescueLevel', 'tough', 'Tough')}
+        <legend>How hard the robots’ goo comes</legend>
+        ${choice('rescueGoo', 'gentle', 'Gentle: the goo is slow, hearts stop at one, and it can’t be lost')}
+        ${choice('rescueGoo', 'medium', 'Medium: the goo can win, and stops the tram when the hearts run out')}
+        ${choice('rescueGoo', 'tough', 'Tough: fewer hearts, and the goo comes thick and fast')}
       </fieldset>
       <fieldset class="choice">
         <legend>Stops on the way</legend>
@@ -613,8 +621,8 @@ new GameSession({
         ${choice('stops', '5', 'All five')}
       </fieldset>`,
   },
-  defaults: { pace: 'slow', reach: 'little', reloading: 'on', rescueLevel: 'gentle', stops: 5 },
-  choices: { pace: String, reach: String, reloading: String, rescueLevel: String, stops: Number },
+  defaults: { pace: 'slow', reach: 'little', reloading: 'on', rescueGoo: 'medium', stops: 5 },
+  choices: { pace: String, reach: String, reloading: String, rescueGoo: String, stops: Number },
   tagline: (side) => `Robots have caught your friends! Ride the tram through town. Open your ${side} hand to fire, and close it for your shield.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),
