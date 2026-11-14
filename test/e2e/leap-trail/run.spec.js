@@ -179,7 +179,7 @@ test('set to stumble, a missed obstacle is knocked aside and the run goes on', a
 test('a whole trail: finish, numbers, the camera going off, and running again', async ({ page }) => {
   test.setTimeout(240_000);
   // With the lanes off, every line of stars is in the middle, so the count is always the same.
-  await reachRun(page, { obstacles: 10, pace: 'fast', trailLanes: 'no' });
+  await reachRun(page, { obstacles: 10, trailPace: 'fast', trailLanes: 'no' });
   await expect(page.locator('#obstacles-left')).toHaveText('10');
 
   // Doing whatever's asked, at the moment it counts.
@@ -219,7 +219,7 @@ test('a whole trail: finish, numbers, the camera going off, and running again', 
 
 test('another runner can be chosen after a run', async ({ page }) => {
   test.setTimeout(240_000);
-  await reachRun(page, { obstacles: 10, pace: 'fast', onMissed: 'stumble' });
+  await reachRun(page, { obstacles: 10, trailPace: 'fast', onMissed: 'stumble' });
   await page.evaluate(() => {
     const { run } = window.__game;
     run.distance = run.end - 5;
@@ -263,8 +263,8 @@ test('out of the box it\'s fast, at a medium pace, and a missed move is a stumbl
   test.setTimeout(120_000);
   await page.addInitScript(() => localStorage.clear());
   // The pace and hearts as they come, rather than the gentle trail most of these tests run.
-  await reachRun(page, { onMissed: 'stumble', pace: undefined, trailHearts: undefined });
-  expect(await page.evaluate(() => [window.__game.game.settings.pace, window.__game.game.settings.trailHearts])).toEqual(['medium', 'yes']);
+  await reachRun(page, { onMissed: 'stumble', trailPace: undefined, trailHearts: undefined });
+  expect(await page.evaluate(() => [window.__game.game.settings.trailPace, window.__game.game.settings.trailHearts])).toEqual(['medium', 'yes']);
   await expect(page.locator('.hearts-chip')).toBeVisible();
   await expect(page.locator('#hearts')).toHaveText('♥♥♥♥♥');
   await expect.poll(async () => (await runState(page)).speed, { timeout: 8000 }).toBeGreaterThan(16);

@@ -6,7 +6,7 @@ import { expect, openGame, waitForScreen } from '../helpers.js';
  * about the game as it was, unless they say: the gentle trail, with no hearts to lose, at a slow pace.
  */
 export async function openTrail(page, settings = {}) {
-  await openGame(page, { onMissed: 'wait', trailHearts: 'no', pace: 'slow', ...settings }, 'leap-trail');
+  await openGame(page, { onMissed: 'wait', trailHearts: 'no', trailPace: 'slow', ...settings }, 'leap-trail');
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
 }
 

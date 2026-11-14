@@ -118,8 +118,8 @@ class SmoothieGame {
       linkKey: 'stand',
       words: STAND_WORDS,
       hello: () => {
-        const { fighter, customers, pace } = session.settings;
-        return { driver: fighter ?? '', level: session.levels.current, length: customers, mode: pace };
+        const { fighter, customers, smoothiePace } = session.settings;
+        return { driver: fighter ?? '', level: session.levels.current, length: customers, mode: smoothiePace };
       },
       screen: () => session.screen,
       portraits: () => session.portraits,
@@ -146,7 +146,7 @@ class SmoothieGame {
   }
 
   applySettings() {
-    const { pace, slicing, hands, language } = this.session.settings;
+    const { smoothiePace: pace, slicing, hands, language } = this.session.settings;
     // With friends, the fruit comes as fast as the host chose, and each child keeps their own way of slicing.
     this.field.configure({ pace: this.friendly ? this.hostPace : pace, slicing, side: hands });
     // The names of new things are in the language the voice speaks, even if it changes mid-round.
@@ -165,7 +165,7 @@ class SmoothieGame {
   settingChanged(change) {
     this.applySettings();
     // What a friend's game would be, if this one hosts it.
-    if (('pace' in change || 'customers' in change) && this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
+    if (('smoothiePace' in change || 'customers' in change) && this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
   }
 
   /** What's new at a level, for the title card and the countdown: see NEW_AT in orders.js. */
@@ -860,9 +860,9 @@ new GameSession({
       </fieldset>
       <fieldset class="choice">
         <legend>How fast the fruit flies</legend>
-        <label><input type="radio" name="pace" value="slow"> Slow</label>
-        <label><input type="radio" name="pace" value="medium"> Medium</label>
-        <label><input type="radio" name="pace" value="fast"> Fast</label>
+        <label><input type="radio" name="smoothiePace" value="slow"> Slow</label>
+        <label><input type="radio" name="smoothiePace" value="medium"> Medium</label>
+        <label><input type="radio" name="smoothiePace" value="fast"> Fast</label>
       </fieldset>
       <fieldset class="choice">
         <legend>Customers’ patience</legend>
@@ -875,8 +875,10 @@ new GameSession({
         <label><input type="radio" name="customers" value="6"> All six</label>
       </fieldset>`,
   },
-  defaults: { pace: 'medium', slicing: 'swipe', customers: 6, patience: 'hurry' },
-  choices: { pace: String, slicing: String, customers: Number, patience: String },
+  // The stand's own pace. It was pace, which Balloon Pop, Robot Rescue and Leap Trail also save theirs under:
+  // since this game came to be medium and those two stayed slow, whichever was played last decided for all.
+  defaults: { smoothiePace: 'medium', slicing: 'swipe', customers: 6, patience: 'hurry' },
+  choices: { smoothiePace: String, slicing: String, customers: Number, patience: String },
   tagline: (side) => `It’s the Harvest Fair! Slice what the customers order, with your open ${side} hand.`,
   finishLine: WON,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

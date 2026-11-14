@@ -169,7 +169,7 @@ test('level 10 can be run to the end, and finishing it says every level is done'
 
 test('finishing a run moves on a level, and the next run is played at it', async ({ page }) => {
   test.setTimeout(240_000);
-  await reachRun(page, { levels: { 'leap-trail': 3 }, obstacles: 10, pace: 'fast', onMissed: 'stumble' });
+  await reachRun(page, { levels: { 'leap-trail': 3 }, obstacles: 10, trailPace: 'fast', onMissed: 'stumble' });
   expect(await page.evaluate(() => window.__game.run.levelNumber)).toBe(3);
   await page.evaluate(() => {
     const { run } = window.__game;
@@ -224,7 +224,7 @@ test('level 10: nothing flashes through rolling bales, sheep, golden stars and j
 });
 
 test('level 10: nothing flashes moving across as fast as a child could, at the faster speed', async ({ page }) => {
-  await reachRun(page, { ...TOP, pace: 'fast', onMissed: 'stumble' });
+  await reachRun(page, { ...TOP, trailPace: 'fast', onMissed: 'stumble' });
   await nextObstacleIs(page, 'fence', 400);
   await page.evaluate(() => {
     const { world, game } = window.__game;

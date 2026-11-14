@@ -8,7 +8,7 @@ import { judgeBrightness, storyIs, watchBrightness } from './helpers.js';
 
 const GAME = 'smoothie-stand';
 // The slow pace that was the default when these were written, unless a test says. With friends, customers always wait.
-const openGame = (page, settings = {}, ...rest) => openPage(page, { pace: 'slow', ...settings }, ...rest);
+const openGame = (page, settings = {}, ...rest) => openPage(page, { smoothiePace: 'slow', ...settings }, ...rest);
 const CODE = /^[A-HJ-NP-Z2-9]{3}$/;
 
 /** How the stand is on one child's screen. Fruit that hasn't been thrown yet is still below the screen. */
@@ -127,13 +127,13 @@ test('friends play at the host\'s stand: the same fruit, where it really is, on 
   test.setTimeout(300_000);
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
-  await openGame(page, { customers: 3, pace: 'slow', levels: { [GAME]: 4 } }, GAME);
+  await openGame(page, { customers: 3, smoothiePace: 'slow', levels: { [GAME]: 4 } }, GAME);
   const code = await makeGame(page, 'Ana');
   expect(page.url()).toContain(`#stand=${code}`);
 
   // The friend has their own customers, pace and way of slicing, and opens the link.
   const ben = await secondPlayer(browser);
-  await openGame(ben.page, { customers: 6, pace: 'fast', slicing: 'touch' }, GAME, `#stand=${code}`);
+  await openGame(ben.page, { customers: 6, smoothiePace: 'fast', slicing: 'touch' }, GAME, `#stand=${code}`);
   await giveName(ben.page, 'Ben');
   await expect(page.locator('#friends-here')).toContainText('Ben');
   await allPlaying(page, ben.page);
@@ -194,7 +194,7 @@ test('friends play at the host\'s stand: the same fruit, where it really is, on 
   // Nobody's own level or settings change, and the only connection was to the race server.
   expect((await standOf(page)).ownLevel).toBe(4);
   expect(await ben.page.evaluate(() => window.__game.session.settings.customers)).toBe(6);
-  expect(await ben.page.evaluate(() => window.__game.session.settings.pace)).toBe('fast');
+  expect(await ben.page.evaluate(() => window.__game.session.settings.smoothiePace)).toBe('fast');
   expect(sockets).toEqual([`${raceServer()}/room/${GAME}/${code}?make=1`]);
   expect(ben.errors).toEqual([]);
   await ben.context.close();

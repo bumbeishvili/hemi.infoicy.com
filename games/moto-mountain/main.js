@@ -30,7 +30,10 @@ const METER_SPAN = 27;
 const ARROW_FROM = 60; // Metres before a bend at which its arrow comes up.
 const RAD = Math.PI / 180;
 
-const DEFAULTS = { moveSize: 'medium', motoLean: 'medium', motoBends: 10, motoWay: 'even', motoPace: 'usual', motoHelp: 'some', motoRide: 'wild', motoRivals: 'medium', motoFriends: 'together', fighter: 'giraffe' };
+// moveSize is the other body games' setting for how big a move has to be. This game never uses it, having
+// its own, and keeps it as those games have it: settings are saved all together, and with another value
+// here a child who had played this game was asked for bigger moves in the others.
+const DEFAULTS = { moveSize: 'small', motoLean: 'medium', motoBends: 10, motoWay: 'even', motoPace: 'usual', motoHelp: 'some', motoRide: 'wild', motoRivals: 'medium', motoFriends: 'together', fighter: 'giraffe' };
 const CHOICES = { motoLean: String, motoBends: Number, motoWay: String, motoPace: String, motoHelp: String, motoRide: String, motoRivals: String, motoFriends: String };
 const BIG_AIR_SECONDS = 1.4; // A jump this long is said to be a big one.
 const TRICK_HINTS = 4; // How many jumps a trick is asked for in, until one is landed.

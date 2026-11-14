@@ -106,7 +106,7 @@ test('the new default pace is medium, and level 10 climbs further than it did', 
 
 test('nothing flashes as a customer goes home and the card comes up', async ({ page }) => {
   test.setTimeout(120_000);
-  await startPlaying(page, GAME, atLevel(GAME, 10, { pace: 'fast' }));
+  await startPlaying(page, GAME, atLevel(GAME, 10, { smoothiePace: 'fast' }));
   await storyIs(page, 'truffle');
   await page.waitForTimeout(1500);
   await page.evaluate(() => {

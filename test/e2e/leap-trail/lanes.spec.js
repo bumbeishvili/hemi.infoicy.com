@@ -93,7 +93,7 @@ test('with the lanes off, every obstacle fills the middle, and a whole trail is 
 
 test('a run with some gone round says so on the finish card, and the count is still of all of them', async ({ page }) => {
   test.setTimeout(240_000);
-  await reachRun(page, { obstacles: 10, pace: 'fast', onMissed: 'stumble' });
+  await reachRun(page, { obstacles: 10, trailPace: 'fast', onMissed: 'stumble' });
   // Every obstacle leaves the right lane free, and the child stands in it the whole way.
   await page.evaluate(() => {
     const { run, world } = window.__game;

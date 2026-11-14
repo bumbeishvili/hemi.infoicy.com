@@ -249,7 +249,7 @@ test('the grown-ups\' panel pauses the run and remembers what it\'s told', async
 
   await page.locator('input[name="jumpWith"][value="reach"]').check();
   await expect(page.locator('body')).toHaveAttribute('data-jump-with', 'reach');
-  await page.locator('input[name="pace"][value="fast"]').check();
+  await page.locator('input[name="trailPace"][value="fast"]').check();
   await page.locator('input[name="obstacles"][value="40"]').check();
   await page.locator('input[name="onMissed"][value="stumble"]').check();
   await page.locator('input[name="trailLanes"][value="no"]').check();
@@ -261,7 +261,7 @@ test('the grown-ups\' panel pauses the run and remembers what it\'s told', async
   await page.reload();
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
   await page.locator('#open-panel').click();
-  for (const [name, value] of [['jumpWith', 'reach'], ['pace', 'fast'], ['obstacles', '40'], ['onMissed', 'stumble'], ['trailLanes', 'no'], ['moveSize', 'tiny'], ['hands', 'left']]) {
+  for (const [name, value] of [['jumpWith', 'reach'], ['trailPace', 'fast'], ['obstacles', '40'], ['onMissed', 'stumble'], ['trailLanes', 'no'], ['moveSize', 'tiny'], ['hands', 'left']]) {
     await expect(page.locator(`input[name="${name}"][value="${value}"]`)).toBeChecked();
   }
 });

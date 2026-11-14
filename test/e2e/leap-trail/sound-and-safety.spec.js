@@ -29,7 +29,7 @@ for (const language of ['en', 'ka']) {
 
 test('music plays during a run and stops at the end, footsteps fall, and nothing clips', async ({ page }) => {
   test.setTimeout(180_000);
-  await reachRun(page, { voice: true, sound: true, obstacles: 10, pace: 'fast' });
+  await reachRun(page, { voice: true, sound: true, obstacles: 10, trailPace: 'fast' });
   await page.evaluate(() => {
     const { sound } = window.__game;
     window.__tap = sound.context.createAnalyser();

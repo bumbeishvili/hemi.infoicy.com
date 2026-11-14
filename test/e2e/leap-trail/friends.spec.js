@@ -20,7 +20,7 @@ async function secondPlayer(browser) {
 }
 
 async function openRun(page, settings = {}, hash = '') {
-  await openGame(page, { onMissed: 'stumble', pace: 'slow', ...settings }, GAME, hash);
+  await openGame(page, { onMissed: 'stumble', trailPace: 'slow', ...settings }, GAME, hash);
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
   await standInView(page);
 }
@@ -65,13 +65,13 @@ test('two friends run the same trail from their own computers, see each other, a
   test.setTimeout(300_000);
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
-  await openRun(page, { obstacles: 10, pace: 'slow', levels: { [GAME]: 4 } });
+  await openRun(page, { obstacles: 10, trailPace: 'slow', levels: { [GAME]: 4 } });
   const code = await makeRun(page, 'Ana');
   expect(page.url()).toContain(`#run=${code}`);
 
   // The friend has settings of their own, and runs the host's trail.
   const ben = await secondPlayer(browser);
-  await openRun(ben.page, { obstacles: 40, pace: 'fast', fighter: 'kit' }, `#run=${code}`);
+  await openRun(ben.page, { obstacles: 40, trailPace: 'fast', fighter: 'kit' }, `#run=${code}`);
   await ben.page.locator('#friends-name').fill('Ben');
   await ben.page.locator('#friends-name').dispatchEvent('change');
   await expect(page.locator('#friends-here')).toContainText('Ben');

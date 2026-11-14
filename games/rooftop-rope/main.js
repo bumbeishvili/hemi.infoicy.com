@@ -26,7 +26,10 @@ const NEW_GAP_SECONDS = 0.35;
 const METER_MOST = 1.6; // The meter's top, in whole lifts.
 const HIGHER_FROM = 0.12; // How far before a balloon, as a share of the rope, "Higher!" is asked for.
 
-const DEFAULTS = { moveSize: 'medium', ropeLift: 'medium', ropeCount: 6, ropeHold: 'medium', ropeLeg: 'turns', ropeFall: 'later', ropeDrops: 'three', ropeFriends: 'together', fighter: 'giraffe' };
+// moveSize is the other body games' setting for how big a move has to be. This game never uses it, having
+// its own, and keeps it as those games have it: settings are saved all together, and with another value
+// here a child who had played this game was asked for bigger moves in the others.
+const DEFAULTS = { moveSize: 'small', ropeLift: 'medium', ropeCount: 6, ropeHold: 'medium', ropeLeg: 'turns', ropeFall: 'later', ropeDrops: 'three', ropeFriends: 'together', fighter: 'giraffe' };
 const CHOICES = { ropeLift: String, ropeCount: Number, ropeHold: String, ropeLeg: String, ropeFall: String, ropeDrops: String, ropeFriends: String };
 // The card at the end of a crossing that ended in the net. Its big button is to try again, as after any game
 // that was lost: see core/levels.js.

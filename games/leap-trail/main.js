@@ -35,7 +35,9 @@ const COIN = '🟡'; // A gold coin in words, as the coin emoji isn't gold every
 const DEFAULTS = {
   moveSize: 'small',
   jumpWith: 'jump',
-  pace: 'medium',
+  // The trail's own pace. It was pace, which Balloon Pop, Robot Rescue and Smoothie Stand also save theirs
+  // under: since this game came to be medium and those stayed slow, whichever was played last decided for all.
+  trailPace: 'medium',
   obstacles: 20,
   onMissed: 'stumble',
   trailLanes: 'yes',
@@ -44,7 +46,7 @@ const DEFAULTS = {
   trailHearts: 'yes',
   fighter: 'giraffe',
 };
-const CHOICES = { jumpWith: String, pace: String, obstacles: Number, onMissed: String, trailLanes: String, trailHearts: String };
+const CHOICES = { jumpWith: String, trailPace: String, obstacles: Number, onMissed: String, trailLanes: String, trailHearts: String };
 const LENGTHS = [10, 20, 40];
 
 // Running with friends, each on their own computer: see core/friends-ui.js for what each of these is.
@@ -188,7 +190,7 @@ class LeapTrail extends BodyGame {
       game: 'leap-trail',
       linkKey: 'run',
       words: RUN_WORDS,
-      hello: () => ({ driver: this.chosen?.id ?? this.settings.fighter, level: this.levels.current, length: this.settings.obstacles, mode: runMode(this.settings.pace, this.hasLanes) }),
+      hello: () => ({ driver: this.chosen?.id ?? this.settings.fighter, level: this.levels.current, length: this.settings.obstacles, mode: runMode(this.settings.trailPace, this.hasLanes) }),
       screen: () => this.screen,
       portraits: () => this.portraits,
       onGone: (friend) => this.friendGone(friend),
@@ -464,7 +466,7 @@ class LeapTrail extends BodyGame {
     const host = friendly ? fromMode(friendly.mode) : null;
     this.run = new Run({
       obstacles: friendly && LENGTHS.includes(friendly.length) ? friendly.length : settings.obstacles,
-      pace: host?.pace ?? settings.pace,
+      pace: host?.pace ?? settings.trailPace,
       lanes: host ? host.lanes : this.hasLanes,
       whenMissed: settings.onMissed,
       gentle: settings.trailHearts === 'no',
@@ -1159,9 +1161,9 @@ mountBodyShell({
     </fieldset>
     <fieldset class="choice">
       <legend>Speed</legend>
-      <label><input type="radio" name="pace" value="slow"> Slow</label>
-      <label><input type="radio" name="pace" value="medium"> Medium</label>
-      <label><input type="radio" name="pace" value="fast"> Fast</label>
+      <label><input type="radio" name="trailPace" value="slow"> Slow</label>
+      <label><input type="radio" name="trailPace" value="medium"> Medium</label>
+      <label><input type="radio" name="trailPace" value="fast"> Fast</label>
     </fieldset>
     <fieldset class="choice">
       <legend>Length of the trail</legend>

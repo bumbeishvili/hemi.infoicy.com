@@ -22,13 +22,16 @@ const SHARED_DEFAULTS = {
 // who really had chosen it has to choose it again.
 export const OLD_DEFAULTS = {
   flapFox: 'tumble', // Flap, Little Chick!: the fox who never catches the chick. He can now.
-  pace: 'slow', // Leap Trail and Smoothie Stand come at a medium pace now. The other games that have a pace still come slow.
   arrowHelp: 'little', // Arrow Meadow: the arrow goes just where the bow points now, with no help.
   mazeSize: 'medium', // Giraffe's Maze: the big maze now.
   puzzlePieces: 'usual', // Giraffe's Puzzles: more pieces now,
   puzzleSnap: 'near', // and a piece has to be let go closer to its place.
   paintBrush: 'medium', // Giraffe's Paint Box: the small brush now.
   level: 'gentle', // Sky Wings: the sky pirates can shoot the plane down now. Only Sky Wings still has this name.
+  // How big a move has to be, in the games played with the whole body. Moto Mountain and Rooftop Rope, which
+  // have settings of their own for it and never use this one, saved it as medium all the same for a few days:
+  // so a child who had played either was then asked for medium moves in the others, where small is how it comes.
+  moveSize: 'medium',
 };
 
 /**

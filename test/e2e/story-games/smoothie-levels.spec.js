@@ -7,7 +7,7 @@ import { atLevel, judgeBrightness, moveGloveTo, startPlaying as startStand, stop
 // These are the stand as it always was: customers who wait as long as it takes, the gentle choice under
 // "Customers' patience", and the slow pace that was the default then. The customers who won't wait are in
 // smoothie-patience.spec.js.
-const AS_IT_WAS = { patience: 'gentle', pace: 'slow' };
+const AS_IT_WAS = { patience: 'gentle', smoothiePace: 'slow' };
 const startPlaying = (page, game, settings = {}, ...rest) => startStand(page, game, { ...AS_IT_WAS, ...settings }, ...rest);
 
 const GAME = 'smoothie-stand';
@@ -453,7 +453,7 @@ test('level 10: the day still ends with the Golden Cup, with the coins on the fi
 for (const level of [1, 6, 10]) {
   test(`nothing flashes at level ${level}: the fruit flying, at the fastest pace a grown-up can choose`, async ({ page }) => {
     test.setTimeout(240_000);
-    await startPlaying(page, GAME, atLevel(GAME, level, { pace: 'fast' }));
+    await startPlaying(page, GAME, atLevel(GAME, level, { smoothiePace: 'fast' }));
     await storyIs(page, 'truffle');
     // The hand out of the picture, so it's only the fruit, and whatever else floats up.
     await page.evaluate(() => window.__camera.show({ left: null, right: null }));

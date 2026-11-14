@@ -1,6 +1,7 @@
 // The grown-ups' settings as they're saved and read back: a game's own settings on top of the shared ones, and
 // the old ways some games came, which are dropped once so that the games as they come now reach everyone.
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
 import { beforeEach, test } from 'node:test';
 import { OLD_DEFAULTS, loadSettings, saveSettings } from '../../core/settings.js';
 
@@ -85,4 +86,33 @@ test('with nothing saved, or something that can\'t be read, the game comes as it
   assert.equal(loadSettings({ flapFox: 'catch' }).flapFox, 'catch');
   stored[KEY] = 'not json';
   assert.equal(loadSettings({ flapFox: 'catch' }).flapFox, 'catch');
+});
+
+test('no two games save a setting under one name and have it come two ways', () => {
+  // Settings are saved all together, with everything the game on the screen has. So where two games share a
+  // name and come differently, whichever was played last decides for the other: Leap Trail and Smoothie Stand
+  // came to be medium under pace while Balloon Pop stayed slow, and Moto Mountain and Rooftop Rope saved the
+  // other body games' move size as medium.
+  const games = new URL('../../games/', import.meta.url);
+  const comes = new Map();
+  for (const game of readdirSync(games)) {
+    let source;
+    try {
+      source = readFileSync(new URL(`${game}/main.js`, games), 'utf8');
+    } catch {
+      continue;
+    }
+    for (const [, block] of source.matchAll(/(?:const DEFAULTS = |defaults: )\{([\s\S]*?)\}[;,]/g)) {
+      for (const [, name, value] of block.matchAll(/(\w+): ('[^']*'|-?[\d.]+|true|false)/g)) {
+        if (!comes.has(name)) comes.set(name, new Map());
+        comes.get(name).set(game, value);
+      }
+    }
+  }
+  assert.ok(comes.size > 60, `only found ${comes.size} settings`);
+  // High Five Racers' reach is another setting altogether, with choices of its own, from before the others had
+  // theirs: each game takes a choice it doesn't know as its own way of coming.
+  const known = new Set(['reach']);
+  const twoWays = [...comes].filter(([name, games]) => !known.has(name) && new Set(games.values()).size > 1).map(([name, games]) => `${name}: ${[...games].map(([game, value]) => `${game} ${value}`).join(', ')}`);
+  assert.deepEqual(twoWays, []);
 });
