@@ -270,17 +270,28 @@ export const NPC_LEVELS = {
 // nor high knees, which are three lifts already, nor reaching up, which is held.
 export const CAN_BE_TWICE = new Set(['clap', 'squat', 'handCircle', 'kneeLift', 'push', 'kick', 'toeTouch']);
 
+// How level 10 compares with level 1, on Medium and Tough, and on Gentle, which is the game as it was: there
+// the levels never make the computer hit harder, and it can never knock a child out.
+const TOP_LEVEL = {
+  challenge: { turnEvery: 0.6, warning: 0.6, hits: 1.4 },
+  gentle: { turnEvery: 0.8, warning: 0.8, hits: 1 },
+};
+
 /**
- * What a level changes, on top of the computer's strength a grown-up chose, which stays theirs: how
- * hard it hits, and whether it can knock a child out. Level 1 is the game as it always was. A child
- * standing still is still never hit, and nothing waits on how quickly a move is made.
+ * What a level changes, on top of the computer's strength a grown-up chose, which stays theirs, as does
+ * whether it can knock a child out. Level 1 is the game as it always was. strength is the computer's,
+ * from NPC_LEVELS: on Gentle, the levels ramp as they always did. A child standing still is still never
+ * hit, and nothing waits on how quickly a move is made.
  */
-export function fightLevel(level = 1) {
+export function fightLevel(level = 1, strength = NPC_LEVELS.gentle) {
+  const top = TOP_LEVEL[strength?.mercy ? 'gentle' : 'challenge'];
   return {
-    // The computer takes its turn more often: by level 10, every 80% of the time it did.
-    turnEvery: ramp(level, 1, 0.8),
-    // Its warning gets a little shorter, to 80% of the strength's by level 10.
-    warning: ramp(level, 1, 0.8),
+    // The computer takes its turn more often: by level 10, every 60% of the time it did (80% on Gentle).
+    turnEvery: ramp(level, 1, top.turnEvery),
+    // Its warning gets shorter, to 60% of the strength's by level 10 (80% on Gentle).
+    warning: ramp(level, 1, top.warning),
+    // And it hits harder, up to 1.4 times as hard by level 10. Never on Gentle.
+    hits: ramp(level, 1, top.hits),
     // A shorter pause after a big move before the next thing is asked for.
     afterMove: ramp(level, RULES.afterMove, 0.45),
     // From level 3, leaning out of the way joins blocking, on every strength. From level 6 the

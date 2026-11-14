@@ -170,7 +170,7 @@ test('level 3: leaning comes in, in the sunset, and getting out of the way earns
 });
 
 test('level 4: a shield bubble comes after a few big moves, and catches a hit that wasn\'t blocked', async ({ page }) => {
-  await reachFight(page, at(4, { level: 'medium' }));
+  await reachFight(page, at(4, { fightStrength: 'medium' }));
   await takeOverGuardAndLean(page);
   await powerUpNext(page, 'shield');
   await oneBigMove(page);
@@ -231,7 +231,7 @@ test('level 5: a round won is a medal, and some of the computer\'s turns are two
 });
 
 test('level 6: in the autumn leaves, the computer swings high and a squat ducks under it', async ({ page }) => {
-  await reachFight(page, at(6, { level: 'medium' }));
+  await reachFight(page, at(6, { fightStrength: 'medium' }));
   const weather = await page.evaluate(() => ({ theme: window.__game.arena.theme, bits: window.__game.arena.weather.length }));
   expect(weather).toEqual({ theme: 'autumn', bits: 40 });
   await takeOverGuardAndLean(page);
@@ -275,7 +275,7 @@ test('level 7: a super glow makes the next two big moves stronger, shown on the 
 });
 
 test('level 8: the computer throws a soft ball, and a clap catches it and throws it back', async ({ page }) => {
-  await reachFight(page, at(8, { level: 'medium' }));
+  await reachFight(page, at(8, { fightStrength: 'medium' }));
   await takeOverGuardAndLean(page);
   await keepMoving(page);
   await turnOf(page, 'catch');
@@ -371,7 +371,7 @@ const everythingOnScreen = (page) => page.evaluate(() => {
 for (const level of [6, 10]) {
   test(`level ${level}: nothing flashes with every new thing on the screen, through big moves, prizes and the computer's hits`, async ({ page }) => {
     test.setTimeout(150_000);
-    await reachFight(page, at(level, { level: 'tough' }));
+    await reachFight(page, at(level, { fightStrength: 'tough' }));
     await page.evaluate(() => {
       const { reader, coach } = window.__game;
       reader.readGuardAndLean = () => {
@@ -423,10 +423,10 @@ test('in Georgian, the label for something new is in Georgian', async ({ page })
 /* ---------- what review found ---------- */
 
 test('on Medium or Tough, leaning isn\'t called new at level 3, as it\'s been asked for from level 1', async ({ page }) => {
-  await openMoves(page, at(3, { level: 'medium' }));
+  await openMoves(page, at(3, { fightStrength: 'medium' }));
   await expect(page.locator('#level-new')).toHaveText('New:💎Gems🌇Sunset');
   await page.locator('#open-panel').click();
-  await page.locator('input[name="level"][value="gentle"]').check();
+  await page.locator('input[name="fightStrength"][value="gentle"]').check();
   await page.locator('#close-panel').click();
   await expect(page.locator('#level-new')).toHaveText('New:↔️Lean away💎Gems🌇Sunset');
 });
@@ -493,7 +493,7 @@ test('a bubble and a glow left at the end of a fight fade away, and aren\'t on t
 });
 
 test('level 8: once the ball is thrown, the opponent\'s hands come down from holding it up', async ({ page }) => {
-  await reachFight(page, at(8, { level: 'medium' }));
+  await reachFight(page, at(8, { fightStrength: 'medium' }));
   await takeOverGuardAndLean(page);
   await keepMoving(page);
   await turnOf(page, 'catch');

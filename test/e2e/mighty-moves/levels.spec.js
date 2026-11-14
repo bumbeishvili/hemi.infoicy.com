@@ -72,7 +72,7 @@ test('level 10: some moves are asked for twice, with a dot for each, and only th
 
 test('level 10: the computer can hit twice in a row, once to block and once to lean from, each with its warning', async ({ page }) => {
   test.setTimeout(120_000);
-  await reachFight(page, at(10, { level: 'medium' }));
+  await reachFight(page, at(10, { fightStrength: 'medium' }));
   await footage(page, 'strikes', { from: 1 });
   await page.evaluate(() => {
     const { reader, coach } = window.__game;
@@ -158,7 +158,7 @@ test('winning a fight moves on a level, and the next fight is played at it', asy
 
 test('losing a fight stays on the same level', async ({ page }) => {
   test.setTimeout(240_000);
-  await reachFight(page, at(6, { rounds: 1, level: 'medium' }));
+  await reachFight(page, at(6, { rounds: 1, fightStrength: 'medium' }));
   await page.evaluate(() => {
     const { fight } = window.__game;
     window.__beating = setInterval(() => {
@@ -169,7 +169,10 @@ test('losing a fight stays on the same level', async ({ page }) => {
   await page.evaluate(() => clearInterval(window.__beating));
   await expect(page.locator('#finish-title')).toHaveText('So close! What a fight!');
   await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 6 again!');
-  await expect(page.locator('#fight-again')).toHaveText('Fight again');
+  // The other fighter won this one, and the big button is Try again.
+  const rival = await page.evaluate(() => window.__game.game.rivalSpec.name);
+  await expect(page.locator('#finish-line')).toContainText(`${rival} won this fight.`);
+  await expect(page.locator('#fight-again')).toHaveText('Try again');
   await page.waitForTimeout(800);
   await shot(page, 'mighty-l6-lost');
   expect(await page.evaluate(() => window.__game.game.levels.current)).toBe(6);
@@ -177,7 +180,7 @@ test('losing a fight stays on the same level', async ({ page }) => {
 
 test('level 10: a child standing still is still left alone, even at the toughest', async ({ page }) => {
   test.setTimeout(120_000);
-  await reachFight(page, at(10, { level: 'tough' }));
+  await reachFight(page, at(10, { fightStrength: 'tough' }));
   await footage(page, 'strikes', { from: 0.2, playing: false });
   await expect.poll(async () => (await fightState(page)).resting, { timeout: 30_000 }).toBe(true);
   await page.waitForTimeout(9000);
@@ -188,7 +191,7 @@ test('level 10: a child standing still is still left alone, even at the toughest
 
 test('level 10: nothing flashes through big moves and the computer\'s double hits', async ({ page }) => {
   test.setTimeout(120_000);
-  await reachFight(page, at(10, { level: 'tough' }));
+  await reachFight(page, at(10, { fightStrength: 'tough' }));
   await page.evaluate(() => {
     const { reader, coach } = window.__game;
     reader.readGuardAndLean = () => {

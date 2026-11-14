@@ -1,8 +1,9 @@
 // Getting through Mighty Moves, with footage of a real person in place of the webcam.
 import { expect, openGame, screenName, waitForScreen } from '../helpers.js';
 
+/** Unless a test says, it's the fight as it was, on Gentle, where the computer can't knock a child out. */
 export async function openMoves(page, settings = {}) {
-  await openGame(page, settings, 'mighty-moves');
+  await openGame(page, { fightStrength: 'gentle', ...settings }, 'mighty-moves');
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
 }
 

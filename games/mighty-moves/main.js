@@ -34,8 +34,11 @@ const POWER_UPS = { shield: '🫧', glow: '⚡', helper: '🤝' };
 // The coin emoji is silver and small, so in the fight a coin is drawn as a gold one instead.
 const markHtml = (id) => (id === 'coin' ? '<span class="coin-mark"></span>' : NEW_THINGS[id].mark);
 
-const DEFAULTS = { moveSize: 'small', jumps: 'yes', level: 'gentle', rounds: 3, fightFriends: 'together', fighter: 'giraffe' };
-const CHOICES = { jumps: String, level: String, rounds: Number, fightFriends: String };
+// The computer's strength is fightStrength, which came in when Medium became how the game comes. The old
+// setting, kept from when Gentle was how it came and shared with Sky Wings, is left behind, so the game as
+// it comes now reaches everyone.
+const DEFAULTS = { moveSize: 'small', jumps: 'yes', fightStrength: 'medium', rounds: 3, fightFriends: 'together', fighter: 'giraffe' };
+const CHOICES = { jumps: String, fightStrength: String, rounds: Number, fightFriends: String };
 const ROUNDS = [1, 3];
 
 // Fighting a friend, each on their own computer: see core/friends-ui.js for what each of these is.
@@ -115,7 +118,7 @@ class MightyMoves extends BodyGame {
 
   /** What's new at a level for this child: leaning isn't, on a strength that asks for it from the start. */
   newThings(level) {
-    return newThingsAt(level, NPC_LEVELS[this.settings.level] ?? NPC_LEVELS.gentle);
+    return newThingsAt(level, NPC_LEVELS[this.settings.fightStrength] ?? NPC_LEVELS.medium);
   }
 
   setUp() {
@@ -213,7 +216,7 @@ class MightyMoves extends BodyGame {
     }
     if ('moveSize' in change) this.reader.personal = { jump: null, squat: null, leg: null, hand: null };
     // What the cards say is new depends on the computer's strength.
-    if ('level' in change) this.levelUi.refresh();
+    if ('fightStrength' in change) this.levelUi.refresh();
     if (!this.fight) return;
     if ('hands' in change) {
       this.fight.focusSide = this.settings.hands;
@@ -350,7 +353,7 @@ class MightyMoves extends BodyGame {
     this.fight = new Fight({
       rounds: friendly && ROUNDS.includes(friendly.length) ? friendly.length : settings.rounds,
       // Together, the computer is as strong as this child's own grown-up has set it, and can't knock them out.
-      level: friendly && !this.team ? FRIEND_LEVEL : NPC_LEVELS[settings.level] ?? NPC_LEVELS.gentle,
+      level: friendly && !this.team ? FRIEND_LEVEL : NPC_LEVELS[settings.fightStrength] ?? NPC_LEVELS.medium,
       levelNumber,
       focusSide: settings.hands,
       friend: Boolean(friendly) && !this.team,
@@ -1050,6 +1053,7 @@ class MightyMoves extends BodyGame {
     byElementId('finish-prizes').hidden = !this.fight.levelRules.prizes.length;
     const rounds = `${player.roundsWon} of ${stats.rounds.length} ${stats.rounds.length === 1 ? 'round' : 'rounds'}`;
     let line = `${this.chosen.name} won ${rounds}, with ${minutes} of moving.`;
+    if (!won && !this.fight.friend && !this.fight.ally) line = `${this.rivalSpec.name} won this fight. ${line}`;
     if (this.friendWentAway) line = `Your friend had to go. ${this.chosen.name} had ${minutes} of moving.`;
     else if (this.team && this.ally) line = `${this.chosen.name} and ${this.ally.spec.name} won ${rounds} together, with ${minutes} of moving.`;
     byElementId('finish-line').textContent = line;
@@ -1071,6 +1075,8 @@ class MightyMoves extends BodyGame {
       this.levelUi.refresh();
     } else {
       this.finishLevel(won);
+      // Lost to the computer: the same level again, and the big button says so.
+      if (!won) byElementId('fight-again').textContent = 'Try again';
     }
     this.friends.showResults();
     if (won) this.confetti.start();
@@ -1226,9 +1232,9 @@ mountBodyShell({
     </fieldset>
     <fieldset class="choice">
       <legend>The computer’s strength</legend>
-      <label><input type="radio" name="level" value="gentle"> Gentle: plenty of warning, and it can’t knock a child out</label>
-      <label><input type="radio" name="level" value="medium"> Medium</label>
-      <label><input type="radio" name="level" value="tough"> Tough</label>
+      <label><input type="radio" name="fightStrength" value="medium"> Medium: it can win a fight, and gets stronger level by level</label>
+      <label><input type="radio" name="fightStrength" value="tough"> Tough: less warning, and it hits harder</label>
+      <label><input type="radio" name="fightStrength" value="gentle"> Gentle: plenty of warning, and it can’t knock a child out</label>
     </fieldset>
     <fieldset class="choice">
       <legend>Length of a fight</legend>
