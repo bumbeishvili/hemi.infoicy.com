@@ -183,7 +183,13 @@ export class BaySound extends Sound {
   }
 
   /** The celebration, kept down a little, as the ship's horn is still sounding and the voice comes in over it. */
+  /** The end of a battle: a kinder sound for one the pirates won, with no fanfare to be sad about. */
   finish(line) {
+    if (this.lost) {
+      this.play('sparkle', { gain: 0.4 });
+      setTimeout(() => this.say(line), 450);
+      return;
+    }
     this.play('win', { gain: 0.5 });
     this.play('applause', { gain: 0.2 });
     setTimeout(() => this.say(line), 650);

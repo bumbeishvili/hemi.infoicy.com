@@ -3,8 +3,12 @@ import { expect, openGame, show, waitForScreen } from '../helpers.js';
 
 export const HAND_SCALE = 0.7;
 
+/**
+ * How hard is Gentle unless a test says otherwise, the game as it always was, so the tests of its kind rules play it
+ * that way: the challenge, which is how it comes, has its own tests.
+ */
 export async function startPlaying(page, settings = {}, scene = [null, 'open', { scale: HAND_SCALE }]) {
-  await openGame(page, settings, 'cannon-bay');
+  await openGame(page, { bayPirates: 'gentle', ...settings }, 'cannon-bay');
   await show(page, ...scene);
   await page.locator('#start').click();
   await waitForScreen(page, 'playing');

@@ -26,6 +26,11 @@ const ONE_LEFT = 'One more to go!';
 const TURN_BACK = 'Back to the island!';
 const WON = 'You drove them all off! The treasure is safe!';
 const LOST = 'So close! Sail again!';
+// What the card says when the pirates win, in the story. It's only shown, as LOST is what's said.
+const PIRATES_WON = { en: 'The pirates got the treasure this time!', ka: 'ამჯერად მეკობრეებმა განძი წაიღეს!' };
+const TRY_AGAIN = { en: 'Try again', ka: 'კიდევ სცადე' };
+// A battle together that the two have lost has its own title, which the friends' finish card reads each time it fills in.
+const teamCard = { lost: null };
 // With a friend, whoever won: Giraffe starts it with SAIL_BESIDE, and says this at the end.
 const DUEL_DONE = 'What a battle! Well sailed!';
 
@@ -42,8 +47,8 @@ const CAPTAINS = {
   tur: 'Tur here! Nobody sails like a mountain goat!',
 };
 
-const DEFAULTS = { bayPace: 'slow', bayCannons: 'open', bayLevel: 'gentle', bayShips: 6, bayFriends: 'together' };
-const CHOICES = { bayPace: String, bayCannons: String, bayLevel: String, bayShips: Number, bayFriends: String };
+const DEFAULTS = { bayPace: 'slow', bayCannons: 'open', bayPirates: 'medium', bayShips: 6, bayFriends: 'together' };
+const CHOICES = { bayPace: String, bayCannons: String, bayPirates: String, bayShips: Number, bayFriends: String };
 
 const AFTER_WIN_SECONDS = 2.2; // A moment to see Giraffe cheering, after the last ship has gone down.
 const AFTER_LOST_SECONDS = 1.4;
@@ -103,7 +108,9 @@ const BAY_WORDS = {
   together: 'Together',
   against: 'Against each other',
   howTogether: 'Tell your friend the code. Then you both press <b>Set sail!</b>, and drive the pirates off together.',
-  teamTitle: 'You saved the treasure together!',
+  get teamTitle() {
+    return teamCard.lost ?? 'You saved the treasure together!';
+  },
   leave: 'Leave this game',
   privacy: 'Only your name, who you play as, whether you chose together or against each other, where your ship is, the hits it makes and whether you’re resting go to your friend. Together, the game of whoever made it also sends where the pirate ships and their cannonballs are. The camera picture stays on this computer.',
   alone: 'Play on your own',
@@ -230,9 +237,9 @@ class CannonBay {
    * cannons and how hard.
    */
   makeBattle(level = this.session.level ?? 1) {
-    const { bayShips, bayPace, bayLevel, bayCannons } = this.session.settings;
+    const { bayShips, bayPace, bayPirates, bayCannons } = this.session.settings;
     const { duel, team } = this;
-    const settings = { pace: bayPace, level: bayLevel, cannons: bayCannons, onEvent: (event) => this.onBattle(event) };
+    const settings = { pace: bayPace, level: bayPirates, cannons: bayCannons, onEvent: (event) => this.onBattle(event) };
     this.captains = null;
     if (team) {
       // The same captains, in the same order, on both screens, from the chance both games were given. The friend's
@@ -279,8 +286,8 @@ class CannonBay {
     const { battle } = this;
     // With a friend against the pirates, both ships sail at the host's speed.
     if ('bayPace' in change && !this.team) battle.setPace(change.bayPace);
-    if ('bayLevel' in change) {
-      battle.setLevel(change.bayLevel);
+    if ('bayPirates' in change) {
+      battle.setLevel(change.bayPirates);
       this.bay.shapeZones();
     }
     if ('bayCannons' in change) battle.cannons = change.bayCannons;
@@ -361,6 +368,7 @@ class CannonBay {
     if (input.open && !wasOpen) session.sound.sailsUp();
     if (this.duel) this.updateDuel(dt);
     if (this.team) this.updateTeam();
+    if (this.team) this.watchFriendLost();
     this.bay.update(dt);
 
     session.sound.sailing(battle.speed / battle.pace.speed, battle.sails);
@@ -382,6 +390,11 @@ class CannonBay {
       if (this.endIn <= 0) {
         this.endIn = null;
         session.finish();
+        // The level doesn't move on, and the big button says so.
+        const again = document.getElementById('play-again');
+        if (this.battle.state === 'lost' && again) again.textContent = TRY_AGAIN[this.language];
+        // And no confetti for the pirates winning.
+        if (this.battle.state === 'lost') session.hud.confetti?.stop();
       }
     }
   }
@@ -419,9 +432,12 @@ class CannonBay {
     for (const mark of this.marks) mark.root.dataset.where = 'none';
     document.body.dataset.film = 'off';
     session.finishLine = duel ? DUEL_DONE : battle.state === 'lost' ? LOST : WON;
+    session.sound.lost = battle.state === 'lost';
     // The friend's finish card fills in with how this child did.
     // Together, it's how many of the pirate ships were this child's.
-    if (this.friends.current) this.friends.finished(this.sinceGo, { n: duel ? duel.mine : team ? battle.beatenBy.mine : battle.beaten, w: 1 });
+    // Sunk together, it says the battle was lost, so the friend's game ends it too.
+    teamCard.lost = team && battle.state === 'lost' ? PIRATES_WON[this.language] : null;
+    if (this.friends.current) this.friends.finished(this.sinceGo, { n: duel ? duel.mine : team ? battle.beatenBy.mine : battle.beaten, w: battle.state === 'lost' ? 0 : 1 });
   }
 
   summary() {
@@ -441,7 +457,7 @@ class CannonBay {
     this.labelRow('prizes', `Prizes: ${shown.map(({ word }) => word).join(', ')}`, shown.length === 0);
     // With a friend, the card says who won, and on their own, how the battle went.
     this.friends.showResults();
-    if (!this.friends.current) document.querySelector('#screen-finish h2').textContent = session.translate(session.finishLine);
+    if (!this.friends.current) document.querySelector('#screen-finish h2').textContent = this.battle.state === 'lost' ? PIRATES_WON[this.language] : session.translate(session.finishLine);
     const hero = duel ? duel.mine : beaten;
     const noun = byElement('finish-hero')?.nextSibling;
     const together = Boolean(team) && !team.alone;
@@ -570,6 +586,22 @@ class CannonBay {
    * Together: where the child's ship is, for the friend's game, and from the game that runs the pirates, where
    * they and their cannonballs are. Once the friend has gone, there's nobody to tell.
    */
+  /** Which language the card's own words are in, as the voice speaks. */
+  get language() {
+    return this.session.settings.language === 'ka' ? 'ka' : 'en';
+  }
+
+  /**
+   * Together, the friend's ship has been sunk, which their game says in the result it sends: the two have lost
+   * together, and it ends here too.
+   */
+  watchFriendLost() {
+    const { battle, team } = this;
+    if (!battle.friend || battle.state !== 'sailing') return;
+    if (this.friends.results.get(team.friend.id)?.won !== false) return;
+    battle.lose();
+  }
+
   updateTeam() {
     const { battle } = this;
     if (!battle.friend) return;
@@ -1122,10 +1154,10 @@ new GameSession({
         <label><input type="radio" name="bayCannons" value="always"> Always, as long as the hand can be seen</label>
       </fieldset>
       <fieldset class="choice">
-        <legend>How hard</legend>
-        <label><input type="radio" name="bayLevel" value="gentle"> Gentle: big firing zones, and the ship can’t be sunk</label>
-        <label><input type="radio" name="bayLevel" value="medium"> Medium</label>
-        <label><input type="radio" name="bayLevel" value="tough"> Tough</label>
+        <legend>How hard the pirates fight</legend>
+        <label><input type="radio" name="bayPirates" value="gentle"> Gentle: big firing zones, hearts stop at one, and the ship can’t be sunk</label>
+        <label><input type="radio" name="bayPirates" value="medium"> Medium: the pirates can win, and get the treasure when the hearts run out</label>
+        <label><input type="radio" name="bayPirates" value="tough"> Tough: smaller firing zones, and the pirates fire thick and fast</label>
       </fieldset>
       <fieldset class="choice">
         <legend>Ships to beat (together with a friend, each takes twice the hits. Against each other, the duel lasts 2, 3 or 4 minutes)</legend>

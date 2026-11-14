@@ -164,7 +164,7 @@ test('level 3: a sailor in a cage is towed behind a pirate, floats free, and is 
 });
 
 test('level 4: a barrel raft comes apart into two little rafts, and the shield bubble keeps a ball off', async ({ page }) => {
-  await startPlaying(page, atLevel(4, { bayLevel: 'medium' }));
+  await startPlaying(page, atLevel(4, { bayPirates: 'medium' }));
   expect(await page.evaluate(() => window.__game.battle.afloat[0].kind)).toBe('raft');
   // Its name waits until it can be seen.
   await bringAlongside(page, 'raft', { away: 85 });

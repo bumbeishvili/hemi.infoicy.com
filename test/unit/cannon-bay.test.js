@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { Battle, HEARTS, HULL, LEVELS, MOST_AT_ONCE, MOST_HEARTS, NEWS, PACES, POWERS, REST_AFTER, SHIP_KINDS, forwardOf, levelPlan, newsAt } from '../../games/cannon-bay/battle.js';
+import { Battle, HEARTS, HULL, LEVELS, MOST_AT_ONCE, MOST_HEARTS, NEWS, PACES, POWERS, REST_AFTER, SHIP_KINDS, challengePlan, forwardOf, levelPlan, newsAt } from '../../games/cannon-bay/battle.js';
 import { BaySound } from '../../games/cannon-bay/bay-sound.js';
 import { getChart } from '../../games/cannon-bay/chart.js';
 import { Duel, SHIP_TRACK, duelSeconds, duelStart, shipWire } from '../../games/cannon-bay/duel.js';
@@ -26,7 +26,8 @@ function seeded(seed = 7) {
 
 function start(options = {}) {
   const events = [];
-  const battle = new Battle({ random: seeded(), onEvent: (event) => events.push(event), ...options });
+  // Gentle, the game as it always was, unless a test says otherwise: the challenge has its own tests.
+  const battle = new Battle({ random: seeded(), onEvent: (event) => events.push(event), level: 'gentle', ...options });
   battle.begin();
   return { battle, events, types: () => events.map(({ type }) => type) };
 }
@@ -1756,6 +1757,7 @@ function teamUp(settings = {}) {
       slot,
       runs: slot === 0,
       random: seeded(seed),
+      level: 'gentle', // As it always was, unless a test says otherwise.
       ...settings,
       onEvent: (event) => {
         log.push(event);
@@ -1832,9 +1834,10 @@ test('together, there are as many pirate ships as the host chose, each taking tw
     // The plain battle, whatever anyone's level: nothing a level brings.
     assert.equal(battle.levelNumber, 1);
     assert.equal(Object.values(battle.plan).some((value) => value === true), false);
-    // The pirates are as on Gentle, so nobody can be sunk, but the firing zones are this child's own, from Tough.
-    assert.equal(battle.level.canLose, false);
-    assert.deepEqual([battle.level.hitChance, battle.level.balls, battle.level.fireEvery], [LEVELS.gentle.hitChance, LEVELS.gentle.balls, LEVELS.gentle.fireEvery]);
+    // The firing zones, the pirates' fire and whether the ship can be sunk are this child's own, from Tough. The
+    // pirate ships take as many hits as on Gentle, twice over.
+    assert.equal(battle.level.canLose, true);
+    assert.deepEqual([battle.level.hitChance, battle.level.balls, battle.level.fireEvery], [LEVELS.tough.hitChance, LEVELS.tough.balls, LEVELS.tough.fireEvery]);
     assert.equal(battle.level.zone.reach, LEVELS.tough.zone.reach);
     assert.equal(battle.level.shipHits, LEVELS.gentle.shipHits * TEAM_HITS);
   }
@@ -2147,7 +2150,7 @@ test('if whoever made the battle goes, the friend\'s game takes the pirates over
 
 test('a friend who goes before it has begun leaves a battle for one, on either side', () => {
   for (const slot of [0, 1]) {
-    const battle = new TeamBattle({ slot, runs: slot === 0, ships: 4, random: seeded(5) });
+    const battle = new TeamBattle({ slot, runs: slot === 0, ships: 4, level: 'gentle', random: seeded(5) });
     battle.friendGone();
     assert.deepEqual([battle.runs, battle.total, battle.waiting, battle.level.shipHits], [true, 4, 4, LEVELS.gentle.shipHits], `slot ${slot}`);
     battle.begin();
@@ -2191,4 +2194,78 @@ test('a battle together\'s messages are passed on to the game, and its hits go f
   assert.match(main, /battle\.friendTagged\(message\.k, message\.n\)/);
   assert.match(main, /battle\.follow\(message\)/);
   assert.match(main, /this\.friends\.sendMove\('foes', battle\.wire\(\), this\.sinceGo\)/);
+});
+
+/* ---------- the challenge: Medium, how it comes, and Tough, where the pirates can win ---------- */
+
+/** A whole battle sailed beside the nearest pirate, as a child who has got the idea would, never dodging. */
+function sailItThrough(options) {
+  const { battle } = start(options);
+  for (let seconds = 0; battle.state === 'sailing' && seconds < 900; seconds += STEP) battle.update(STEP, sailBeside(battle));
+  return battle.state;
+}
+
+test('it comes on Medium, where running out of hearts lets the pirates win', () => {
+  const battle = new Battle();
+  assert.equal(battle.level, LEVELS.medium);
+  assert.equal(battle.level.canLose, true);
+  const { battle: sunk, types } = start({ level: 'medium' });
+  for (let i = 0; i < HEARTS; i += 1) {
+    ballOnHull(sunk);
+    run(sunk, STEP);
+  }
+  assert.equal(sunk.state, 'lost');
+  assert.ok(types().includes('lost'));
+});
+
+test('level 1 on Medium can be learnt, and at level 10 the pirates win some battles on Medium and every one on Tough', () => {
+  const seeds = [3, 7, 11, 19];
+  const results = (level, levelNumber) => seeds.map((seed) => sailItThrough({ level, levelNumber, random: seeded(seed) }));
+  assert.deepEqual(results('medium', 1), ['won', 'won', 'won', 'won']);
+  assert.ok(results('medium', 10).includes('lost'));
+  assert.deepEqual(results('tough', 10), ['lost', 'lost', 'lost', 'lost']);
+  // And on Gentle, the game as it was, every one is won.
+  assert.deepEqual(results('gentle', 10), ['won', 'won', 'won', 'won']);
+});
+
+test('on Medium and Tough the levels ramp: by level 10 pirates reload twice as quickly, aim truer, and their balls come over quicker', () => {
+  const first = challengePlan(1, true);
+  const last = challengePlan(10, true);
+  assert.deepEqual(first, challengePlan(1, false), 'level 1 is the same on every setting');
+  assert.deepEqual(challengePlan(10, false), challengePlan(1, false), 'Gentle never ramps more than it did');
+  assert.ok(levelPlan(10).fireEvery * last.fireEvery <= 0.55);
+  assert.ok(levelPlan(10).apart * last.apart <= 0.55);
+  assert.ok(LEVELS.medium.hitChance * last.hitChance >= 0.3);
+  assert.equal(last.healAfter, 2);
+  // The balls still fly slowly enough to see coming: at least 1.4 seconds.
+  const { battle, events } = start({ level: 'tough', levelNumber: 10 });
+  run(battle, 60, () => ({ ...OPEN, drive: 0.8 }));
+  const balls = events.filter(({ type }) => type === 'pirate-fire');
+  assert.ok(balls.length > 0);
+  for (const { ball } of balls) assert.ok(ball.seconds >= 1.4 && ball.seconds <= 3.2 * 0.7 + 1e-9, `${ball.seconds}`);
+});
+
+test('resting still stops the pirates on Tough at level 10, so a child who walks away is never sunk for it', () => {
+  const { battle } = start({ level: 'tough', levelNumber: 10 });
+  run(battle, REST_AFTER + 4, CLOSED);
+  assert.equal(battle.resting, true);
+  const hearts = battle.hearts;
+  run(battle, 60, CLOSED);
+  assert.deepEqual([battle.state, battle.hearts], ['sailing', hearts]);
+});
+
+test('together on Medium a child whose ship is sunk has lost, and on Gentle hearts still stop at one', () => {
+  for (const [level, lost] of [['medium', true], ['gentle', false]]) {
+    const both = teamUp({ level });
+    const guest = both.guest.battle;
+    for (let i = 0; i < HEARTS + 2; i += 1) {
+      ballOnHull(guest);
+      runTeam(both, STEP);
+    }
+    assert.equal(guest.state === 'lost', lost, level);
+    assert.equal(both.host.battle.state, 'sailing', 'the host hears of it from the result the friend\'s game sends');
+  }
+  const main = readFileSync(new URL('../../games/cannon-bay/main.js', import.meta.url), 'utf8');
+  assert.match(main, /w: battle\.state === 'lost' \? 0 : 1/);
+  assert.match(main, /this\.friends\.results\.get\(team\.friend\.id\)\?\.won !== false/);
 });
