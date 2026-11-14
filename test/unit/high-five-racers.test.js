@@ -35,6 +35,10 @@ import {
   trailFor,
   TURBO,
   TurboMeter,
+  ownPace,
+  rivalCruiseAt,
+  RIVALS_RACE,
+  wantedSpeed,
 } from '../../games/high-five-racers/rules.js';
 import { LANE_LIMIT, LAP_LENGTH, PLACES, ROAD_HALF, START_BEHIND_LINE } from '../../games/high-five-racers/track.js';
 
@@ -516,4 +520,105 @@ test('the others still ease off at the end, and still wait for a child who is re
   // A boost still leaves them behind, a little less quickly than at level 1.
   assert.ok(rivalSpeed({ gap: -5, wish: 20, playerSpeed: 34, resting: false, rushing: true, cruise, pace }) < 34);
   assert.ok(RIVAL_TURBO.seconds < 3 && RIVAL_TURBO.gain < SLAP.kick * 2);
+});
+
+/* ---------- racing to win, the default ---------- */
+
+/**
+ * A two-lap race in numbers alone: a child's car, as the game drives it from the hand, against the others at
+ * their own pace, turbo and all. openShare is how much of each 12 seconds the hand is open, and slaps how many of
+ * the big hands it high fives. Says who got to the line first.
+ */
+function raceInNumbers({ level, drive, openShare = 1, slaps = 0, laps = 2, seed = 7 }) {
+  let state = seed;
+  const random = () => (state = (state * 16807) % 2147483647) / 2147483647;
+  const plan = racePlan(level);
+  const dt = 1 / 30;
+  const turbo = new TurboMeter();
+  let distance = -START_BEHIND_LINE;
+  let speed = 0;
+  let boost = 0;
+  let time = 0;
+  const rivals = Array.from({ length: plan.rivals }, (_, index) => ({
+    distance: -START_BEHIND_LINE + 11 * [1, 2, 3, 2, 1][index], speed: 0, turboIn: plan.rivalTurboEvery * (0.5 + index * 0.37), turboLeft: 0,
+  }));
+  const gates = plan.gates.map(([along]) => along);
+  let nextGate = 0;
+  let gateLap = 0;
+  const end = laps * LAP_LENGTH;
+  while (time < 600) {
+    time += dt;
+    const open = time % 12 < 12 * openShare;
+    turbo.update(open ? 1 : 0, dt);
+    boost = open ? Math.max(0, boost - dt) : 0;
+    if (distance >= gateLap * LAP_LENGTH + gates[nextGate]) {
+      if (open && random() < slaps) {
+        boost = SLAP.boostSeconds;
+        speed += SLAP.kick;
+      }
+      nextGate = (nextGate + 1) % gates.length;
+      if (nextGate === 0) gateLap += 1;
+    }
+    const target = wantedSpeed(open ? drive : 0, turbo.bonus, boost);
+    speed = target > speed ? Math.min(target, speed + 10 * dt) : Math.max(target, speed - (open ? 7 : 13) * dt);
+    distance += speed * dt;
+    if (distance >= end) return { won: true, seconds: time };
+    rivals.forEach((rival, index) => {
+      let wanted = ownPace({ cruise: plan.rivalCruise, index, time, phase: index * 1.9 });
+      rival.turboIn -= dt;
+      if (rival.turboIn <= 0 && !rivals.some((other) => other.turboLeft > 0)) {
+        rival.turboLeft = RIVAL_TURBO.seconds;
+        rival.turboIn = plan.rivalTurboEvery;
+      }
+      if (rival.turboLeft > 0) {
+        rival.turboLeft -= dt;
+        wanted += RIVAL_TURBO.gain;
+      }
+      rival.speed += (wanted - rival.speed) * (1 - Math.exp(-2.2 * dt));
+      rival.distance += rival.speed * dt;
+    });
+    if (rivals.some((rival) => rival.distance >= end)) return { won: false, seconds: time };
+  }
+  return { won: false, seconds: time };
+}
+
+test('racing to win, the others drive at their own pace, whatever the child does', () => {
+  const plan = racePlan(6);
+  const at = (time) => ownPace({ cruise: plan.rivalCruise, index: 1, time, phase: 2 });
+  for (const time of [0, 3, 10, 40]) {
+    const pace = at(time);
+    assert.ok(pace > plan.rivalCruise * RIVALS_RACE.each[1] * (1 - RIVALS_RACE.swing) - 1e-9);
+    assert.ok(pace < plan.rivalCruise * RIVALS_RACE.each[1] * (1 + RIVALS_RACE.swing) + 1e-9);
+  }
+  // It takes only its own car and the level: nothing about the child goes into it.
+  assert.equal(ownPace.length, 1);
+});
+
+test('racing to win, the levels ramp: slowly at first, and at level 10 the quickest is faster than the car\'s top speed', () => {
+  assert.ok(Math.abs(racePlan(1).rivalCruise - 0.6 * TOP_SPEED) < 1e-9);
+  assert.ok(Math.abs(racePlan(10).rivalCruise - 1.1 * TOP_SPEED) < 1e-9);
+  assert.equal(rivalCruiseAt(10), racePlan(10).rivalCruise);
+  for (let level = 2; level <= 10; level += 1) assert.ok(racePlan(level).rivalCruise > racePlan(level - 1).rivalCruise, `level ${level}`);
+  // Slowly at first: by level 3 it has risen only about a tenth of the way, where an even ramp would be at two ninths.
+  assert.ok(racePlan(3).rivalCruise < 0.6 * TOP_SPEED + 0.12 * 0.5 * TOP_SPEED);
+  // Still slower than a car going flat out with turbo, so it can always be beaten.
+  assert.ok(racePlan(10).rivalCruise * (1 + RIVALS_RACE.swing) + RIVAL_TURBO.gain < FASTEST_SPEED);
+});
+
+test('racing to win at level 1, a child new to it wins, even with the hand closed a quarter of the time', () => {
+  assert.equal(raceInNumbers({ level: 1, drive: 0.8, openShare: 0.75 }).won, true);
+  assert.equal(raceInNumbers({ level: 1, drive: 0.8 }).won, true);
+});
+
+test('racing to win, the others can win: a child who rests a lot loses at level 5, and one who only just opens the hand loses at level 8', () => {
+  assert.equal(raceInNumbers({ level: 5, drive: 0.8, openShare: 0.75 }).won, false);
+  assert.equal(raceInNumbers({ level: 5, drive: 0.8 }).won, true);
+  assert.equal(raceInNumbers({ level: 8, drive: 0.8 }).won, false);
+  assert.equal(raceInNumbers({ level: 8, drive: 0.8, slaps: 0.8 }).won, true);
+});
+
+test('racing to win at level 10 takes real skill: the hand wide open and the high fives', () => {
+  assert.equal(raceInNumbers({ level: 10, drive: 0.8, slaps: 0.8 }).won, false, 'only just open, even with high fives');
+  assert.equal(raceInNumbers({ level: 10, drive: 1 }).won, false, 'wide open, but missing the high fives');
+  assert.equal(raceInNumbers({ level: 10, drive: 1, slaps: 0.9 }).won, true, 'wide open and high fiving');
 });

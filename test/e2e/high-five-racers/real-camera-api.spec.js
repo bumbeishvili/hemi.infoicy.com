@@ -1,6 +1,6 @@
 // Everywhere else the camera is replaced by a canvas. This one goes through the browser's
 // real getUserMedia, using Chrome's built-in test camera, to prove that path works.
-import { expect, test, waitForScreen } from '../helpers.js';
+import { expect, test, waitForScreen } from './helpers.js';
 
 test.use({
   launchOptions: {

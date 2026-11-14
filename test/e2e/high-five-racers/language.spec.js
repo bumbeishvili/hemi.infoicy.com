@@ -9,7 +9,7 @@ import {
   waitForHand,
   waitForScreen,
   waitUntilMoving,
-} from '../helpers.js';
+} from './helpers.js';
 
 test('every Georgian line loads, and the prompts appear in Georgian', async ({ page }) => {
   await openGame(page, { language: 'ka', voice: true, sound: true });

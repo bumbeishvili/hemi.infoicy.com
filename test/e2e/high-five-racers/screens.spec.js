@@ -10,7 +10,7 @@ import {
   waitForHand,
   waitUntilMoving,
   waitUntilStopped,
-} from '../helpers.js';
+} from './helpers.js';
 
 /** Nothing on screen may stick out past the window. */
 async function expectNothingCutOff(page) {

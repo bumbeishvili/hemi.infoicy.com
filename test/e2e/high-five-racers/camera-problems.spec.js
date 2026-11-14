@@ -1,5 +1,5 @@
 // What a child and a grown-up see when the camera isn't available.
-import { expect, openGame, shot, show, test, waitForScreen } from '../helpers.js';
+import { expect, openGame, shot, show, test, waitForScreen } from './helpers.js';
 
 const CASES = [
   ['NotAllowedError', 'Can we use your camera?'],

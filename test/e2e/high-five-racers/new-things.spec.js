@@ -1,7 +1,7 @@
 // What each level brings that's new, from level 2 to 10: that each thing really appears and works at the
 // level where it arrives, what's picked up is counted, and the "New:" chips say the right things. See
 // NEW_THINGS and racePlan in rules.js. The brightness of all of it is in safety.spec.js.
-import { car, expect, openGame, reachRace, shot, show, test, waitForHand, waitForScreen, waitUntilMoving } from '../helpers.js';
+import { car, expect, openGame, reachRace, shot, show, test, waitForHand, waitForScreen, waitUntilMoving } from './helpers.js';
 
 const atLevel = (level) => ({ levels: { 'high-five-racers': level } });
 

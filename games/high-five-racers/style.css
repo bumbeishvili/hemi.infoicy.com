@@ -301,6 +301,16 @@ body[data-fly-film='right'] .fly-film svg { transform: scaleX(-1); }
 
 .finish-prizes:empty { display: none; }
 
+/* When one of the others won: who got there first, and where the child was. */
+.finish-story {
+  margin: 0 0 4px;
+  font-size: clamp(17px, 2.1vw, 23px);
+  font-weight: 600;
+  text-align: center;
+}
+
+.finish-story[hidden] { display: none; }
+
 /* ---------- little words beside the action ---------- */
 .toast {
   position: fixed;

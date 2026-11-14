@@ -22,7 +22,7 @@ import { CarTrack } from './friends.js';
 import { Ramps, StarField } from './pickups.js';
 import {
   CAR_LENGTH, CAR_WIDTH, CHEST_REACH, COINS, FASTEST_SPEED, FistAndOpen, gateOutcome, HIGH_TEN_BEFORE_LINE, LEAST_REACH, newAt, POWER, PowerUps,
-  racePlan, REACH, ReachEasing, RIVAL_TURBO, rivalSpeed, SLAP, TOP_SPEED, touching, TRACTOR, tractorRun, TurboMeter, wantedSpeed,
+  ownPace, racePlan, REACH, ReachEasing, RIVAL_TURBO, rivalSpeed, SLAP, TOP_SPEED, touching, TRACTOR, tractorRun, TurboMeter, wantedSpeed,
 } from './rules.js';
 import { LANE_LIMIT, START_BEHIND_LINE, Track } from './track.js';
 import { Weather } from './weather.js';
@@ -41,7 +41,7 @@ const RIVAL_COMES_BACK_FROM = [24, 32, 40, 48, 56]; // How far behind each gets 
 const RIVAL_TURBO_NEAR = [-45, 12];
 const GRID_ROWS = [1, 2, 3, 2, 1];
 const SOARING_MAKES_ROOM = 30; // Metres either side of a flying car that the others make room in. // Which row of the grid each starts in, 11 m apart. // A rival only uses turbo with the child in sight, from behind to a little ahead.
-const LAST_STRETCH = 170; // In the last of the race they ease off, so that the child wins clearly.
+const LAST_STRETCH = 170; // On Gentle, in the last of the race they ease off, so that the child wins clearly.
 const TURBO_PULLS_AWAY_SECONDS = 4; // After this they keep up with turbo, or nobody would ever see them again.
 const RIVAL_SLAP_REACH = 1.5;
 const RESTING_SPEED = 6;
@@ -54,7 +54,7 @@ const JUMP_GRAVITY = 21;
 // again would make lots of it change brightness at once, which is how a flash is counted.
 const FLIGHT = { liftSpeed: 8.5, gravity: 6, lowLiftSpeed: 5, overGatesAbove: 2.5, cameraFollows: 0.08, lookFollows: 0.12 };
 const jumpSpeed = (speed) => 3 + speed * 0.22;
-const FINISH_STOP = 3; // Rivals pull up this far before the line, so the child gets there first.
+const FINISH_STOP = 3; // On Gentle, rivals pull up this far before the line, so the child gets there first.
 const PASSED_BY = 1.5; // How far clear a car has to be to have passed, so two side by side don't keep swapping.
 const SAY_PASSED_AGAIN_AFTER_SECONDS = 8;
 // The first time each new thing of a level comes into sight, a little label goes over it for this long. It only
@@ -170,6 +170,10 @@ export class Race {
     this.friendCars = new Map();
     this.gridSlot = 0;
     this.gridSize = 1;
+    // How the others race: to win, at their own pace, or on Gentle, staying close and letting the child win.
+    this.gentle = false;
+    // Whether the camera can see the hand in play. With no hand to see, everyone waits.
+    this.handSeen = true;
     this.stars = new StarField(this.scene, this.track);
     this.ramps = new Ramps(this.scene, this.track);
     this.reach = new ReachEasing(REACH[reach] ?? REACH.medium);
@@ -217,6 +221,11 @@ export class Race {
     this.resize();
     // Gets the graphics card ready for everything now, so the first flames or big hand don't make it stutter.
     this.renderer.compile(this.scene, this.camera);
+  }
+
+  /** 'race' for the others to race to win, the default, or 'gentle' for the race as it was, which can't be lost. */
+  setRivalsMode(mode) {
+    this.gentle = mode === 'gentle';
   }
 
   /** The next of the other cars, which then waits in the garage for any level that has it. */
@@ -359,6 +368,8 @@ export class Race {
     this.place = this.rivals.length + 1;
     this.drive = 0;
     this.finished = false;
+    // Racing to win, whoever of the others got over the line first, if the child didn't.
+    this.lostTo = null;
     this.boostLeft = 0;
     this.reachOut = 0;
     this.reachAcross = 0;
@@ -405,6 +416,7 @@ export class Race {
       rival.comingBack = false;
       rival.turboLeft = 0;
       rival.coinsAt = -Infinity;
+      rival.pacePhase = index * 1.9;
       // Spread out, so they take turns.
       rival.turboIn = this.plan.rivalTurboEvery * (0.5 + index * 0.37);
     });
@@ -621,6 +633,20 @@ export class Race {
     }
   }
 
+  /**
+   * Racing to win, the first of the others over the line wins the race, and it's over there, with the child
+   * wherever they were. Friends racing each other finish by their own games, as before.
+   */
+  watchForWinner() {
+    if (this.gentle || this.finished || this.friends) return;
+    const winner = this.rivals.filter((rival) => !rival.remote && rival.distance >= this.raceDistance).sort((a, b) => b.distance - a.distance)[0];
+    if (!winner) return;
+    this.finished = true;
+    this.lostTo = winner.spec;
+    this.place = 1 + this.rivals.filter((rival) => rival.distance > this.distance).length;
+    this.events.onFinish?.();
+  }
+
   /** Whoever gets overtaken, or does the overtaking, looks over and waves. It's all friendly. */
   watchOvertaking() {
     for (const rival of this.rivals) {
@@ -825,9 +851,13 @@ export class Race {
   }
 
   updateRivals(dt, chasing) {
-    const resting = chasing && this.drive === 0 && this.speed < RESTING_SPEED;
+    const { gentle } = this;
+    const stopped = chasing && this.drive === 0 && this.speed < RESTING_SPEED;
+    // On Gentle everyone waits for a child who's resting. Racing to win, they only wait while the camera can't
+    // see the hand: a hand that's closed in plain view is a rest the others drive on through.
+    const resting = gentle ? stopped : stopped && !this.handSeen;
     const rushing = this.boostLeft > 0 || (this.turbo.active && this.turbo.heldFor < TURBO_PULLS_AWAY_SECONDS);
-    const lastStretch = this.raceDistance - this.distance < LAST_STRETCH;
+    const lastStretch = gentle && this.raceDistance - this.distance < LAST_STRETCH;
     this.restingFor = resting ? this.restingFor + dt : 0;
     const finishLine = this.raceDistance - FINISH_STOP;
     const pace = this.plan.rivalPace;
@@ -843,7 +873,12 @@ export class Race {
       }
       const gap = rival.distance - this.distance;
       let wanted = RIVAL_CRUISE * 0.5;
-      if (chasing) {
+      if (chasing && !gentle) {
+        // Racing to win: each at its own pace, whatever the child does, unless the camera has lost the hand.
+        wanted = resting
+          ? rivalSpeed({ gap, wish: 0, playerSpeed: 0, resting: true, rushing: false, cruise: RIVAL_CRUISE, pace })
+          : ownPace({ cruise: this.plan.rivalCruise, index, time: this.time, phase: rival.pacePhase });
+      } else if (chasing) {
         // Each drifts nearer and further ahead, at its own pace.
         const wish = lastStretch
           ? -10 - index * 9
@@ -855,7 +890,8 @@ export class Race {
       if (turboAllowed) {
         rival.turboIn -= dt;
         const inSight = gap > RIVAL_TURBO_NEAR[0] && gap < RIVAL_TURBO_NEAR[1];
-        if (rival.turboIn <= 0 && !anyTurbo && !rushing && inSight && this.speed > RESTING_SPEED) {
+        const turboNow = gentle ? !rushing && inSight && this.speed > RESTING_SPEED : true;
+        if (rival.turboIn <= 0 && !anyTurbo && turboNow) {
           rival.turboLeft = RIVAL_TURBO.seconds;
           rival.turboIn = this.plan.rivalTurboEvery;
           anyTurbo = true;
@@ -866,13 +902,14 @@ export class Race {
       }
       if (rival.turboLeft > 0) {
         rival.turboLeft = Math.max(0, rival.turboLeft - dt);
-        wanted = Math.max(wanted, Math.min(FASTEST_SPEED, this.speed + RIVAL_TURBO.gain));
+        wanted = gentle ? Math.max(wanted, Math.min(FASTEST_SPEED, this.speed + RIVAL_TURBO.gain)) : Math.min(FASTEST_SPEED, wanted + RIVAL_TURBO.gain);
       }
       rival.speed = damp(rival.speed, wanted, 2.2, dt);
-      if (chasing) rival.speed = Math.min(rival.speed, Math.max(0, finishLine - rival.distance) * 1.6);
+      if (chasing && gentle) rival.speed = Math.min(rival.speed, Math.max(0, finishLine - rival.distance) * 1.6);
       rival.distance += rival.speed * dt;
-      // Everyone gets to finish: rivals never cross the line before the player does.
-      if (chasing) rival.distance = Math.min(rival.distance, finishLine);
+      // On Gentle everyone gets to finish: rivals never cross the line before the player does. Racing to win,
+      // the first over the line wins: see watchForWinner.
+      if (chasing && gentle) rival.distance = Math.min(rival.distance, finishLine);
 
       // Wander across the road, and keep out of each other's way. They try to keep out of the
       // player's way too, but a child steering over can still catch one.
@@ -1328,8 +1365,10 @@ export class Race {
     this.watchFrameRate(dt);
 
     if (this.mode === 'race') {
+      this.handSeen = input.handSeen ?? true;
       this.updatePlayer(dt, input);
       this.updateRivals(dt, true);
+      this.watchForWinner();
       this.updateTractor(dt, this.drive === 0 && this.speed < RESTING_SPEED);
     } else if (this.mode === 'grid') {
       this.speed = 0;

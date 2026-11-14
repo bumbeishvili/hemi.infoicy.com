@@ -2,7 +2,9 @@
 //
 // The one rule underneath everything: only a hand that's really open counts. `drive` comes from
 // core/hands.js and is 0 for a hand that's closed, missing, out of frame or can't be read, so
-// nothing here can reward any of those. Nobody can crash or lose, and resting costs nothing.
+// nothing here can reward any of those. Nobody can crash. By default the other cars race at their own
+// pace and the first over the line wins, so a race can be lost (see RIVALS_RACE). On Gentle, the race as it
+// was, the others stay close, wait for a child who's resting and ease off at the end, so nobody loses.
 //
 // The levels are at the bottom: see racePlan. Nothing about the car itself changes from level to level,
 // and never its top speed, which is tied to how fast things go past.
@@ -201,6 +203,31 @@ export function rivalSpeed({ gap, wish, playerSpeed, resting, rushing, comingBac
   if (comingBack) return playerSpeed + COMES_BACK_BY;
   if (rushing) return Math.max(0, playerSpeed - pace.leftBehindBy);
   return Math.max(0, playerSpeed + clamp((wish - gap) * 0.35, -FALLS_BACK_AT_MOST, pace.gains));
+}
+
+// Racing to win, the default: each of the others drives at its own pace, whatever the child does, and the
+// first car over the line wins. pace is the quickest one's speed, as a share of TOP_SPEED, at level 1 and at
+// level 10: at level 1 a child keeping the hand only just open is quicker, with time to spare for rests, and at
+// level 10 it takes a hand held wide open, turbo and the high fives to stay ahead. each is how quick each car
+// is next to the quickest, and swing how much its pace goes up and down as it drives. The pace climbs slowly
+// over the first levels and faster later on, by the power curve, so a child learning has longer to learn.
+export const RIVALS_RACE = { pace: [0.6, 1.1], curve: 1.5, each: [1, 0.96, 0.93, 0.98, 0.95], swing: 0.03 };
+
+/** How fast the quickest of the others drives at a level, racing to win, in metres a second. */
+export function rivalCruiseAt(level) {
+  const share = (clamp(Math.round(level), 1, 10) - 1) / 9;
+  const [first, last] = RIVALS_RACE.pace;
+  return (first + (last - first) * share ** RIVALS_RACE.curve) * TOP_SPEED;
+}
+
+/**
+ * How fast one of the others drives when it's racing to win: its own pace, going a little up and down, and
+ * never anything to do with how fast the child is going. index is which car it is, and cruise the quickest
+ * one's pace at this level, from racePlan.
+ */
+export function ownPace({ cruise, index, time = 0, phase = 0 }) {
+  const each = RIVALS_RACE.each[index] ?? RIVALS_RACE.each.at(-1);
+  return cruise * each * (1 + RIVALS_RACE.swing * Math.sin(time * (0.17 + index * 0.04) + phase));
 }
 
 /** Whether two cars are touching. Each is { distance, lateral }. */
@@ -490,7 +517,8 @@ export function tractorRun(plan, lapLength) {
 /**
  * What each level changes, from level 1 (the race as it always was) to 10. The laps, how far to reach, the
  * steering help, the hand and how open it has to be are a grown-up's, and never change. Neither does the
- * car, or the rule that the others ease off at the end so that the child wins. Each level from 2 brings
+ * car. On Gentle the others always ease off at the end so that the child wins; racing to win, they drive
+ * faster level by level, from rivalCruise. Each level from 2 brings
  * something new, listed in NEW_THINGS, and keeps everything before it.
  */
 export function racePlan(level) {
@@ -501,6 +529,8 @@ export function racePlan(level) {
   return {
     // More cars to race: a fourth from level 4, and a fifth from level 8.
     rivals: stepsAt(level, { 1: 3, 4: 4, 8: 5 }),
+    // Racing to win, the quickest of the others drives this fast, in metres a second: see RIVALS_RACE.
+    rivalCruise: rivalCruiseAt(level),
     // Level by level the others race harder: they like to be further ahead, catch up faster, keep up
     // better with a boost, and come back past sooner. They still ease off on the last stretch.
     rivalPace: {

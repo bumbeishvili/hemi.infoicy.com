@@ -1,7 +1,7 @@
 // Racing friends: two children, each on their own computer with their own camera, race each other. Here
 // they're two separate browsers, talking through the race server on this computer (tools/race-server.mjs),
 // which has the same rules as the one on Cloudflare.
-import { expect, openGame, screenName, show, test, waitForScreen } from '../helpers.js';
+import { expect, openGame, screenName, show, test, waitForScreen } from './helpers.js';
 import { CODE_LETTERS } from '../../../server/race-room.js';
 
 const raceOf = (page) => page.evaluate(() => {
