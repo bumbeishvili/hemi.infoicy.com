@@ -38,6 +38,9 @@ test('a bigger thing right on the creature catches it, three catches gobble it u
   // Level 2's biggest thing is an amoeba.
   await expect(page.locator('#screen-finish h2')).toHaveText('An amoeba gobbled you up!');
   await expect(page.locator('#play-again')).toHaveText('Try again');
+  // Nothing is cheered, and the voice says what it says after any game that was lost.
+  expect(await page.evaluate(() => window.__game.sound.finished)).toEqual({ line: 'So close! Try again!', lost: true });
+  expect(await page.evaluate(() => window.__game.hud.confetti.running)).toBe(false);
   await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 2 again!');
   expect((await state(page)).ownLevel).toBe(2);
   await page.waitForTimeout(800);
