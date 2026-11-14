@@ -1,13 +1,13 @@
 // Every game gets harder level by level, from level 1 up to level 10. Winning a level moves on to the
-// next one. A game that's lost stays on the same level: Sky Wings and Mighty Moves can be lost, and so
-// can Robot Rescue, Tank Patrol, Cannon Bay and Bounce Back on Medium or Tough, but never on Gentle. A
-// grown-up can choose any level under the gear icon. Which level each game is on is kept in the browser
-// with the grown-ups' settings, and nothing else about play is.
+// next one. A game that's lost stays on the same level, and the big button on its card says Try again.
+// As the games come, most of them can be lost: each has a gentle setting where nothing can be, which is
+// how they all were to begin with. A grown-up can choose any level under the gear icon. Which level each
+// game is on is kept in the browser with the grown-ups' settings, and nothing else about play is.
 //
 // What gets harder is up to each game: more going on, quicker, and more kinds of thing to deal with.
 // Nothing that a grown-up or therapist chose is changed by a level: the hand in play, how open a hand
-// has to be, how far to reach, how big a movement has to be, a gentle mode that can't be lost, or help
-// such as a car that steers itself. Resting is never punished at any level.
+// has to be, how far to reach, how big a movement has to be, a gentle setting, or help such as a car that
+// steers itself. With nobody in the picture a game waits, and so does whatever threatens in it.
 import { saveSettings } from './settings.js';
 
 export const LAST_LEVEL = 10;
