@@ -13,7 +13,7 @@ import { Track } from '../../core/friends.js';
 import { FriendsPanel, time as clockTime } from '../../core/friends-ui.js';
 import { LAST_LEVEL } from '../../core/levels.js';
 import { Sound } from '../../core/sound.js';
-import { BITES, FIELD, gobbleNewAt, HEAD_NAMES, radiusAt, Soup } from './rules.js';
+import { BITES, FIELD, gobbleNewAt, HEAD_NAMES, LIVES, radiusAt, SAFE_SECONDS, Soup } from './rules.js';
 import { GobbleView, nowLine } from './view.js';
 import { worldAt } from './worlds.js';
 
@@ -30,9 +30,15 @@ const OPEN_HINT_AFTER = 3.5; // Seconds of food waiting by a shut mouth before s
 const SHUT_HINT_AFTER = 1.2; // Seconds of a mouth still open on its food before saying to shut it.
 const RESTING_AFTER = 15; // And of doing nothing at all before saying that resting is fine.
 const CHEER_SECONDS = 1.8; // With friends, how long everyone is pleased before the finish card.
+const GOBBLED_SECONDS = 1.6; // A moment to see the creature gobbled up, before the card.
+// When a bigger thing gobbled the creature up. It's only on the card: the voice says the same kind word as any finish.
+const GOBBLED = (name) => `${name} gobbled you up!`;
+const LOST_LINE = 'Great job!';
+const KEEP_AWAY_WITHIN = 0.4; // How near a bigger thing has to come for the label to say to keep away, in field heights.
 const LABELS = {
   tooBig: ['Too big for now!', 'ჯერ ძალიან დიდია!'],
   canEat: ['Now you can eat this!', 'ახლა ამის ჭამაც შეგიძლია!'],
+  keepAway: ['Too big! Keep away!', 'ძალიან დიდია! მოერიდე!'],
 };
 // How loud the world is underneath, and which recording it is: water, a garden's birds, the countryside's, or wind.
 const AIR = [null, ['water', 0.05], ['water', 0.09], ['garden', 0.1], ['country', 0.1], ['water', 0.12], ['wind', 0.1], null, null, null];
@@ -124,6 +130,7 @@ class GobbleGame {
     this.cheerFor = 0;
     this.cardDrawn = false;
     this.pulling = false;
+    this.gobbledFor = 0;
   }
 
   get settings() {
@@ -162,6 +169,8 @@ class GobbleGame {
       auto: settings.gobbleMove === 'mouth',
       head: HEAD_NAMES.includes(settings.gobbleHead) ? settings.gobbleHead : 'medium',
       team,
+      // Bigger things that only nudge, as the soup always had them, if a grown-up chose it, and always with friends.
+      gentle: settings.gobbleBig === 'gentle' || Boolean(friendly),
       onEvent: (event) => this.onSoup(event),
     });
     this.view.setWorld(this.soup.level);
@@ -184,7 +193,7 @@ class GobbleGame {
   restage(change) {
     const { screen } = this.session;
     if (screen === 'playing' || screen === 'countdown' || screen === 'finish') return;
-    if ('level' in change || 'gobbleBites' in change || 'gobbleMove' in change || 'gobbleHead' in change) this.stage(this.session.levels.current);
+    if ('level' in change || 'gobbleBites' in change || 'gobbleMove' in change || 'gobbleHead' in change || 'gobbleBig' in change) this.stage(this.session.levels.current);
   }
 
   /** Together or against each other, chosen in the friends box: kept with the grown-ups' settings, and shown there. */
@@ -260,6 +269,20 @@ class GobbleGame {
       case 'won':
         sound.play('cheer', { gain: 0.3 });
         break;
+      case 'caught': {
+        // A bigger thing caught the creature: a soft boing, a ring, and it bounces away. One of its lives is gone.
+        const at = view.creatureAt ?? view.at(soup.creature.x, soup.creature.y);
+        sound.play('boing', { gain: 0.35, rate: this.pitch * 0.85 });
+        view.ring(at.x, at.y, (at.r ?? 0) * 1.3, '#ffd6e0');
+        this.showProgress();
+        break;
+      }
+      case 'eaten':
+        // Gobbled up: the creature goes into what caught it, and the world is over, to try again.
+        sound.play('gulp', { gain: 0.6, rate: 0.6 });
+        this.gobbledFor = 0;
+        this.showProgress();
+        break;
       default:
     }
   }
@@ -285,6 +308,15 @@ class GobbleGame {
       const food = soup.foods.find((each) => each.kind === kind && this.inView(each));
       if (food) view.introduce(`food-${kind}`, [world.foods[kind].name, world.foods[kind].nameKa], this.placeOf(food));
     }
+  }
+
+  /** The first time a bigger thing that can catch the creature comes near, it says to keep away from it. */
+  warn() {
+    const { soup, view } = this;
+    if (!soup.hunting || view.introduced.has('keep-away')) return;
+    const { creature } = soup;
+    const near = soup.foods.find((food) => !soup.canEat(food) && this.inView(food) && Math.hypot(food.x - creature.x, food.y - creature.y) < KEEP_AWAY_WITHIN);
+    if (near) view.introduce('keep-away', LABELS.keepAway, this.placeOf(near), { first: true });
   }
 
   /** Small creatures sound high, and big ones low. */
@@ -317,8 +349,14 @@ class GobbleGame {
     this.restFor = snapshot.mouthOpen || soup.creature.holding ? 0 : this.restFor + dt;
     if (this.friendsOn) this.friends.sendMove('eater', this.eaterState(snapshot), this.sinceGo);
     if (!soup.won) this.nameFoods();
+    this.warn();
     view.update(dt);
     this.showFilm();
+    if (soup.gobbled) {
+      this.gobbledFor += dt;
+      if (this.gobbledFor >= GOBBLED_SECONDS && session.screen === 'playing') session.finish();
+      return;
+    }
 
     if (!soup.won) return;
     if (this.friendsOn) {
@@ -346,6 +384,8 @@ class GobbleGame {
     const counting = screen === 'countdown';
     const trying = counting || screen === 'check';
     this.mouth = trying ? this.mouthShown(snapshot) : 0;
+    // Nothing comes after the creature or catches it until the game begins, nor for a moment after.
+    this.soup.safeFor = Math.max(this.soup.safeFor, SAFE_SECONDS);
     this.soup.update(dt, { open: false, seen: counting && snapshot.seen, steer: snapshot.steer });
     this.view.update(dt);
     // The picture of how much the child grew goes on the finish card once the card is there to draw on.
@@ -380,6 +420,10 @@ class GobbleGame {
     byId('chip-team-box').hidden = !this.team;
     byId('chip-team').textContent = `${Math.min(soup.total, soup.goal)} of ${soup.goal}`;
     byId('chip-you').textContent = `${world.mark} ${world.you}`;
+    // How many more times a bigger thing can catch the creature, where they can.
+    const lives = soup.danger;
+    byId('chip-lives-box').hidden = !lives;
+    if (lives) byId('chip-lives').textContent = `${'💛'.repeat(Math.max(0, soup.lives))}${'🤍'.repeat(LIVES - Math.max(0, soup.lives))}`;
   }
 
   /* ---------- with friends ---------- */
@@ -435,7 +479,7 @@ class GobbleGame {
 
   prompt(snapshot) {
     const { soup, session } = this;
-    if (soup.won) return null;
+    if (soup.won || soup.gobbled) return null;
     const face = session.facePrompt(snapshot);
     if (face) return face;
     const { creature } = soup;
@@ -460,13 +504,20 @@ class GobbleGame {
     // With friends, the results say how everyone did. On their own, the title says what they've become.
     this.friends.showResults();
     const title = document.querySelector('#screen-finish h2');
-    if (!this.friendsOn) title.textContent = last ? SKY : 'You grew!';
+    const gobbled = soup.gobbled && !this.friendsOn;
+    const by = gobbled ? worldAt(soup.level).foods[soup.eatenBy.kind].name : '';
+    if (!this.friendsOn) title.textContent = gobbled ? GOBBLED(by) : last ? SKY : 'You grew!';
+    // The card's big button is to try the same world again. The levels' own words are put on it first.
+    if (gobbled) queueMicrotask(() => {
+      byId('play-again').textContent = 'Try again';
+    });
     return {
       hero: soup.eaten,
       noun: 'world',
-      line: this.friendsOn ? TOGETHER_LINE : next ? nowLine(next) : SKY,
-      // Nobody can lose: a world is won by eating, however long it takes. With friends it's the host's level.
-      won: true,
+      line: this.friendsOn ? TOGETHER_LINE : gobbled ? LOST_LINE : next ? nowLine(next) : SKY,
+      // A world is won by eating it all. Gobbled up by something bigger, it's the same world again. With friends it's
+      // the host's level, and nothing can gobble anyone up.
+      won: !gobbled,
       countsForLevel: !this.friendsOn,
     };
   }
@@ -487,6 +538,7 @@ new FaceSession({
         <div class="chip chip-bites"><span class="chip-label">Eaten</span><span id="chip-bites" class="chip-value">0 of 12</span></div>
         <div id="chip-team-box" class="chip chip-team" hidden><span class="chip-label">Together</span><span id="chip-team" class="chip-value">0 of 24</span></div>
         <div class="chip chip-you"><span class="chip-label">You are</span><span id="chip-you" class="chip-value"></span></div>
+        <div id="chip-lives-box" class="chip chip-lives" hidden><span class="chip-label">Lives</span><span id="chip-lives" class="chip-value"></span></div>
       </div>
       <div class="film gobble-film" aria-hidden="true">
         <svg viewBox="0 0 220 160">
@@ -515,6 +567,11 @@ new FaceSession({
         ${choice('gobbleHead', 'big', 'A lot')}
       </fieldset>
       <fieldset class="choice">
+        <legend>Bigger things</legend>
+        ${choice('gobbleBig', 'catch', 'They can catch you: caught three times, you’re gobbled up, and the world starts again')}
+        ${choice('gobbleBig', 'gentle', 'Gentle: they only nudge you aside, and nothing can be lost')}
+      </fieldset>
+      <fieldset class="choice">
         <legend>How much to eat in each world</legend>
         ${choice('gobbleBites', '8', '8 bites')}
         ${choice('gobbleBites', '12', '12 bites')}
@@ -526,8 +583,8 @@ new FaceSession({
         ${choice('gobbleFriends', 'against', 'Against each other: see who grows up first')}
       </fieldset>`,
   },
-  defaults: { gobbleMove: 'face', gobbleHead: 'medium', gobbleBites: 12, gobbleFriends: 'together' },
-  choices: { gobbleMove: String, gobbleHead: String, gobbleBites: Number, gobbleFriends: String },
+  defaults: { gobbleMove: 'face', gobbleHead: 'medium', gobbleBites: 12, gobbleBig: 'catch', gobbleFriends: 'together' },
+  choices: { gobbleMove: String, gobbleHead: String, gobbleBites: Number, gobbleBig: String, gobbleFriends: String },
   tagline: 'You’re a tiny bacterium. Open your mouth wide to gobble up what’s smaller than you, and grow into a whole galaxy!',
   finishLine: SKY,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

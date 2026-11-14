@@ -15,12 +15,16 @@ export const GAME = 'gobble-grow';
 export const WIDE = 0.4;
 export const SHUT = 0.01;
 
-/** Opens the game with the drawn face for a camera and the stand-in for the tracker, sound and voice off unless a test says. */
+/**
+ * Opens the game with the drawn face for a camera and the stand-in for the tracker, sound and voice off unless a test
+ * says. It's the soup as it always was, where bigger things only nudge, the gentle choice under "Bigger things",
+ * unless a test says: caught.spec.js has the bigger things that catch, as the game comes.
+ */
 export async function openGobble(page, settings = {}, hash = '') {
   await page.addInitScript({ path: fakeFace });
   await page.addInitScript((saved) => {
     if (!localStorage.getItem('camera-games-settings')) localStorage.setItem('camera-games-settings', JSON.stringify(saved));
-  }, { voice: false, sound: false, ...settings });
+  }, { voice: false, sound: false, gobbleBig: 'gentle', ...settings });
   await page.goto(`/games/${GAME}/index.html?debug${hash}`);
   // A link to play with friends opens the friends box, which is all the title card shows.
   await expect(page.locator('#start:visible, #friends-box:visible').first()).toBeVisible();

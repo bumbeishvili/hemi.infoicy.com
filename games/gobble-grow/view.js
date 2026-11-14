@@ -14,6 +14,7 @@ import { WORLDS, worldAt } from './worlds.js';
 
 const TAU = Math.PI * 2;
 const LABEL_SECONDS = 2.6;
+const GOBBLED_SECONDS = 1.2; // How long the creature takes to go into what gobbled it up.
 // When a world is won: a moment of being pleased, the pull back, and then the picture stays for a moment.
 export const PULL = { cheer: 0.8, zoom: 5, hold: 2.2 };
 // The most the pull back moves on in one frame, in seconds.
@@ -283,6 +284,14 @@ export class GobbleView {
     shown.mouth += (wantedMouth - shown.mouth) * 0.45;
     const mouth = creature.holding ? Math.max(shown.mouth, 0.5) : shown.mouth;
     const bob = Math.sin(time * 2) * size * 0.04;
+    if (soup.gobbled && soup.eatenBy) {
+      // Gobbled up: it goes softly into what caught it, getting smaller and fainter, and is gone.
+      const share = ease(clamp((soup.time - soup.eatenAt) / GOBBLED_SECONDS, 0, 1));
+      const to = this.at(soup.eatenBy.x, soup.eatenBy.y);
+      drawCreature(ctx, world.id, lerp(x, to.x, share), lerp(y + bob, to.y, share), size * (1 - 0.75 * share), { facing: creature.facing, mouth: 0, time, alpha: (1 - share) * fade });
+      this.creatureAt = { x, y: y + bob, r: size };
+      return;
+    }
     drawCreature(ctx, world.id, x, y + bob, size, { facing: creature.facing, mouth, time, happy: soup.won });
     const held = creature.holding;
     if (held) {

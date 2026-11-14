@@ -16,7 +16,8 @@ const near = (actual, expected, within, message) => assert.ok(Math.abs(actual - 
 /** A soup that keeps a list of what happened in it. */
 function makeSoup(options = {}) {
   const events = [];
-  const soup = new Soup({ seed: 7, ...options, onEvent: (event) => events.push(event) });
+  // The soup as it always was, where bigger things only nudge: test/unit/gobble-grow-caught.test.js has the default.
+  const soup = new Soup({ seed: 7, gentle: true, ...options, onEvent: (event) => events.push(event) });
   const count = (type) => events.filter((event) => event.type === type).length;
   return { soup, events, count };
 }
@@ -122,8 +123,9 @@ test('every level from 2 to 10 brings a new world, named on the cards in both la
 
 /* ---------- what a level changes, and what it doesn't ---------- */
 
-test('at level 10 there\'s still most of level 1\'s time to get to a thing, and not many more of them', () => {
-  const [first, last] = [soupLevel(1), soupLevel(10)];
+test('gentle: at level 10 there\'s still most of level 1\'s time to get to a thing, and not many more of them', () => {
+  // The soup as it always was: test/unit/gobble-grow-caught.test.js has the steeper climb that comes by default.
+  const [first, last] = [soupLevel(1, { gentle: true }), soupLevel(10, { gentle: true })];
   assert.ok(last.cross / first.cross >= 0.7, `${last.cross} of ${first.cross} seconds`);
   assert.ok(last.cross < first.cross);
   assert.ok(first.gap / last.gap <= 2, 'no more than twice as many a minute');
@@ -701,7 +703,8 @@ test('together, the world is won for everyone once all of them together have eat
 });
 
 test('against each other, each has their own soup with the same things in it, and what one eats is still there for the other', () => {
-  const [mine, theirs] = [new Soup({ level: 2, seed: 4242, bites: 8 }), new Soup({ level: 2, seed: 4242, bites: 8 })];
+  // With friends it's the gentle soup, whatever each grown-up chose, so both soups are the same.
+  const [mine, theirs] = [new Soup({ level: 2, seed: 4242, bites: 8, gentle: true }), new Soup({ level: 2, seed: 4242, bites: 8, gentle: true })];
   const ids = (soup) => soup.foods.map((food) => food.id).sort((a, b) => a - b);
   assert.deepEqual(ids(mine), ids(theirs));
   playWell(mine, 20);
