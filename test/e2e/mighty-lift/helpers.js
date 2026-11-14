@@ -14,8 +14,9 @@ export const GAME = 'mighty-lift';
 // raise from 28 to 31.3; and both, the left only to the shoulder, from 32.3 to 36.2.
 export const ARMS = { down: 0.6, up: 4, shoulder: 9.6, leftUp: 14, bothUp: 19.5, shaking: 24.5, small: 29.8, uneven: 34.5 };
 
+/** Unless a test says, it's the gentle game, as it was, with no clock before sunset. */
 export async function openLift(page, settings = {}, hash = '') {
-  await openGame(page, settings, GAME, hash);
+  await openGame(page, { liftClock: 'no', ...settings }, GAME, hash);
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
 }
 

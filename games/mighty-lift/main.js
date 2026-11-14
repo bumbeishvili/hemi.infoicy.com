@@ -30,8 +30,9 @@ const HELPER_STAYS_MS = 900; // A helper waves goodbye for a moment before going
 const ROOM_ABOVE_LINE = 0.35;
 const ROOM_EDGE = 0.02; // And that far inside the top of the picture.
 
-const DEFAULTS = { moveSize: 'small', liftHeight: 'shoulder', liftWith: 'play', liftHold: 'medium', lifts: 8, liftFriends: 'together', fighter: 'giraffe' };
-const CHOICES = { liftHeight: String, liftWith: String, liftHold: String, lifts: Number, liftFriends: String };
+// liftClock is whether the lifts have to be done before sunset: 'yes', or 'no' for the gentle game, as it was.
+const DEFAULTS = { moveSize: 'small', liftHeight: 'shoulder', liftWith: 'play', liftHold: 'medium', lifts: 8, liftFriends: 'together', liftClock: 'yes', fighter: 'giraffe' };
+const CHOICES = { liftHeight: String, liftWith: String, liftHold: String, lifts: Number, liftFriends: String, liftClock: String };
 
 // Lifting with friends, each on their own computer: see core/friends-ui.js for what each of these is.
 const LIFT_WORDS = {
@@ -425,8 +426,10 @@ class MightyLift extends BodyGame {
       plain: Boolean(friendly),
       team: this.team ? { size: friendly.friends.length + 1 } : null,
       reach: this.arms.reach,
+      gentle: settings.liftClock === 'no',
       onEvent: (event) => this.onLiftEvent(event),
     });
+    document.body.dataset.sunset = this.lifting.timeLeft === null ? 'no' : 'yes';
     this.setUpMates(friendly);
     // Wherever the arm is as the countdown starts is where it rests, unless it's held up: a bent arm rests
     // higher than one that hangs, and lifting is measured from there.
@@ -504,7 +507,7 @@ class MightyLift extends BodyGame {
     // Nobody in the picture: a weight that was up comes down gently, and everything else waits.
     if (this.bodyLost()) {
       this.armsUnseen(dt);
-      lifting.update(dt, arms.lift, mates);
+      lifting.update(dt, arms.lift, mates, { seen: false });
       this.prompt.show({ key: 'come-back', text: BODY_SAY.comeBack, side: null }, now);
       this.sound.strain(0);
       this.sendLifter(now);
@@ -546,6 +549,21 @@ class MightyLift extends BodyGame {
     set('done', Math.min(lifting.liftsDone, lifting.liftsPlanned), 'lifts-done');
     set('planned', lifting.liftsPlanned, 'lifts-all');
     set('today', this.liftsToday, 'lifts-today');
+    // The time before sunset, and whether it's waiting for a resting arm.
+    if (lifting.timeLeft !== null) {
+      const seconds = Math.ceil(lifting.timeLeft);
+      set('sunset', `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`, 'sunset');
+      const share = Math.round((lifting.timeLeft / lifting.timeAll) * 100);
+      if (lastNumbers.sunShare !== share) {
+        lastNumbers.sunShare = share;
+        byElementId('sunset-fill').style.width = `${share}%`;
+      }
+      const waits = lifting.clockWaits ? 'yes' : 'no';
+      if (lastNumbers.waits !== waits) {
+        lastNumbers.waits = waits;
+        byElementId('sunset-chip').dataset.waits = waits;
+      }
+    }
     // Prizes, from the levels that have them, each with its little picture.
     const prizes = [['⭐', stats.stars, lifting.rules.star && !lifting.plain], ['🪶', stats.feathers, lifting.rules.owl && !lifting.plain], ['🍯', stats.honey, lifting.rules.hive && !lifting.plain]].filter(([, , has]) => has);
     const words = prizes.map(([mark, count]) => `${mark} ${count}`).join('  ');
@@ -743,8 +761,11 @@ class MightyLift extends BodyGame {
     this.updateHud();
     sound.strain(0);
     sound.stopYard();
-    sound.finish(SAY.allFree);
-    world.celebrate();
+    // The sun set first: no celebration, and nothing said.
+    if (!lifting.lost) {
+      sound.finish(SAY.allFree);
+      world.celebrate();
+    }
     this.timer = AFTER_FINISH_SECONDS;
     this.setScreen('finishing');
   }
@@ -765,16 +786,22 @@ class MightyLift extends BodyGame {
       { name: 'longest', icon: 'skyReach', label: 'Longest hold, seconds', value: longest },
       { name: 'today', icon: 'starJump', label: 'Lifts today', value: this.liftsToday },
     ]);
-    // Nobody fails a game, so every one that's finished moves on a level. With friends it's the host's level,
-    // so it doesn't move anyone's own level on.
+    // A game with everyone freed moves on a level, and one where the sun set first stays on it. With friends
+    // it's the host's level, so it doesn't move anyone's own level on.
+    const { lost } = lifting;
     if (this.friends.current) {
       this.levels.last = null;
       this.levelUi.refresh();
     } else {
-      this.finishLevel(true);
+      this.finishLevel(!lost);
     }
     this.friends.showResults();
-    this.confetti.start();
+    if (lost) {
+      const stuck = lifting.rescues.length - stats.freed;
+      byElementId('finish-title').textContent = 'The sun has set!';
+      byElementId('finish-line').textContent = `${this.chosen.name} freed ${stats.freed} of ${plural(lifting.rescues.length, 'friend')} before sunset, and ${stuck === 1 ? 'one is' : `${stuck} are`} still waiting. Have another go!`;
+      byElementId('lift-again').textContent = 'Try again';
+    } else this.confetti.start();
     this.setScreen('finish');
   }
 
@@ -945,6 +972,7 @@ mountBodyShell({
     <div class="chip"><span class="chip-label">Lifts</span><span class="chip-value"><span id="lifts-done">0</span> / <span id="lifts-all">0</span></span></div>
     <div id="prizes-chip" class="chip" hidden><span class="chip-label">Prizes</span><span id="prizes" class="chip-value"></span></div>
     <div class="chip"><span class="chip-label">Lifts today</span><span id="lifts-today" class="chip-value">0</span></div>
+    <div id="sunset-chip" class="chip sunset-chip"><span class="chip-label">Before sunset</span><span class="chip-value"><span aria-hidden="true">☀️</span> <span id="sunset">0:00</span></span><span class="sunset-bar" aria-hidden="true"><span id="sunset-fill" class="sunset-fill"></span></span></div>
     <ul id="freed-row" class="freed-row" aria-label="Friends freed"></ul>
   </header>
   <ol id="lift-scores" class="lift-scores" aria-label="Everyone’s count" hidden></ol>
@@ -987,6 +1015,11 @@ mountBodyShell({
     <fieldset class="choice">
       <legend>Lifts in a game</legend>
       ${LIFT_COUNTS.map((count) => choice('lifts', count, `${count} lifts`)).join('\n      ')}
+    </fieldset>
+    <fieldset class="choice">
+      <legend>Before sunset</legend>
+      ${choice('liftClock', 'yes', 'Yes: the lifts have to be done before the sun sets, and a game can be lost. The clock waits while the arm rests')}
+      ${choice('liftClock', 'no', 'Gentle: no clock, take as long as it takes, and every game moves on a level')}
     </fieldset>
     <fieldset class="choice">
       <legend>With friends</legend>

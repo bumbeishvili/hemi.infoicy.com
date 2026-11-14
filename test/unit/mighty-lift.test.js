@@ -47,10 +47,13 @@ function play(from, to, { arms, game = null, warmup = null, each = () => {} }) {
   }
 }
 
-/** A game whose events are kept. The first friend is always the same one, so tests can say who it is. */
+/**
+ * A game whose events are kept. The first friend is always the same one, so tests can say who it is. Unless a
+ * test says, it's the gentle game, as it was, with no clock before sunset.
+ */
 function newGame(options = {}) {
   const seen = [];
-  const game = new Lifting({ random: () => 0, ...options, onEvent: (event) => seen.push(event) });
+  const game = new Lifting({ random: () => 0, gentle: true, ...options, onEvent: (event) => seen.push(event) });
   game.begin();
   return { game, seen, types: () => seen.map(({ type }) => type), count: (type) => seen.filter((event) => event.type === type).length };
 }
@@ -563,13 +566,15 @@ test('every level from 2 to 10 brings one new thing, with a picture and a name i
   assert.deepEqual(newAt(99), newAt(10), 'and there\'s no level past 10');
 });
 
-test('a level only makes a hold a little longer, and nothing a grown-up chose changes', () => {
+test('a level makes a hold longer, up to 1.7 times, or 1.4 on the gentle game, and nothing a grown-up chose changes', () => {
   assert.equal(liftLevel(1).hold, 1);
-  assert.ok(Math.abs(liftLevel(10).hold - 1.4) < 1e-9);
+  assert.ok(Math.abs(liftLevel(10).hold - 1.7) < 1e-9);
+  assert.ok(Math.abs(liftLevel(10, { gentle: true }).hold - 1.4) < 1e-9);
   for (let level = 2; level <= 10; level += 1) assert.ok(liftLevel(level).hold > liftLevel(level - 1).hold);
   for (const [name, seconds] of Object.entries(HOLDS)) {
     assert.equal(new Lifting({ level: 1, hold: name }).holdSeconds, seconds);
-    assert.ok(Math.abs(new Lifting({ level: 10, hold: name }).holdSeconds - seconds * 1.4) < 1e-9);
+    assert.ok(Math.abs(new Lifting({ level: 10, hold: name }).holdSeconds - seconds * 1.7) < 1e-9);
+    assert.ok(Math.abs(new Lifting({ level: 10, hold: name, gentle: true }).holdSeconds - seconds * 1.4) < 1e-9);
   }
   assert.ok(HOLDS.short < HOLDS.medium && HOLDS.medium < HOLDS.long);
   // What comes at each level stays for the levels after it.
@@ -666,7 +671,10 @@ test('with friends it\'s the plain game, laid out the same on every computer fro
   assert.ok(one.every((rescue) => rescue.kind === 'basket' && !rescue.star && !rescue.owl && !rescue.hive && !rescue.gives));
   assert.equal(one.length, 8);
   assert.equal(new Lifting({ level: 9, plain: true }).plain, true);
-  assert.ok(Math.abs(new Lifting({ level: 9, plain: true }).holdSeconds - HOLDS.medium * liftLevel(9).hold) < 1e-9, 'the host\'s level still sets how long a hold is');
+  // The host's level still sets how long a hold is, as it always did, and there's no clock before sunset.
+  assert.ok(Math.abs(new Lifting({ level: 9, plain: true }).holdSeconds - HOLDS.medium * liftLevel(9, { gentle: true }).hold) < 1e-9, 'the host\'s level still sets how long a hold is');
+  assert.equal(new Lifting({ level: 9, plain: true }).timeLeft, null);
+  assert.equal(new Lifting({ level: 9, team: { size: 2 } }).timeLeft, null);
 });
 
 /* ------------------------------- a game ------------------------------- */
@@ -1141,4 +1149,86 @@ test('against each other, a game that\'s stopped because a friend has freed all 
   assert.equal(seen.at(-1).stats.freed, 2);
   game.finish();
   assert.equal(count('finished'), 1);
+});
+
+/* ---------- before sunset: a game can be lost ---------- */
+
+/** An arm that takes up seconds to get up, holds it a little longer than it needs, and takes down seconds to come down. */
+const slowLift = (game, up, down) => {
+  run(game, up, (t) => (t / up) * 1.05);
+  run(game, game.holdSeconds * 1.15, 1.05);
+  run(game, down, (t) => 1.05 * (1 - t / down));
+  run(game, 0.5, 0);
+};
+
+/** Lifts like that until the game is over, or it's gone on far too long. */
+function liftUntilOver(game, up, down) {
+  for (let i = 0; i < 200 && game.state === 'playing'; i += 1) slowLift(game, up, down);
+  return game;
+}
+
+test('as it comes, the lifts have to be done before sunset, and the clock gets shorter level by level', () => {
+  const { game } = newGame({ gentle: false });
+  assert.ok(game.timeLeft > 0, 'a clock, as it comes');
+  assert.equal(game.timeLeft, game.timeAll);
+  const perLift = (level) => {
+    const lifting = new Lifting({ level, lifts: 8, random: () => 0 });
+    return lifting.timeAll / lifting.liftsPlanned;
+  };
+  for (let level = 2; level <= 10; level += 1) assert.ok(liftLevel(level).clock.perLift < liftLevel(level - 1).clock.perLift);
+  assert.ok(perLift(1) > 10, `${perLift(1)} seconds a lift at level 1`);
+  assert.ok(perLift(10) < 7, `${perLift(10)} seconds a lift at level 10`);
+});
+
+test('a child whose arm is slow, four seconds up, frees everyone before sunset at level 1, and so does a quick one at level 10', () => {
+  const steady = liftUntilOver(newGame({ gentle: false, level: 1 }).game, 4, 4);
+  assert.deepEqual([steady.state, steady.lost, steady.stats.freed], ['finished', false, 8]);
+  assert.ok(steady.timeLeft > steady.timeAll * 0.2, `${steady.timeLeft} of ${steady.timeAll} seconds left`);
+  const quick = liftUntilOver(newGame({ gentle: false, level: 10 }).game, 0.5, 0.5);
+  assert.deepEqual([quick.state, quick.lost], ['finished', false]);
+});
+
+test('lifting slowly at level 10, two and a half seconds up, the sun sets first: the game is over, with friends still to free', () => {
+  const { game, seen, count } = newGame({ gentle: false, level: 10 });
+  liftUntilOver(game, 2.5, 2.5);
+  assert.equal(game.state, 'finished');
+  assert.equal(game.lost, true);
+  assert.equal(game.timeLeft, 0);
+  assert.ok(game.stats.freed < game.rescues.length, `${game.stats.freed} of ${game.rescues.length} freed`);
+  assert.equal(count('sunset'), 1);
+  assert.equal(seen.find(({ type }) => type === 'finished').all, false);
+  // Nothing more happens after.
+  const freed = game.stats.freed;
+  run(game, 10, 1.05);
+  assert.equal(game.stats.freed, freed);
+});
+
+test('the clock waits for an arm that rests, between friends, and for a child out of the picture', () => {
+  const { game } = newGame({ gentle: false, level: 5 });
+  // Down for a moment costs a moment, and then the clock waits for as long as the arm rests.
+  run(game, 4.5, 0);
+  const rested = game.timeLeft;
+  assert.ok(game.timeAll - rested <= 4.1, `${game.timeAll - rested} seconds gone`);
+  assert.equal(game.clockWaits, true);
+  run(game, 120, 0);
+  assert.equal(game.timeLeft, rested);
+  // Half way up and out of the picture: it waits.
+  for (let i = 0; i < 600; i += 1) game.update(1 / 60, 0.6, [], { seen: false });
+  assert.equal(game.timeLeft, rested);
+  // Half way up, in the picture: it runs.
+  run(game, 2, 0.6);
+  assert.ok(game.timeLeft < rested - 1.9);
+  // Between one friend and the next, it waits.
+  oneLift(game, game.holdSeconds + 0.2);
+  for (let i = 0; i < 600 && game.phase !== 'resting' && game.phase !== 'arriving'; i += 1) game.update(1 / 60, 0);
+  const between = game.timeLeft;
+  for (let i = 0; i < 300 && (game.phase === 'resting' || game.phase === 'arriving'); i += 1) game.update(1 / 60, 0);
+  assert.ok(between - game.timeLeft < 0.05, 'nothing gone between friends');
+});
+
+test('the gentle game is as it was: no clock, and however slowly the arm goes, every friend is freed', () => {
+  const { game } = newGame({ gentle: true, level: 10 });
+  assert.equal(game.timeLeft, null);
+  liftUntilOver(game, 4, 4);
+  assert.deepEqual([game.state, game.lost, game.stats.freed], ['finished', false, game.rescues.length]);
 });

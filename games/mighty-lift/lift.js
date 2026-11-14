@@ -3,9 +3,11 @@
 //
 // Someone is stuck under something heavy, and the child lifts it off them. Raising the arm raises the
 // weight, as high as the arm goes, and held above a line for a moment, the friend scrambles out. Letting
-// it down early only lowers the weight again: what the friend has already managed is kept, nobody is
-// hurt, and nothing has a time limit. Then the weight comes down with the arm, and the next friend needs
-// help. A game is so many lifts, as a grown-up chose, never a race against a clock.
+// it down early only lowers the weight again: what the friend has already managed is kept, and nobody is
+// hurt. Then the weight comes down with the arm, and the next friend needs help. A game is so many lifts,
+// as a grown-up chose, and they have to be done before sunset: a clock that runs while the child is lifting,
+// and waits between friends, while the arm rests and while the child is out of the picture. When the sun
+// sets with friends still stuck, the game is over. On the gentle setting there's no clock, as it once was.
 //
 // How high is high enough is the child's own. Each arm has its own line: as high as a grown-up chose, but
 // never more than most of the way to the highest that arm reached in the warm-up, and it comes down to
@@ -406,12 +408,17 @@ export const thingsUpTo = (level) => Object.keys(NEW_THINGS).map(Number).filter(
 /**
  * What a level changes. Level 1 is the plain game: light baskets and a short hold. How high the arm has to
  * go, which arm lifts, how long a hold is and how many lifts make a game stay as a grown-up chose: a level
- * only makes the hold a little longer, up to 1.4 times by level 10, and nothing is ever timed.
+ * makes the hold longer, up to 1.7 times by level 10, and the time before sunset shorter. gentle is the game
+ * as it was: the hold up to 1.4 times by level 10, and no clock.
  */
-export function liftLevel(level = 1) {
+export function liftLevel(level = 1, { gentle = false } = {}) {
   const at = clampLevel(level);
   return {
-    hold: ramp(at, 1, 1.4),
+    hold: ramp(at, 1, gentle ? 1.4 : 1.7),
+    // The time before sunset, for each lift, besides the hold it needs: seconds for the arm to go up and come
+    // down again, and how many times over the hold itself. From 8 seconds and twice the hold at level 1 to 3.5
+    // seconds and 1.25 times at level 10. None on the gentle setting.
+    clock: gentle ? null : { perLift: ramp(at, 8, 3.5), slack: ramp(at, 2, 1.25) },
     // From level 2, a gold star hangs above the line over light things: lifting a little higher gets it.
     star: at >= 2,
     // From level 3, heavy crates, which take this many seconds to come up, however quick the arm is.
@@ -527,6 +534,7 @@ const STILL_WITHIN = 0.25; // Torso lengths a second: an arm moving less than th
 const STILL_SECONDS = 2; // An arm that stays stopped this long after a rescue is where it rests.
 const STILL_BELOW = 0.8;
 const IDLE_SECONDS = 15; // After this long without lifting, the child is resting, and is told that's fine.
+const CLOCK_REST = 4; // An arm down this long is resting, and the clock waits for it.
 const HINT_LOW = 4; // Seconds with the arm down before being asked to lift.
 const HINT_MIDDLE = 2.5; // Seconds part of the way up before being asked to go a little higher.
 const HINT_DOWN = 3.5; // Seconds still holding it up after a rescue before being asked to put it down.
@@ -542,9 +550,13 @@ const HINT_DOWN = 3.5; // Seconds still holding it up after a rescue before bein
  * on one: see settle.
  */
 export class Lifting {
-  constructor({ level = 1, lifts = 8, hold = 'medium', lifter = 'giraffe', random = Math.random, plain = false, team = null, reach = null, onEvent = () => {} } = {}) {
+  /**
+   * gentle is the game as it was, with no clock. With friends, plain, there's no clock either: together is
+   * lifting one weight between everyone, and against each other is who frees the most.
+   */
+  constructor({ level = 1, lifts = 8, hold = 'medium', lifter = 'giraffe', random = Math.random, plain = false, team = null, reach = null, gentle = false, onEvent = () => {} } = {}) {
     this.levelNumber = clampLevel(level);
-    this.rules = liftLevel(level);
+    this.rules = liftLevel(level, { gentle: gentle || plain || Boolean(team) });
     this.plain = plain || Boolean(team);
     this.team = team;
     this.onEvent = onEvent;
@@ -588,6 +600,40 @@ export class Lifting {
     this.helper = null; // The friend who's helping with this rescue, or about to with the next.
     this.helping = false;
     this.stats = { lifts: 0, freed: 0, ducklings: 0, stars: 0, starsHung: 0, feathers: 0, owls: 0, honey: 0, hives: 0, trophy: false, heldSeconds: 0, longestHold: 0, eased: 0 };
+    // Seconds left before sunset, or null when there's no clock. lost is whether the sun set first.
+    this.timeAll = this.rules.clock ? this.rescues.reduce((sum, rescue) => sum + this.secondsFor(rescue), 0) : null;
+    this.timeLeft = this.timeAll;
+    this.clockWaits = false;
+    this.armDownFor = 0;
+    this.lost = false;
+  }
+
+  /**
+   * The time before sunset a rescue brings: the arm going up and down for each of its lifts, and so many times
+   * the hold it needs, with a heavy crate's slow rise and ducklings' longer hold.
+   */
+  secondsFor(rescue) {
+    const { perLift, slack } = this.rules.clock;
+    const holds = rescue.lifts > 1 ? rescue.lifts * NOTCH_HOLD : rescue.parts > 1 ? DUCKS_HOLD : 1;
+    const rise = rescue.lifts * (rescue.heavy ? this.rules.heavyRise : 1 / LIGHT_RISE);
+    return rescue.lifts * perLift + (holds * this.holdSeconds + rise) * slack;
+  }
+
+  /**
+   * The clock runs while there's a friend to free, unless the arm has been down a while, resting: it waits then,
+   * between friends, and while the child is out of the picture. seen says whether the camera can see them.
+   */
+  runClock(dt, seen) {
+    if (this.timeLeft === null) return;
+    this.armDownFor = this.lift < LOWERED ? this.armDownFor + dt : 0;
+    this.clockWaits = !seen || this.armDownFor >= CLOCK_REST || (this.phase !== 'lifting' && this.phase !== 'freed');
+    if (this.clockWaits) return;
+    this.timeLeft = Math.max(0, this.timeLeft - dt);
+    if (this.timeLeft > 0 || this.phase !== 'lifting') return;
+    // The sun has set with a friend still stuck.
+    this.lost = true;
+    this.emit('sunset', { freed: this.stats.freed, of: this.rescues.length });
+    this.finish();
   }
 
   get rescue() {
@@ -674,12 +720,17 @@ export class Lifting {
     if (this.helping) this.emit('helper', { friend: this.helper });
   }
 
-  /** dt in seconds, lift how far up the child's arm is, and mates, with friends, each friend's { lift, up }. */
-  update(dt, lift = 0, mates = []) {
+  /**
+   * dt in seconds, lift how far up the child's arm is, and mates, with friends, each friend's { lift, up }. seen
+   * is false while the child is out of the picture, when the clock waits.
+   */
+  update(dt, lift = 0, mates = [], { seen = true } = {}) {
     if (this.state !== 'playing') return;
     this.clock += dt;
     this.phaseFor += dt;
     this.readArm(dt, Math.max(0, lift || 0));
+    this.runClock(dt, seen);
+    if (this.state !== 'playing') return;
     const everyone = [{ lift: this.lift, up: this.armUp }, ...mates];
     const high = (each) => clamp(each.lift || 0, 0, MOST_LIFT);
     const wanted = this.team ? everyone.reduce((sum, each) => sum + high(each), 0) / everyone.length : high(this);
