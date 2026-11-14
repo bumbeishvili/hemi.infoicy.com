@@ -880,7 +880,7 @@ test('level 7: riding over a ramp is a jump, and riding beside it is nothing', (
   });
   assert.equal(over.game.stats.jumps, 1);
   assert.deepEqual(over.types.filter((type) => ['jump', 'land'].includes(type)), ['jump', 'land']);
-  near(highest, BIKE.jumpHeight, 0.05, 'up');
+  assert.ok(highest > 1.8 && highest < 2.8, `a couple of metres up: ${highest}`);
   assert.equal(over.game.height, 0, 'and down again');
   const beside = ride({ plan }, { lean: () => -0.1 });
   assert.equal(beside.game.stats.jumps, 0);

@@ -4,10 +4,13 @@
 // leaning the trunk to each side and holding it there, which children with hemiplegia find hard, above all
 // towards their weaker side.
 //
+// The wild ride, which is how the game comes, is a race: other riders to beat, steep hills that throw the bike
+// into the air at the top, ramps, hay bales in the way, and a river to jump. The gentle ride is the road alone.
+//
 // No screen, camera or sound in this file, so all of it runs in the unit tests. Distances are in metres along
 // the road from the start line, x is across the road with the right side positive, and a lean is a share of
 // this child's own lean to that side: 1 is as far as a bend ever asks for.
-import { BEND_RAMP, FULL_CURVE, bendShare, nearestApproach, shapeOf } from './road.js';
+import { BEND_RAMP, FULL_CURVE, bendShare, hillsAt, nearestApproach, shapeOf, slopeAt } from './road.js';
 
 export { FULL_CURVE, bendShare };
 
@@ -334,10 +337,51 @@ const FEATURES = {
   sheep: { room: [64, 76], most: 3 },
   bridge: { room: [78, 88], most: 2 },
   ramp: { room: [70, 80], most: 3 },
+  river: { room: [100, 112], most: 2 },
   scooter: { room: [104, 114], most: 2 },
 };
 const FEATURE_ORDER = ['puddle', 'boost', 'sheep', 'bridge', 'ramp', 'scooter'];
+// On the wild ride there are ramps from the start, so they aren't something a level brings, and there's a river.
+const FEATURE_ORDER_WILD = ['puddle', 'boost', 'sheep', 'bridge', 'river', 'scooter'];
 const FEATURE_CHANCE = 0.62;
+// On the wild ride fewer of the straights have something from the levels, which leaves most of them for hills,
+// bales and ramps.
+const FEATURE_CHANCE_WILD = 0.3;
+
+// The wild ride: what's in a straight that has nothing else, how long a straight it needs, and how often.
+const WILD = {
+  crest: { room: [86, 100], share: 0.4 }, // A steep hill, which throws a bike that's going well into the air at its top.
+  both: { room: [124, 138], share: 0.25 }, // Hay bales to steer round, and then a hill.
+  wall: { room: [84, 96], share: 0.2 }, // A ramp at one side, and bales right across the road beyond it, to fly over.
+  bales: { room: [60, 72], share: 0.15 }, // Hay bales across half the road, to steer round.
+  boost: { room: [104, 116], arrows: 16, top: 58 }, // A speed arrow, where there is one, is followed by a hill: a longer jump.
+  balesBefore: 26, // With a hill after them, the bales are this far into the straight, and the hill's top this far.
+  topAfter: 72,
+  slope: { tall: [3, 5.5], round: 24 }, // A bend in three goes downhill, and one in three uphill, by this many metres.
+  hill: { top: 24, up: 30, down: [52, 60], rise: [9.5, 11.5], falls: [0.95, 1.15], round: 5 }, // As steep as a ramp of earth: about 20 degrees.
+  bank: { top: 40, up: 9, down: 4.5, rise: 3, round: 1.2, water: [3, 14] }, // A river: the near bank is a ramp, with a drop to the water just past it.
+  balesAt: 0.55, // How far along its straight a row of bales is.
+  rampAt: 34, // How far into its straight a ramp is,
+  wallAfter: 13, // and how far past it the bales it flies over.
+  // The stars in the air: how far past the top of a hill, a ramp or a river's bank each is, and how high over
+  // the road there, which is about where a bike going well flies.
+  airStars: { hill: [[8, 1.6], [15, 2], [22, 1.5]], ramp: [[6, 2], [11, 2], [16, 1.2]], bank: [[6, 4.4], [11, 4.8], [16, 4]] },
+};
+// The other riders in the race: where they start, how good each is, and how the race is kept close.
+export const RIVAL = {
+  grid: 7, // Metres between one rider and the next on the start line, with the child at the back.
+  lanes: [-2.2, 2.2, -1.1, 1.1, 0],
+  skills: [1, 1.05, 1.09, 1.13, 1.16], // Each one's speed, as a share of the bike's own steady speed.
+  far: 70, // A rider this far in front of the child has eased off as much as they will, and one this far behind is trying their hardest,
+  band: 0.14, // which is this share slower, or faster.
+  sees: 42, // Metres ahead that a rider sees what's in the way,
+  room: 0.9, // how much room they leave it,
+  across: 3, // and how fast they go across the road, in metres a second.
+  slips: 0.14, // The chance that a rider doesn't get out of the way of something.
+  slowed: 2, // Seconds a rider takes to get going again after hitting something.
+};
+// How good the other riders are, by the grown-ups' setting: their speed, as a share of what's above.
+export const RIVALRY = { easy: 0.93, medium: 1.035, hard: 1.09 };
 
 export const NEW_THINGS = {
   2: [{ id: 'star', mark: '⭐', name: 'Gold stars', nameKa: 'ოქროს ვარსკვლავები' }],
@@ -350,12 +394,17 @@ export const NEW_THINGS = {
   9: [{ id: 'scooter', mark: '🛵', name: 'A friend to pass', nameKa: 'მეგობარი, რომელსაც გაუსწრებ' }],
   10: [{ id: 'snow', mark: '⛄', name: 'Snow at the top, and the cup', nameKa: 'თოვლი მწვერვალზე და თასი' }],
 };
+// The wild ride has jumps from the start, so what level 7 brings to it is a river to jump.
+export const NEW_THINGS_WILD = { ...NEW_THINGS, 7: [{ id: 'river', mark: '🌊', name: 'A river to jump', nameKa: 'მდინარე, რომელსაც უნდა გადაახტე' }] };
 const clampLevel = (level) => clamp(Math.round(Number(level) || 1), 1, 10);
-export const newThingsAt = (level) => NEW_THINGS[clampLevel(level)] ?? [];
+export const newThingsAt = (level, wild = false) => (wild ? NEW_THINGS_WILD : NEW_THINGS)[clampLevel(level)] ?? [];
 /** What's new at a level, for the cards: nothing at level 1. */
-export const newAt = (level) => newThingsAt(level).map(({ mark, name, nameKa }) => ({ mark, name, nameKa }));
+export const newAt = (level, wild = false) => newThingsAt(level, wild).map(({ mark, name, nameKa }) => ({ mark, name, nameKa }));
 /** Everything a level has that level 1 hasn't, the newest last, for naming each thing the first time it comes. */
-export const thingsUpTo = (level) => Object.keys(NEW_THINGS).map(Number).filter((from) => from <= clampLevel(level)).flatMap((from) => NEW_THINGS[from]);
+export const thingsUpTo = (level, wild = false) => {
+  const things = wild ? NEW_THINGS_WILD : NEW_THINGS;
+  return Object.keys(things).map(Number).filter((from) => from <= clampLevel(level)).flatMap((from) => things[from]);
+};
 
 const ramp = (level, from, to) => from + ((to - from) * (level - 1)) / 9;
 
@@ -365,10 +414,13 @@ const ramp = (level, from, to) => from + ((to - from) * (level - 1)) / 9;
  * bends a little tighter, and a bike a fifth faster by level 10, which still leaves over 80% of level 1's
  * time to see what's coming. With friends it's the plain road with its stars and speed arrows, at any level.
  */
-export function rideLevel(level = 1, plain = false) {
+export function rideLevel(level = 1, plain = false, wild = false) {
   const at = clampLevel(level);
+  // With friends it's the road alone: they are each other's race.
+  const race = wild && !plain;
   return {
     level: at,
+    wild: race,
     cruise: ramp(at, 15, 18.2), // Metres a second.
     need: [ramp(at, 0.5, 0.6), ramp(at, 0.58, 0.78)], // How much of a whole lean the bends need.
     star: plain || at >= 2,
@@ -376,11 +428,19 @@ export function rideLevel(level = 1, plain = false) {
     boost: plain || at >= 4,
     sheep: !plain && at >= 5,
     bridge: !plain && at >= 6,
-    ramp: !plain && at >= 7,
+    // The wild ride has ramps from the start, and from level 7 a river to jump.
+    ramp: !plain && (race || at >= 7),
+    river: race && at >= 7,
     big: !plain && at >= 8,
     scooter: !plain && at >= 9,
     snow: !plain && at >= 10,
     cup: !plain && at >= 10,
+    // The wild ride is a race: how many other riders there are, and how many of the road's empty straights
+    // have a hill, a row of bales or a ramp in them.
+    rivals: race ? (at < 6 ? 4 : 5) : 0,
+    busy: race ? ramp(at, 0.8, 0.96) : 0,
+    // And how many of those have a second jump after the first: more as the levels go up.
+    doubles: race ? ramp(at, 0.15, 0.7) : 0,
     plain,
   };
 }
@@ -401,8 +461,8 @@ export function layOut(options = {}, room = ROOM_BETWEEN) {
   return plan;
 }
 
-function layOutOnce({ level = 1, bends = 10, favour = 'even', side = 'left', random = Math.random, plain = false } = {}) {
-  const rules = rideLevel(level, plain);
+function layOutOnce({ level = 1, bends = 10, favour = 'even', side = 'left', random = Math.random, plain = false, wild = false } = {}) {
+  const rules = rideLevel(level, plain, wild);
   const count = BEND_COUNTS.includes(bends) ? bends : 10;
   const between = ([low, high]) => low + (high - low) * random();
   const pick = (list) => list[Math.min(list.length - 1, Math.floor(random() * list.length))];
@@ -430,9 +490,9 @@ function layOutOnce({ level = 1, bends = 10, favour = 'even', side = 'left', ran
 
   // What's in each straight between two bends. The newest thing comes first, so it's met right away, and
   // again in the second half.
-  const unlocked = FEATURE_ORDER.filter((name) => rules[name]);
-  const newest = newThingsAt(level).map(({ id }) => id).find((id) => unlocked.includes(id)) ?? null;
-  const used = Object.fromEntries(FEATURE_ORDER.map((name) => [name, 0]));
+  const unlocked = (rules.wild ? FEATURE_ORDER_WILD : FEATURE_ORDER).filter((name) => rules[name]);
+  const newest = newThingsAt(level, rules.wild).map(({ id }) => id).find((id) => unlocked.includes(id)) ?? null;
+  const used = Object.fromEntries(Object.keys(FEATURES).map((name) => [name, 0]));
   const features = new Array(count).fill(null); // features[i] is in the straight after bend i - 1. 0 is the start.
   const take = (slot, name) => {
     if (!name || features[slot] || used[name] >= FEATURES[name].most) return false;
@@ -444,15 +504,52 @@ function layOutOnce({ level = 1, bends = 10, favour = 'even', side = 'left', ran
     take(1, newest);
     take(Math.min(count - 1, Math.ceil(count / 2) + 1), newest);
   }
+  const chance = rules.wild ? FEATURE_CHANCE_WILD : FEATURE_CHANCE;
   for (let slot = 1; slot < count; slot += 1) {
-    if (features[slot] || !unlocked.length || random() >= FEATURE_CHANCE) continue;
+    if (features[slot] || !unlocked.length || random() >= chance) continue;
     const free = unlocked.filter((name) => used[name] < FEATURES[name].most);
     if (free.length) take(slot, pick(free));
   }
 
+  // On the wild ride, a straight with nothing else in it has a hill, a row of bales or a ramp, most of the time.
+  const wilds = features.map((feature, slot) => {
+    if (!rules.wild || feature || slot === 0 || random() >= rules.busy) return null;
+    let roll = random();
+    for (const kind of ['crest', 'both', 'wall', 'bales']) {
+      if (roll < WILD[kind].share) return kind;
+      roll -= WILD[kind].share;
+    }
+    return 'bales';
+  });
+
+  const slopesFrom = rules.wild ? Math.floor(random() * 3) : 0;
   const list = [];
   const things = [];
+  const hills = [];
   const add = (thing) => things.push(thing);
+  // Stars in the air, past the top of a hill or a ramp, for a bike that's flying.
+  const airStars = (top, from, x = 0) => {
+    if (rules.star) for (const [past, high] of WILD.airStars[from]) add({ kind: 'star', at: top + past, x, air: true, high });
+  };
+  // A hill, with stars in the air past its top.
+  const hillAt = (top) => {
+    const rise = between(WILD.hill.rise);
+    hills.push({ at: top, up: WILD.hill.up, down: between(WILD.hill.down), rise, drop: rise * between(WILD.hill.falls), round: WILD.hill.round });
+    airStars(top, 'hill');
+  };
+  // Hay bales across half the road, to one side, or across the middle of it with a way round on each side.
+  const balesAt = (where, side) => {
+    const middle = random() < 0.34;
+    add({ kind: 'barrier', at: where, x: middle ? 0 : side * 2.1, reach: middle ? 1.5 : 2 });
+  };
+  // A ramp at one side of the road, and bales right across it beyond, which only a bike off the ramp gets over.
+  const wallAt = (from, side) => {
+    const ramp = from + WILD.rampAt;
+    add({ kind: 'ramp', at: ramp, x: side * 1.7, reach: 1.5 });
+    add({ kind: 'barrier', at: ramp + WILD.wallAfter, x: 0, reach: ROAD.half + ROAD.verge, wall: true });
+    // Stars over the ramp's side of the road, where the bike that took it is.
+    airStars(ramp, 'ramp', side * 1.7);
+  };
   let at = ROAD.start;
   for (let i = 0; i < count; i += 1) {
     const big = i === bigIndex;
@@ -463,6 +560,16 @@ function layOutOnce({ level = 1, bends = 10, favour = 'even', side = 'left', ran
     const length = big ? BIG.turn / (BIG.need * FULL_CURVE) + onset : 2 * onset + between(holds) * rules.cruise;
     const bend = { index: i, from: at, to: at + length, turn: turns[i], need, big, ramp: onset };
     list.push(bend);
+    // On the wild ride some bends go downhill, where the bike is faster, and some uphill, where it's slower.
+    if (rules.wild) {
+      // One downhill, one uphill, one on the level, and round again, from wherever this road starts.
+      const way = ['down', 'up', 'level'][(i + slopesFrom) % 3];
+      const tall = between(WILD.slope.tall);
+      // A slope is a hill with one side to it: it comes on, and goes off, gently, so no bike leaves the ground for it.
+      const turn = WILD.slope.round / 2;
+      if (way === 'down') hills.push({ at: bend.from, up: turn, rise: 0, down: length, drop: tall, round: WILD.slope.round, slope: 'down' });
+      else if (way === 'up') hills.push({ at: bend.to, up: length, rise: tall, down: turn, drop: 0, round: WILD.slope.round, slope: 'up' });
+    }
     if (rules.star) {
       // Stars down the middle of the bend, for the bike that's leaning as far as the bend needs.
       const stars = big ? 5 : 3;
@@ -474,21 +581,54 @@ function layOutOnce({ level = 1, bends = 10, favour = 'even', side = 'left', ran
 
     // The straight after it, and what's in it.
     const feature = features[i + 1];
-    const gap = feature ? between(FEATURES[feature].room) : between(GAP_LENGTH);
+    const wildOne = wilds[i + 1];
+    // On the wild ride a speed arrow is followed by a hill, which takes a longer straight.
+    const boosted = rules.wild && feature === 'boost';
+    const gap = boosted ? between(WILD.boost.room) : feature ? between(FEATURES[feature].room) : wildOne ? between(WILD[wildOne].room) : between(GAP_LENGTH);
     const from = at;
     const to = at + gap;
     const middle = (from + to) / 2;
     const oneSide = (random() < 0.5 ? -1 : 1);
     if (feature === 'puddle') add({ kind: 'puddle', at: middle, x: oneSide * 2.1, reach: 1.9 });
-    else if (feature === 'boost') add({ kind: 'boost', at: middle, x: oneSide * 2.1, reach: 1.7 });
+    else if (boosted) {
+      add({ kind: 'boost', at: from + WILD.boost.arrows, x: oneSide * 2.1, reach: 1.7 });
+      hillAt(from + WILD.boost.top);
+    } else if (feature === 'boost') add({ kind: 'boost', at: middle, x: oneSide * 2.1, reach: 1.7 });
     else if (feature === 'sheep') add({ kind: 'sheep', at: middle + 6, x: oneSide * 1.6, reach: 1.9 });
     else if (feature === 'ramp') add({ kind: 'ramp', at: middle, x: oneSide * 1.7, reach: 1.5 });
     else if (feature === 'bridge') add({ kind: 'bridge', at: from + 18, from: from + 18, to: to - 16 });
     else if (feature === 'scooter') add({ kind: 'scooter', at: from + 46, from: from + 46, to: to - 14, x: oneSide * 2, reach: 1.9 });
-    else if (rules.star && random() < 0.5) {
+    else if (feature === 'river') {
+      // The near bank is a ramp right across the road, and the water starts just past the top of it.
+      const top = from + WILD.bank.top;
+      hills.push({ at: top, up: WILD.bank.up, down: WILD.bank.down, rise: WILD.bank.rise, drop: WILD.bank.rise, round: WILD.bank.round, bank: true });
+      add({ kind: 'river', at: top + WILD.bank.water[0], from: top + WILD.bank.water[0], to: top + WILD.bank.water[1] });
+      airStars(top, 'bank');
+    } else if (wildOne === 'crest') {
+      hillAt(from + WILD.hill.top);
+    } else if (wildOne === 'both') {
+      balesAt(from + WILD.balesBefore, oneSide);
+      hillAt(from + WILD.topAfter);
+    } else if (wildOne === 'bales') {
+      balesAt(from + gap * WILD.balesAt, oneSide);
+    } else if (wildOne === 'wall') {
+      wallAt(from, oneSide);
+    } else if (rules.star && random() < 0.5) {
       for (let n = -1; n <= 1; n += 1) add({ kind: 'star', at: middle + n * STAR_GAP, x: oneSide * STAR_SIDE });
     }
     at = to;
+    // A second jump in some straights, after whatever came first: a ramp where that had a hill, and a hill
+    // where it hadn't. Not after a scooter, which wants the road to itself.
+    if (rules.wild && (wildOne || (feature && feature !== 'scooter')) && random() < rules.doubles) {
+      const hadHill = wildOne === 'crest' || wildOne === 'both' || boosted || feature === 'river';
+      if (hadHill) {
+        wallAt(at, -oneSide);
+        at += between(WILD.wall.room);
+      } else {
+        hillAt(at + WILD.hill.top);
+        at += between(WILD.crest.room);
+      }
+    }
   }
   const length = at + ROAD.end;
   // At level 10 the top of the road is under snow, and the stars up there are heaps of snow to burst through.
@@ -497,10 +637,26 @@ function layOutOnce({ level = 1, bends = 10, favour = 'even', side = 'left', ran
     for (const thing of things) if (thing.kind === 'star' && thing.at >= snowFrom) thing.kind = 'snow';
   }
   things.sort((a, b) => a.at - b.at);
+  // The other riders in the race: each a little better or worse than the next, in the order they line up, with
+  // the best of them furthest back, just in front of the child. Each will fail to get out of the way of a few
+  // of the things in the road, which is where they can be caught.
+  const barriers = things.filter(({ kind }) => kind === 'barrier');
+  const rivals = [];
+  for (let n = 0; n < rules.rivals; n += 1) {
+    const skill = RIVAL.skills[Math.round((n * (RIVAL.skills.length - 1)) / Math.max(1, rules.rivals - 1))];
+    rivals.push({
+      skill,
+      lane: RIVAL.lanes[n % RIVAL.lanes.length],
+      from: (rules.rivals - n) * RIVAL.grid,
+      slips: barriers.map(() => random() < RIVAL.slips),
+    });
+  }
   return {
     rules,
     bends: list,
     things,
+    hills,
+    rivals,
     length,
     snowFrom,
     stars: things.filter(({ kind }) => kind === 'star').length,
@@ -543,10 +699,19 @@ export const BIKE = {
   rollFollow: 5, // How quickly the bike tips over to follow the child's lean, per second.
   starReach: 1.5,
   snowReach: 1.7,
-  jumpSeconds: 1.5,
-  jumpHeight: 2.1,
-  jumpLeast: 6, // A bike slower than this rolls over a ramp and doesn't fly.
+  jumpSeconds: 1.5, // About how long a jump off a ramp lasts, for how the rider sits through it.
+  jumpLeast: 6, // A bike slower than this rolls over a ramp, or the top of a hill, and doesn't fly.
+  gravity: 9, // Metres a second, each second, that a bike in the air falls faster.
+  kick: 0.5, // How steep a ramp is: a bike going over it goes up at this share of its speed.
+  takeOff: 1.15, // The road has to fall away from under the bike this many times as fast as the bike can fall, for it to fly.
+  climb: 0.25, // On a hill the bike is slower by this share of how steep the hill is,
+  descend: 0.9, // and faster down one by this share.
+  crash: 0.3, // The share of its speed the bike keeps after going through a row of hay bales.
+  wade: 0.4, // And the share it has in a river.
 };
+// A trick: a lean held in the air, which is the game's own move with nothing in the way of it. In the air a
+// lean doesn't steer, so it costs nothing, and a trick landed is a burst of speed: it's how a race is won.
+export const TRICK = { share: 0.6, seconds: 0.5, boost: 1.6 };
 /** How far over the bike tips for a lean, in radians: as its turn does, by a logarithm, up to BIKE.leanMost. */
 export const rollFor = (share) => clamp(turnOf(share) / turnOf(LEAN.most), -1, 1) * BIKE.leanMost;
 
@@ -572,9 +737,9 @@ export class Ride {
    * level, bends, favour and side lay the road out: see layOut. pace is the grown-ups' setting for how fast
    * the bike goes. team is true when friends ride together, as one convoy. onEvent hears what happens.
    */
-  constructor({ level = 1, bends = 10, favour = 'even', side = 'left', pace = 'usual', help = 'some', random = Math.random, plain = false, team = false, leaner = null, plan = null, onEvent = () => {} } = {}) {
+  constructor({ level = 1, bends = 10, favour = 'even', side = 'left', pace = 'usual', help = 'some', random = Math.random, plain = false, wild = false, rivalry = 'medium', team = false, leaner = null, plan = null, onEvent = () => {} } = {}) {
     // A ride already laid out can be handed in, as the tests do.
-    this.plan = plan ?? layOut({ level, bends, favour, side, random, plain });
+    this.plan = plan ?? layOut({ level, bends, favour, side, random, plain, wild });
     this.rules = this.plan.rules;
     this.levelNumber = this.rules.level;
     this.plain = plain;
@@ -590,7 +755,13 @@ export class Ride {
     this.things = this.plan.things.map((thing) => ({ ...thing, done: false }));
     this.bridges = this.things.filter(({ kind }) => kind === 'bridge');
     // What the bike goes past, in the order it comes to them, and what can be in its way.
-    this.passing = this.things.filter(({ kind }) => ['star', 'snow', 'puddle', 'boost', 'ramp', 'sheep'].includes(kind));
+    this.passing = this.things.filter(({ kind }) => ['star', 'snow', 'puddle', 'boost', 'ramp', 'sheep', 'barrier'].includes(kind));
+    this.barriers = this.things.filter(({ kind }) => kind === 'barrier');
+    this.rivers = this.things.filter(({ kind }) => kind === 'river');
+    // The other riders in the race, lined up in front of the child, who starts last.
+    this.rivalry = RIVALRY[rivalry] ?? RIVALRY.medium;
+    this.rivals = (this.plan.rivals ?? []).map((rival, id) => ({ ...rival, id, s: rival.from, x: rival.lane, v: 0, vy: 0, height: 0, air: false, roll: 0, slowLeft: 0, next: 0, done: false, time: null }));
+    this.place = this.rivals.length + 1;
     this.scooters = this.things.filter(({ kind }) => kind === 'scooter');
     for (const scooter of this.scooters) scooter.pos = scooter.from;
     this.blockers = this.things.filter(({ kind }) => kind === 'sheep' || kind === 'scooter');
@@ -600,7 +771,9 @@ export class Ride {
     this.v = 0;
     this.roll = 0; // How far over the bike is, in radians, the right side positive.
     this.height = 0; // Off the ground, in a jump.
-    this.air = null;
+    this.vy = 0; // How fast the bike is going up, in metres a second: with the ground, or by itself in the air.
+    this.air = null; // In the air: { t, peak, lean, side }.
+    this.wet = null; // The river the bike is wading through.
     this.flow = 0;
     this.boostLeft = 0;
     this.splashLeft = 0;
@@ -626,6 +799,15 @@ export class Ride {
       splashes: 0,
       boosts: 0,
       jumps: 0,
+      air: 0, // Seconds in the air, in all,
+      bestAir: 0, // and in the longest jump.
+      tricks: 0,
+      crashes: 0, // Rows of bales gone through,
+      cleared: 0, // and flown over.
+      rivers: 0, // Rivers jumped,
+      wades: 0, // and waded.
+      riders: this.rivals.length + 1,
+      place: null, // Where the child came in the race, once it's over.
       passed: 0,
       stops: 0,
       medal: false,
@@ -731,6 +913,10 @@ export class Ride {
     if (this.boostLeft > 0) wanted *= BIKE.boost;
     if (this.splashLeft > 0) wanted *= BIKE.splash;
     if (this.offRoad || this.towed) wanted *= BIKE.verge;
+    // Slower up a hill and faster down one, and slow through a river.
+    const hill = hillsAt(this.plan, this.s);
+    wanted *= hill > 0 ? 1 - BIKE.climb * hill : 1 + BIKE.descend * -hill;
+    if (this.wet) wanted *= BIKE.wade;
     wanted *= this.convoy(mates);
     if (this.waiting) wanted = 0;
     wanted = Math.min(wanted, this.blockedTo(dt));
@@ -762,7 +948,7 @@ export class Ride {
 
     const before = this.s;
     this.s = Math.min(this.plan.length, this.s + this.v * dt);
-    if (flying) this.fly(dt);
+    this.rise(dt, share);
 
     // On or off the tarmac.
     const off = !flying && Math.abs(this.x) > this.halfAt(this.s) + 1e-6;
@@ -781,6 +967,8 @@ export class Ride {
     this.passThings();
     this.moveScooters(dt);
     this.crossBridges();
+    this.crossRivers();
+    this.race(dt);
 
     if (this.s >= this.plan.length) this.finish();
   }
@@ -951,16 +1139,55 @@ export class Ride {
     }
   }
 
-  fly(dt) {
-    const { air } = this;
+  /**
+   * Up and down. On the ground the bike goes up and down with the road. Over the top of a steep hill, or the
+   * end of a ramp, the road drops away from under a bike that's going well faster than the bike can fall, and
+   * then it flies, until it comes down to the road again. The faster it was going, the further it flies.
+   */
+  rise(dt, share) {
+    const ground = this.v * slopeAt(this.plan, this.s);
+    const { air, stats } = this;
+    if (!air) {
+      // How fast the road's climb is falling off under the bike, in metres a second, each second.
+      const dropping = (this.vy - ground) / Math.max(dt, 1e-6);
+      if (this.v >= BIKE.jumpLeast && dropping > BIKE.gravity * BIKE.takeOff) {
+        const falling = this.vy - BIKE.gravity * dt;
+        this.takeOff(falling, { crest: true });
+        this.height = Math.max(0, (falling - ground) * dt);
+      } else {
+        this.vy = ground;
+      }
+      return;
+    }
     air.t += dt;
-    const share = air.t / BIKE.jumpSeconds;
-    this.height = Math.max(0, 4 * BIKE.jumpHeight * share * (1 - share));
-    if (share < 1) return;
+    this.vy -= BIKE.gravity * dt;
+    this.height += (this.vy - ground) * dt;
+    if (this.height > air.peak) air.peak = this.height;
+    // A lean held in the air is a trick: one to a jump.
+    if (Math.abs(share) >= TRICK.share) {
+      air.lean += dt;
+      air.side = share < 0 ? 'left' : 'right';
+    }
+    if (this.height > 0) return;
     this.air = null;
     this.height = 0;
-    this.stats.jumps += 1;
-    this.onEvent({ type: 'land' });
+    this.vy = ground;
+    stats.jumps += 1;
+    stats.air += air.t;
+    if (air.t > stats.bestAir) stats.bestAir = air.t;
+    const trick = air.lean >= TRICK.seconds;
+    if (trick) {
+      stats.tricks += 1;
+      this.boostLeft = Math.max(this.boostLeft, TRICK.boost);
+    }
+    this.onEvent({ type: 'land', seconds: air.t, peak: air.peak, trick, side: trick ? air.side : null });
+  }
+
+  /** Off the ground, going up this fast. */
+  takeOff(up, more = {}) {
+    this.vy = up;
+    this.air = { t: 0, peak: 0, lean: 0, side: null };
+    this.onEvent({ type: 'jump', ...more });
   }
 
   passBends(before) {
@@ -996,7 +1223,8 @@ export class Ride {
       thing.done = true;
       const near = Math.abs(this.x - thing.x);
       const grounded = this.air === null;
-      if (thing.kind === 'star' && near <= BIKE.starReach) {
+      if (thing.kind === 'star' && near <= BIKE.starReach && (!thing.air || !grounded)) {
+        // A star in the air is for a bike that's flying.
         thing.taken = true;
         stats.stars += 1;
         this.onEvent({ type: 'star', thing });
@@ -1016,8 +1244,20 @@ export class Ride {
         this.onEvent({ type: 'boost', thing });
       } else if (thing.kind === 'ramp' && grounded && near <= thing.reach && this.v >= BIKE.jumpLeast) {
         thing.taken = true;
-        this.air = { t: 0 };
-        this.onEvent({ type: 'jump', thing });
+        this.takeOff(Math.max(this.vy, this.v * BIKE.kick), { thing });
+      } else if (thing.kind === 'barrier' && !thing.gone && near <= thing.reach) {
+        // Hay bales: flown over, or gone through, which bursts them and costs most of the bike's speed.
+        if (grounded) {
+          thing.gone = true;
+          thing.taken = true;
+          this.v *= BIKE.crash;
+          this.flow = 0;
+          stats.crashes += 1;
+          this.onEvent({ type: 'crash', thing });
+        } else {
+          stats.cleared += 1;
+          this.onEvent({ type: 'clear', thing });
+        }
       } else if (thing.kind === 'sheep' && !thing.stopped) {
         stats.passed += 1;
         this.onEvent({ type: 'pass', kind: 'sheep', thing });
@@ -1032,10 +1272,124 @@ export class Ride {
     this.onEvent({ type: on ? 'bridge' : 'bridge-end' });
   }
 
+  /**
+   * A river: a bike in the air goes over it, and one that comes down in it, or rolls into it, wades through
+   * slowly. One that never touched the water has jumped it.
+   */
+  crossRivers() {
+    const grounded = this.air === null;
+    for (const river of this.rivers) {
+      if (river.done) continue;
+      if (this.s > river.to) {
+        river.done = true;
+        if (this.wet === river) this.wet = null;
+        if (!river.waded) {
+          this.stats.rivers += 1;
+          this.onEvent({ type: 'river', thing: river });
+        }
+      } else if (grounded && this.s >= river.from && !river.waded) {
+        river.waded = true;
+        this.wet = river;
+        this.flow = 0;
+        this.stats.wades += 1;
+        this.onEvent({ type: 'wade', thing: river });
+      }
+    }
+  }
+
+  /**
+   * The other riders. Each keeps to their own line and their own speed, goes round what's in the way, unless
+   * it's one they were always going to hit, and flies off the hills as the child's bike does. The race is kept
+   * close: a rider a long way in front eases off, and one a long way behind tries harder. With nobody in the
+   * picture, they wait too.
+   */
+  race(dt) {
+    const { rivals, plan } = this;
+    if (!rivals.length) return;
+    if (this.waiting !== 'away') {
+      for (const rival of rivals) {
+        if (rival.done) continue;
+        const hill = hillsAt(plan, rival.s);
+        const band = 1 + clamp((this.s - rival.s) / RIVAL.far, -1, 1) * RIVAL.band;
+        let wanted = this.cruise * rival.skill * this.rivalry * band * (hill > 0 ? 1 - BIKE.climb * hill : 1 + BIKE.descend * -hill);
+        if (rival.slowLeft > 0) wanted *= BIKE.crash;
+        if (this.rivers.some(({ from, to }) => !rival.air && rival.s >= from && rival.s <= to)) wanted *= BIKE.wade;
+        rival.slowLeft = Math.max(0, rival.slowLeft - dt);
+        if (!rival.air) rival.v += clamp(wanted - rival.v, -BIKE.brake * dt, BIKE.speedUp * dt);
+
+        // What's next in the way, and which side of it to go.
+        while (rival.next < this.barriers.length && this.barriers[rival.next].at < rival.s) rival.next += 1;
+        const barrier = this.barriers[rival.next];
+        let line = rival.lane;
+        if (barrier && !barrier.gone && barrier.at - rival.s <= RIVAL.sees && !rival.slips[rival.next]) {
+          if (barrier.wall) {
+            // Bales right across: the ramp before them is the only way over.
+            const ramp = this.things.find((thing) => thing.kind === 'ramp' && thing.at < barrier.at && barrier.at - thing.at < 30);
+            if (ramp && rival.s < ramp.at) line = ramp.x;
+          } else if (Math.abs(rival.lane - barrier.x) < barrier.reach + RIVAL.room) {
+            const side = barrier.x > 0.1 ? -1 : barrier.x < -0.1 ? 1 : rival.lane < 0 ? -1 : 1;
+            line = clamp(barrier.x + side * (barrier.reach + RIVAL.room), -(ROAD.half - 0.5), ROAD.half - 0.5);
+          }
+        }
+        const across = clamp(line - rival.x, -RIVAL.across * dt, RIVAL.across * dt);
+        if (!rival.air) rival.x += across;
+        // Leaning into the bends, and into their own way across the road.
+        const lean = this.needAt(rival.s) * 0.9 + clamp(across / Math.max(dt, 1e-6) / RIVAL.across, -1, 1) * 0.35;
+        rival.roll += (rollFor(lean) - rival.roll) * (1 - Math.exp(-BIKE.rollFollow * dt));
+
+        const from = rival.s;
+        rival.s = Math.min(plan.length, rival.s + rival.v * dt);
+        // Up and down, as the child's bike: see rise().
+        const ground = rival.v * slopeAt(plan, rival.s);
+        if (rival.air) {
+          rival.vy -= BIKE.gravity * dt;
+          rival.height += (rival.vy - ground) * dt;
+          if (rival.height <= 0) {
+            rival.air = false;
+            rival.height = 0;
+            rival.vy = ground;
+          }
+        } else if (rival.v >= BIKE.jumpLeast && (rival.vy - ground) / Math.max(dt, 1e-6) > BIKE.gravity * BIKE.takeOff) {
+          rival.air = true;
+          rival.vy -= BIKE.gravity * dt;
+          rival.height = Math.max(0, (rival.vy - ground) * dt);
+        } else {
+          rival.vy = ground;
+        }
+        // Ramps and bales they come to.
+        for (const thing of this.passing) {
+          if (thing.at <= from || thing.at > rival.s) continue;
+          const near = Math.abs(rival.x - thing.x);
+          if (thing.kind === 'ramp' && !rival.air && near <= thing.reach && rival.v >= BIKE.jumpLeast) {
+            rival.air = true;
+            rival.vy = Math.max(rival.vy, rival.v * BIKE.kick);
+          } else if (thing.kind === 'barrier' && !thing.gone && !rival.air && near <= thing.reach) {
+            thing.gone = true;
+            rival.v *= BIKE.crash;
+            rival.slowLeft = RIVAL.slowed;
+            this.onEvent({ type: 'rival-crash', thing, rival: rival.id });
+          }
+        }
+        if (rival.s >= plan.length) {
+          rival.done = true;
+          rival.time = this.elapsed;
+          this.onEvent({ type: 'rival-home', rival: rival.id });
+        }
+      }
+    }
+    const place = 1 + rivals.filter((rival) => rival.done || rival.s > this.s).length;
+    if (place !== this.place) {
+      const before = this.place;
+      this.place = place;
+      this.onEvent({ type: 'place', place, before });
+    }
+  }
+
   finish() {
     if (this.state !== 'riding') return;
     this.state = 'finished';
     this.stats.seconds = this.elapsed;
+    this.stats.place = this.rivals.length ? 1 + this.rivals.filter((rival) => rival.done).length : null;
     this.air = null;
     this.height = 0;
     if (this.rules.cup) {

@@ -85,12 +85,37 @@ export function ride(options = {}, { lean = null, skill = 1, late = 0.35, wobble
   return { game, leaner, events, time, types: events.map(({ type }) => type) };
 }
 
+/**
+ * How a child who's looking where they're going leans on the wild ride: as the road needs, and across it to go
+ * round the bales that are in the way, or to line up with the ramp before a row of them right across.
+ */
+export function looksAhead(game, { skill = 1, sees = 55, tricks = false } = {}) {
+  // A trick: a deep lean for the first part of a jump, and upright again in time to land.
+  if (tricks && game.air && game.air.t < 0.75) return 1;
+  let want = game.needAt(game.s + game.v * 0.25) * skill;
+  const ahead = (thing) => thing.at > game.s && thing.at - game.s < sees && !thing.gone && !thing.taken;
+  const wall = game.things.find((thing) => thing.kind === 'barrier' && thing.wall && ahead(thing));
+  const ramp = wall ? game.things.find((thing) => thing.kind === 'ramp' && thing.at < wall.at && wall.at - thing.at < 30 && thing.at > game.s) : null;
+  const bales = game.things.find((thing) => thing.kind === 'barrier' && !thing.wall && ahead(thing));
+  // A sheep or a scooter in the way, which the bike would stop for, or slow down behind.
+  const where = (thing) => thing.pos ?? thing.at;
+  const block = game.blockers.find((thing) => !thing.done && !thing.aside && where(thing) > game.s && where(thing) - game.s < sees && Math.abs(game.x - thing.x) < thing.reach + 0.6);
+  let to = null;
+  if (ramp) to = ramp.x;
+  else if (bales && Math.abs(game.x - bales.x) < bales.reach + 0.7) to = bales.x + (bales.x > 0.1 ? -1 : bales.x < -0.1 ? 1 : game.x < 0 ? -1 : 1) * (bales.reach + 1);
+  else if (block) to = block.x + (block.x > 0 ? -1 : 1) * (block.reach + 1);
+  if (to !== null && !game.air) want += Math.max(-0.35, Math.min(0.35, (to - game.x) * 0.14));
+  return want;
+}
+
 /** A ride laid out by hand: bends and things as given, on a road that's straight between them. */
-export function planOf({ bends = [], things = [], length = 400, rules = {} } = {}) {
+export function planOf({ bends = [], things = [], hills = [], rivals = [], length = 400, rules = {} } = {}) {
   return {
     rules: { level: 1, cruise: 15, need: [0.5, 0.58], ...rules },
     bends: bends.map((bend, index) => ({ index, big: false, ...bend })),
     things: things.map((thing) => ({ ...thing })).sort((a, b) => a.at - b.at),
+    hills: hills.map((hill) => ({ ...hill })),
+    rivals: rivals.map((rival) => ({ skill: 1, lane: 0, from: 7, slips: [], ...rival })),
     length,
     snowFrom: null,
     stars: things.filter(({ kind }) => kind === 'star').length,

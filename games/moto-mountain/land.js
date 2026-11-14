@@ -14,6 +14,8 @@ const CELL = 7; // Metres between one place the ground's height is worked out an
 const REACH = 132; // How far from the road there's ground.
 const FLAT = [9, 36]; // Level with the road this near it, and fully hilly this far off.
 const QUARTER = Math.PI / 2;
+// A river: how far over the road its water is at the far side, how deep its bed, and how far back its banks start.
+const RIVER = { over: 0.12, deep: 1.6, bank: 7 };
 
 const smooth = (low, high, value) => {
   const t = Math.min(1, Math.max(0, (value - low) / (high - low)));
@@ -120,6 +122,8 @@ function buildGround(shape, plan, theme) {
   const far = new Float32Array(nx * nz);
   const along = new Float32Array(nx * nz);
   const bridges = plan.things.filter(({ kind }) => kind === 'bridge');
+  // Each river, and how high its water is: level with the road where a bike wades out of it.
+  const rivers = plan.things.filter(({ kind }) => kind === 'river').map(({ from, to }) => ({ from, to, water: placeAt(shape, to, 0, {}).y + RIVER.over }));
 
   for (let iz = 0; iz < nz; iz += 1) {
     for (let ix = 0; ix < nx; ix += 1) {
@@ -161,6 +165,22 @@ function buildGround(shape, plan, theme) {
         const mean = around.reduce((sum, other) => sum + before[other], 0) / 4;
         heights[index] = mix(before[index], mean, 0.6 * smooth(13, 30, far[index]));
       }
+    }
+  }
+
+  // A river runs in a bed that crosses the road, under its water, out to where the hillside begins. It's dug
+  // after the evening out, which would fill it in again.
+  for (const { from, to, water } of rivers) {
+    for (let index = 0; index < heights.length; index += 1) {
+      if (!(far[index] < Infinity)) continue;
+      const into = Math.min(along[index] - from, to - along[index]);
+      if (into <= -RIVER.bank) continue;
+      const bed = water - RIVER.deep;
+      // Beside the water the ground comes down to it, and under it the bed is well below. The near bank, which
+      // the road climbs to fly from, keeps the ground under the road and beside it: only further out does it
+      // come down.
+      const beside = into >= 0 ? 1 : smooth(ROAD.half + ROAD.verge, ROAD.half + ROAD.verge + 8, far[index]);
+      heights[index] = mix(heights[index], Math.min(heights[index], bed), smooth(-RIVER.bank, 1, into) * beside);
     }
   }
 

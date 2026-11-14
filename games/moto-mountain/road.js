@@ -34,10 +34,40 @@ export function curveAt(plan, s) {
   return 0;
 }
 
-/** How steeply the road climbs at a place. It's level before the start and comes level again at the top. */
-function slopeAt(plan, s) {
+const HILL_EASE = 10; // A hill's way up starts, and its way down ends, over this many metres.
+
+/**
+ * How steeply one hill has the road climbing at a place, or falling, which is less than nothing. A hill is
+ * { at, up, down, rise, drop, round }: its top is at metres along the road, it's rise metres higher than where
+ * its way up started, up metres before, and the road comes drop metres down again over the down metres after.
+ * It goes over the top in round metres: the fewer, the sharper, and the sooner a bike leaves the ground there.
+ */
+export function hillSlope(hill, s) {
+  const { at, up, down, rise, drop, round = 5 } = hill;
+  if (s <= at - up || s >= at + down) return 0;
+  // It goes over the top within itself, so that the road's climb never changes all at once.
+  const half = Math.min(round / 2, up, down);
+  // A short, sharp side, like a river's bank, eases in and out over less.
+  if (s < at - half) return (rise / up) * smooth((s - (at - up)) / Math.min(HILL_EASE, up / 2));
+  if (s > at + half) return -(drop / down) * smooth((at + down - s) / Math.min(HILL_EASE, down / 2));
+  const over = (s - (at - half)) / (2 * half);
+  return (rise / up) * (1 - over) - (drop / down) * over;
+}
+
+/** How steeply the hills have the road climbing at a place, apart from its steady climb up the mountain. */
+export function hillsAt(plan, s) {
+  let slope = 0;
+  for (const hill of plan.hills ?? []) slope += hillSlope(hill, s);
+  return slope;
+}
+
+/**
+ * How steeply the road climbs at a place: steadily up the mountain, and up and down its hills. It's level
+ * before the start and comes level again at the top.
+ */
+export function slopeAt(plan, s) {
   const into = Math.min(1, Math.max(0, s / 40)) * Math.min(1, Math.max(0, (plan.length + 30 - s) / 60));
-  return SLOPE * (1 + SLOPE_WAVE * Math.sin(s / SLOPE_EVERY)) * into;
+  return SLOPE * (1 + SLOPE_WAVE * Math.sin(s / SLOPE_EVERY)) * into + hillsAt(plan, s);
 }
 
 /**

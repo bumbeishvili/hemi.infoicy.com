@@ -9,8 +9,12 @@ export { test, expect, waitForScreen };
 
 export const GAME = 'moto-mountain';
 
+/**
+ * Opens the game on the gentle ride, the road alone, which is what most of these tests are about: the wild
+ * ride, which is how the game comes, has its own in wild.spec.js, and asks for it with motoRide: 'wild'.
+ */
 export async function openMoto(page, settings = {}, hash = '') {
-  await openGame(page, settings, GAME, hash);
+  await openGame(page, { motoRide: 'gentle', ...settings }, GAME, hash);
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
 }
 
@@ -44,9 +48,17 @@ export async function reachWarmup(page, settings = {}, hash = '') {
   await waitForScreen(page, 'warmup');
 }
 
-/** From the title to riding, skipping the warm-up, so a whole lean is what the setting says. */
-export async function reachPlay(page, settings = {}) {
+/**
+ * From the title to riding, skipping the warm-up, so a whole lean is what the setting says. road is the number
+ * of a road to ride, the same one every time, for a test that's about something only some roads have.
+ */
+export async function reachPlay(page, settings = {}, road = null) {
   await reachWarmup(page, settings);
+  if (road !== null) {
+    await page.evaluate((seed) => {
+      window.__game.game.roadSeed = seed;
+    }, road);
+  }
   await page.locator('#warm-skip').click();
   await waitForScreen(page, 'countdown');
   await waitForScreen(page, 'playing');
@@ -78,6 +90,17 @@ export const state = (page) => page.evaluate(() => {
     flow: ride?.flow,
     onBridge: ride?.onBridge,
     stats: ride && JSON.parse(JSON.stringify(ride.stats)),
+    // The wild ride: in the air, in a river, the race, and what's in the way.
+    air: Boolean(ride?.air),
+    wet: Boolean(ride?.wet),
+    boost: ride?.boostLeft ?? 0,
+    place: ride?.place ?? null,
+    rivals: (ride?.rivals ?? []).map(({ s, x, v, height, done }) => ({ ahead: s - ride.s, x, v, height, done })),
+    hills: (ride?.plan.hills ?? []).map(({ at, slope, bank }) => ({ at, kind: slope ?? (bank ? 'bank' : 'top') })),
+    barriers: (ride?.things ?? []).filter(({ kind }) => kind === 'barrier').map(({ at, x, reach, wall, gone }) => ({ at, x, reach, wall: Boolean(wall), gone: Boolean(gone) })),
+    // How high the bike on the screen is over the road, and how many other riders are drawn.
+    bikeUp: world.rider && world.shape && ride ? world.rider.root.position.y - 0.06 - window.__game.roadY(ride.s, ride.x) : 0,
+    riders: world.rivals.length,
     plan: ride && { length: ride.plan.length, bends: ride.plan.bends.map(({ turn, need, big, from, to }) => ({ turn, need, big, from, to })), kinds: [...new Set(ride.plan.things.map(({ kind }) => kind))], stars: ride.plan.stars, snows: ride.plan.snows, snowFrom: ride.plan.snowFrom },
     share: leaner.share,
     seen: leaner.seen,
@@ -126,7 +149,7 @@ export const personRides = (page, { skill = 1 } = {}) => page.evaluate((child) =
  *   avoid     true has them lean round sheep and scooters
  * Runs until stopChild.
  */
-export const childRides = (page, { skill = 1, late = 0.3, wobble = 0.8, fixed = null, goFor = false, avoid = false } = {}) => page.evaluate((child) => {
+export const childRides = (page, { skill = 1, late = 0.3, wobble = 0.8, fixed = null, goFor = false, avoid = false, looks = false, tricks = false } = {}) => page.evaluate((child) => {
   clearInterval(window.__child);
   const { game, leaner } = window.__game;
   game.onMoves = () => {};
@@ -152,6 +175,20 @@ export const childRides = (page, { skill = 1, late = 0.3, wobble = 0.8, fixed = 
         if (block) want += block.x > 0 ? -0.15 : 0.15;
         else if (prize) want += Math.max(-0.25, Math.min(0.25, (prize.x - ride.x) * 0.1));
       }
+      // On the wild ride, a child who looks where they're going: round the bales that are in the way, and
+      // lined up with the ramp before a row of them right across the road.
+      if (child.looks && !ride.air) {
+        const ahead = (thing) => thing.at > ride.s && thing.at - ride.s < 55 && !thing.gone && !thing.taken;
+        const wall = ride.things.find((thing) => thing.kind === 'barrier' && thing.wall && ahead(thing));
+        const ramp = wall ? ride.things.find((thing) => thing.kind === 'ramp' && thing.at < wall.at && wall.at - thing.at < 30 && thing.at > ride.s) : null;
+        const bales = ride.things.find((thing) => thing.kind === 'barrier' && !thing.wall && ahead(thing));
+        let to = null;
+        if (ramp) to = ramp.x;
+        else if (bales && Math.abs(ride.x - bales.x) < bales.reach + 0.7) to = bales.x + (bales.x > 0.1 ? -1 : bales.x < -0.1 ? 1 : ride.x < 0 ? -1 : 1) * (bales.reach + 1);
+        if (to !== null) want += Math.max(-0.35, Math.min(0.35, (to - ride.x) * 0.14));
+      }
+      // A trick: a deep lean for the first part of a jump, and upright again in time to land.
+      if (child.tricks && ride.air && ride.air.t < 0.75) want = 1;
     }
     wanted.push(want);
     const share = Math.max(-1, Math.min(1, wanted[Math.max(0, wanted.length - 1 - Math.round(child.late / 0.033))] ?? 0));
@@ -162,7 +199,7 @@ export const childRides = (page, { skill = 1, late = 0.3, wobble = 0.8, fixed = 
     const shake = ((Math.sin(frame * 1.7) * 0.6 + Math.sin(frame * 0.53) * 0.4) * child.wobble * Math.PI) / 180 / 2;
     leaner.update(body + shake, dt);
   }, 33);
-}, { skill, late, wobble, fixed, goFor, avoid });
+}, { skill, late, wobble, fixed, goFor, avoid, looks, tricks });
 
 /** The child holds a lean, as a share of a whole one, whatever the road does. null lets them follow the road again. */
 export const childHolds = (page, share) => page.evaluate((value) => {
@@ -180,6 +217,10 @@ export const putBefore = (page, what, { before = 34, x = 0, lane = false } = {})
   const { ride } = window.__game;
   const thing = typeof kind === 'number' ? { at: kind }
     : kind === 'big' ? ride.plan.bends.find((bend) => bend.big)
+      // The top of a steep hill, which a bike flies off, or the bank of a river.
+      : kind === 'crest' ? ride.plan.hills.find((hill) => !hill.slope && !hill.bank && hill.at > ride.s + back)
+        : kind === 'wall' ? ride.things.find((one) => one.kind === 'barrier' && one.wall && !one.gone && one.at > ride.s + back)
+          : kind === 'bales' ? ride.things.find((one) => one.kind === 'barrier' && !one.wall && !one.gone && one.at > ride.s + back)
       : kind === 'top' ? { at: ride.plan.length }
         : kind === 'bend' ? ride.plan.bends.find((bend) => bend.from > ride.s + back)
           : ride.things.find((one) => one.kind === kind && !one.done && (one.from ?? one.at) > ride.s + back);
@@ -195,6 +236,11 @@ export const putBefore = (page, what, { before = 34, x = 0, lane = false } = {})
   ride.idle = 0;
   ride.riding = null;
   ride.towed = null;
+  ride.air = null;
+  ride.height = 0;
+  ride.vy = 0;
+  ride.wet = null;
+  ride.boostLeft = 0;
   ride.nextBend = ride.plan.bends.findIndex((bend) => bend.from > ride.s);
   if (ride.nextBend < 0) ride.nextBend = ride.plan.bends.length;
   ride.nextThing = ride.passing.findIndex((one) => one.at > ride.s);
@@ -203,6 +249,24 @@ export const putBefore = (page, what, { before = 34, x = 0, lane = false } = {})
   window.__game.world.snapNext = true;
   return at;
 }, { kind: what, back: before, across: x, inLane: lane });
+
+/**
+ * Puts the other riders in the race where a test wants them: each so many metres in front of the child's bike,
+ * or behind it with less than nothing, going at the bike's own steady speed, in the order they line up in.
+ */
+export const rivalsAt = (page, offsets) => page.evaluate((list) => {
+  const { ride } = window.__game;
+  ride.rivals.forEach((rival, n) => {
+    if (list[n] === undefined || rival.done) return;
+    rival.s = ride.s + list[n];
+    rival.v = ride.cruise;
+    rival.air = false;
+    rival.height = 0;
+    rival.vy = 0;
+    rival.slowLeft = 0;
+    rival.next = 0;
+  });
+}, offsets);
 
 /** The bike has stopped in a bend to wait for a lean, and is staying there. */
 export const waitingInBend = async (page) => {

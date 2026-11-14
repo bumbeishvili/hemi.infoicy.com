@@ -12,7 +12,7 @@ import { Sparks } from '../../core/body/sparks.js';
 import { BIKE, ROAD, rollFor } from './ride.js';
 import { placeAt, shapeOf } from './road.js';
 import { buildLand } from './land.js';
-import { BIKE_SIZE, buildBike, buildBoost, buildPuddle, buildRamp, buildScooter, buildSheep, buildSnowHeap, buildStar, ridingPose, scooterPose } from './models.js';
+import { BIKE_SIZE, buildBales, buildBike, buildBoost, buildPuddle, buildRamp, buildScooter, buildSheep, buildSnowHeap, buildStar, buildWater, ridingPose, scooterPose } from './models.js';
 
 const MOST_PIXELS = 3_200_000; // A very big screen is drawn a little less sharply, so that it stays quick.
 const SLOW_FRAME_SECONDS = 1 / 45;
@@ -22,6 +22,13 @@ const FOG = [70, 330];
 const START_AT = 0; // Where the bike stands before a ride.
 const COAST = 40; // And how far past the finish it rolls on.
 const MATE_COLOURS = ['#4aa3df', '#27c96b', '#b06ad9'];
+const RIVAL_COLOURS = ['#4aa3df', '#27c96b', '#b06ad9', '#f2a03d', '#e05c9a'];
+const RIVALS_SEEN = [-70, 300]; // The other riders are only drawn this far behind the bike, and this far in front.
+// Where riders who are home wait: past where the child's bike stops, in a row along the grass on the right.
+const PARKED = { from: COAST + 6, apart: 5, across: 5.6 };
+// A rider right behind the child's bike would be between it and the camera, and fill the picture: there they
+// shrink away, and come back as they drop further behind or draw level.
+const IN_THE_WAY = { behind: [-12, -1.4], across: 1.9 };
 const QUARTER = Math.PI / 2;
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -117,8 +124,11 @@ export class World {
     this.quality = 2;
 
     this.sparks = new Sparks(this.scene);
+    this.bikeGoes = new THREE.Vector3(); // How fast the bike is going, and which way, in metres a second.
+    this.bikeWas = new THREE.Vector3();
     this.rider = null;
     this.mates = [];
+    this.rivals = []; // The other riders in the race, each a bike with a character on it.
     this.ride = null;
     this.shape = null;
     this.land = null;
@@ -197,6 +207,13 @@ export class World {
     this.things = new THREE.Group();
     this.scene.add(this.things);
     this.items = ride.things.filter(({ kind }) => kind !== 'bridge').map((thing) => this.buildItem(thing));
+    // The other riders: friends from the others, the same ones each time for the same race.
+    const others = ROSTER.filter(({ id }) => id !== this.rider?.spec.id);
+    this.rivals = ride.rivals.map((rival, index) => {
+      const rider = new Rider(others[(index * 2 + ride.levelNumber) % others.length], RIVAL_COLOURS[index % RIVAL_COLOURS.length]);
+      this.scene.add(rider.root);
+      return rider;
+    });
     this.buildFans();
     this.coast = 0;
     this.wave = 0;
@@ -217,6 +234,8 @@ export class World {
       });
     }
     for (const item of this.items) item.rider?.dispose();
+    for (const rival of this.rivals) rival.dispose();
+    this.rivals = [];
     for (const fan of this.fans) {
       fan.body.root.removeFromParent();
       fan.body.dispose();
@@ -238,6 +257,8 @@ export class World {
       sheep: () => buildSheep(),
       ramp: () => buildRamp(thing.reach),
       scooter: () => buildScooter(),
+      barrier: () => buildBales(thing.reach),
+      river: () => buildWater(thing.to - thing.from + 1.2),
     };
     const object = builders[thing.kind]();
     const item = { thing, object, size: 1, gone: 0, wave: 0 };
@@ -255,18 +276,22 @@ export class World {
     } else {
       this.things.add(object);
     }
-    const at = placeAt(shape, thing.at ?? thing.from, thing.x ?? 0, scratch.a);
-    item.object.position.set(at.x, at.y + 0.06, at.z);
+    // A river's water is flat, at the height of the road at its far side, where a bike wades out of it.
+    const river = thing.kind === 'river';
+    const at = placeAt(shape, river ? (thing.from + thing.to) / 2 : thing.at ?? thing.from, thing.x ?? 0, scratch.a);
+    const y = river ? placeAt(shape, thing.to, 0, scratch.b).y + 0.12 : at.y + 0.06;
+    item.object.position.set(at.x, y, at.z);
     item.object.rotation.y = Math.PI - at.heading;
-    item.baseY = at.y + 0.06;
-    if (thing.kind === 'star') item.baseY += 1.25;
+    item.baseY = y;
+    // A star is at the height of the bike's rider, and one in the air where a bike that's flying is.
+    if (thing.kind === 'star') item.baseY += 1.25 + (thing.high ?? 0);
     return item;
   }
 
   /** Two friends at the top, who cheer as the bike comes in. */
   buildFans() {
     const { shape, ride } = this;
-    const taken = new Set([this.rider?.spec.id, ...this.items.map(({ spec }) => spec?.id), ...this.mates.map(({ spec }) => spec.id)]);
+    const taken = new Set([this.rider?.spec.id, ...this.items.map(({ spec }) => spec?.id), ...this.mates.map(({ spec }) => spec.id), ...this.rivals.map(({ spec }) => spec.id)]);
     const free = ROSTER.filter(({ id }) => !taken.has(id));
     // One up the road on the left, by the hut, and one on the right, where the finish card leaves room to see them.
     const spots = [[ride.plan.length + COAST + 12, -7], [ride.plan.length + COAST + 0.6, 9]];
@@ -320,8 +345,15 @@ export class World {
     return out.set(at.x, at.y + 0.8, at.z);
   }
 
-  /** A burst of small shapes at a place. */
-  burst(at, { shape = 'star', colours = ['#ffd23f'], count = 10, speed = 4, size = 0.5, life = 0.7, gravity = 6, up = 3 }) {
+  /**
+   * A burst of small shapes at a place. withBike has them go along with the bike, as fast as it's going, and not
+   * hang where they were made: the camera is a few metres behind the bike, and half a second later it's where
+   * the bike was. On the ground a burst is under it by then. In the air it would be right in front of it, and
+   * the camera would fly through it: a burst of pale stars filled the middle of the picture there for a frame,
+   * and changed its brightness by 5.8 out of 255, where the most the games allow is 4.
+   */
+  burst(at, { shape = 'star', colours = ['#ffd23f'], count = 10, speed = 4, size = 0.5, life = 0.7, gravity = 6, up = 3, withBike = false }) {
+    const carry = withBike ? this.bikeGoes : null;
     for (let n = 0; n < count; n += 1) {
       const angle = Math.random() * Math.PI * 2;
       const out = speed * (0.4 + Math.random() * 0.6);
@@ -329,12 +361,13 @@ export class World {
         shape,
         colour: colours[n % colours.length],
         at,
-        velocity: [Math.cos(angle) * out, up * (0.5 + Math.random()), Math.sin(angle) * out],
-        life: life * (0.7 + Math.random() * 0.6),
+        velocity: [Math.cos(angle) * out + (carry?.x ?? 0), up * (0.5 + Math.random()) + (carry?.y ?? 0), Math.sin(angle) * out + (carry?.z ?? 0)],
+        life: life * (0.7 + Math.random() * 0.6) * (carry ? 0.75 : 1),
         size: size * (0.7 + Math.random() * 0.6),
         gravity,
         spin: (Math.random() - 0.5) * 6,
-        drag: 1.2,
+        // Carried with the bike, they keep up with it: left to slow down, they'd drift back to the camera.
+        drag: carry ? 0.15 : 1.2,
       });
     }
   }
@@ -345,10 +378,12 @@ export class World {
     const bike = this.rider.root.position;
     const here = scratch.v.set(bike.x, bike.y + 0.9, bike.z);
     const item = event.thing ? this.items.find(({ thing }) => thing === event.thing) : null;
+    // In the air, what bursts at the bike goes along with it: see burst.
+    const withBike = Boolean(this.ride?.air);
     switch (event.type) {
       case 'star':
         if (item) item.gone = 0.0001;
-        this.burst(this.spotOf(event.thing).setY(here.y + 0.3), { shape: 'star', colours: ['#ffd23f', '#fff2bf'], count: 7, size: 0.3 });
+        this.burst(this.spotOf(event.thing).setY(here.y + 0.3), { shape: 'star', colours: ['#ffd23f', '#fff2bf'], count: 7, size: 0.3, withBike });
         break;
       case 'snow':
         if (item) item.gone = 0.0001;
@@ -362,6 +397,22 @@ export class World {
         break;
       case 'land':
         this.burst(here.setY(bike.y + 0.15), { shape: 'puff', colours: ['#e8e2d2'], count: 8, size: 0.7, speed: 3, up: 1, gravity: 0, life: 0.6 });
+        if (event.trick) this.burst(scratch.w.set(bike.x, bike.y + 1.8, bike.z), { shape: 'star', colours: ['#b06ad9', '#f7d154'], count: 9, size: 0.3, speed: 3, up: 3, withBike: true });
+        break;
+      case 'crash':
+      case 'rival-crash':
+        // Hay bales burst into straw, and are gone.
+        if (item) item.gone = 0.0001;
+        this.burst(this.spotOf(event.thing), { shape: 'leaf', colours: ['#f0c960', '#e2b24a', '#fff0b8'], count: event.type === 'crash' ? 22 : 12, size: 0.5, speed: 5, up: 4.5, gravity: 7, life: 0.9 });
+        break;
+      case 'clear':
+        this.burst(here.setY(bike.y + 0.6), { shape: 'star', colours: ['#27c96b', '#baf0cf'], count: 6, size: 0.26, speed: 2.5, up: 2, withBike: true });
+        break;
+      case 'wade':
+        this.burst(here.setY(bike.y + 0.3), { shape: 'bubble', colours: ['#7cc3ee', '#c9e8fb'], count: 20, size: 0.5, speed: 5.5, up: 5.5, gravity: 11 });
+        break;
+      case 'river':
+        this.burst(here.setY(bike.y + 0.6), { shape: 'star', colours: ['#7cc3ee', '#fff2bf'], count: 8, size: 0.3, speed: 3, up: 2.5, withBike: true });
         break;
       case 'clean':
         this.burst(here.setY(bike.y + 1.6), { shape: 'star', colours: ['#27c96b', '#baf0cf'], count: 6, size: 0.26, speed: 2.5, up: 2.5 });
@@ -410,6 +461,7 @@ export class World {
     rider.ride(shape, { s, x: riding ? ride.x : 0, roll, height: ride.height, v: speed, air, yaw }, dt, this.wave * (0.6 + 0.4 * Math.sin(this.time * 7)));
 
     this.updateItems(dt);
+    this.updateRivals(dt);
     this.updateFans(dt);
     this.updateDust(dt, speed);
     this.updateSnowfall(dt, s);
@@ -417,9 +469,42 @@ export class World {
 
     // The sun's shadows are only worked out round the bike.
     const bike = rider.root.position;
+    // How fast it's going, from where it was a frame ago: nothing, for a frame in which it was put somewhere new.
+    if (dt > 0 && bike.distanceTo(this.bikeWas) < 3) this.bikeGoes.copy(bike).sub(this.bikeWas).divideScalar(dt);
+    else this.bikeGoes.set(0, 0, 0);
+    this.bikeWas.copy(bike);
     this.sun.position.set(bike.x - 14, bike.y + 30, bike.z + 12);
     this.sun.target.position.copy(bike);
     this.sparks.update(dt);
+  }
+
+  /**
+   * The other riders, where the rules have them. One who is home waits past the finish, off the road, out of the
+   * way of the child's bike as it rolls up.
+   */
+  updateRivals(dt) {
+    const { shape, ride } = this;
+    let home = 0;
+    this.rivals.forEach((rider, index) => {
+      const rival = ride.rivals[index];
+      if (!rival) return;
+      if (rival.done) {
+        const s = ride.plan.length + PARKED.from + home * PARKED.apart;
+        home += 1;
+        rider.root.visible = true;
+        rider.size = damp(rider.size ?? 1, 1, 8, dt);
+        rider.root.scale.setScalar(rider.size);
+        rider.ride(shape, { s, x: PARKED.across, roll: 0, v: 0 }, dt, this.cheering ? 0.6 + 0.4 * Math.sin(this.time * 7 + index) : 0);
+        return;
+      }
+      const ahead = rival.s - ride.s;
+      const inWay = this.view === 'play' && ahead > IN_THE_WAY.behind[0] && ahead < IN_THE_WAY.behind[1] && Math.abs(rival.x - ride.x * 0.6) < IN_THE_WAY.across;
+      rider.size = damp(rider.size ?? 1, inWay ? 0 : 1, 10, dt);
+      rider.root.visible = ahead > RIVALS_SEEN[0] && ahead < RIVALS_SEEN[1] && rider.size > 0.02;
+      if (!rider.root.visible) return;
+      rider.root.scale.setScalar(rider.size);
+      rider.ride(shape, { s: rival.s, x: rival.x, roll: rival.roll, height: rival.height, v: rival.v, air: rival.air ? 0.5 : 0 }, dt);
+    });
   }
 
   updateItems(dt) {
@@ -524,10 +609,19 @@ export class World {
     let tip = 0;
     if (this.view === 'play') {
       // Behind and above the bike, looking up the road past it.
+      // In the air it looks further up the road and a little higher: what goes by right under a bike that's
+      // flying, a ramp, a row of bales, a river, is then out of the picture sooner, and smaller as it goes.
+      const up = this.ride.height ?? 0;
+      // How high the road is where the camera is, and where it looks, is taken over a stretch of it, not at
+      // one place: over a river's bank, which is three metres up and down again in a few, the camera would
+      // otherwise go up and down with it and tip over its top, and the whole picture with it, in a moment.
+      const high = (along) => (placeAt(shape, along - 6, 0, scratch.b).y + placeAt(shape, along, 0, scratch.b).y + placeAt(shape, along + 6, 0, scratch.b).y) / 3;
+      const backHigh = high(s - 6.2);
+      const frontHigh = high(s + 14 + up * 3);
       const back = placeAt(shape, s - 6.2, x * 0.6, scratch.a);
-      at.set(back.x, back.y + 3.05 + (this.ride.height ?? 0) * 0.5, back.z);
-      const front = placeAt(shape, s + 12, x * 0.3, scratch.b);
-      look.set(front.x, front.y + 1.0, front.z);
+      at.set(back.x, backHigh + 3.05 + up * 0.5, back.z);
+      const front = placeAt(shape, s + 12 + up * 3, x * 0.3, scratch.b);
+      look.set(front.x, frontHigh + 1.0 + up * 0.45, front.z);
       tip = this.reducedMotion ? 0 : roll * CAMERA_TIP;
     } else if (this.view === 'warmup') {
       // From behind, so that the child's left is the bike's left, with the bike to the right of the picture.

@@ -15,6 +15,7 @@ import { FriendsPanel, time as raceTime } from '../../core/friends-ui.js';
 import { BEND_COUNTS, BIKE, HELP, LEAN, Leaner, PACES, Ride, Warmup, newAt as newAtLevel, newThingsAt, turnOf } from './ride.js';
 import { MotoSound } from './moto-sound.js';
 import { Mate, finishMessage, mateRoads, riderMessage, scoreRows, teamStars } from './team.js';
+import { placeAt } from './road.js';
 import { World } from './world.js';
 
 const AFTER_FINISH_SECONDS = 3.2;
@@ -29,8 +30,11 @@ const METER_SPAN = 27;
 const ARROW_FROM = 60; // Metres before a bend at which its arrow comes up.
 const RAD = Math.PI / 180;
 
-const DEFAULTS = { moveSize: 'medium', motoLean: 'medium', motoBends: 10, motoWay: 'even', motoPace: 'usual', motoHelp: 'some', motoFriends: 'together', fighter: 'giraffe' };
-const CHOICES = { motoLean: String, motoBends: Number, motoWay: String, motoPace: String, motoHelp: String, motoFriends: String };
+const DEFAULTS = { moveSize: 'medium', motoLean: 'medium', motoBends: 10, motoWay: 'even', motoPace: 'usual', motoHelp: 'some', motoRide: 'wild', motoRivals: 'medium', motoFriends: 'together', fighter: 'giraffe' };
+const CHOICES = { motoLean: String, motoBends: Number, motoWay: String, motoPace: String, motoHelp: String, motoRide: String, motoRivals: String, motoFriends: String };
+const BIG_AIR_SECONDS = 1.4; // A jump this long is said to be a big one.
+const TRICK_HINTS = 4; // How many jumps a trick is asked for in, until one is landed.
+const ORDINALS = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
 
 // Riding with friends, each on their own computer: see core/friends-ui.js for what each of these is.
 const RIDE_WORDS = {
@@ -65,10 +69,11 @@ const SAY = {
   ready: 'That’s it! You’re ready to ride!',
   left: 'Lean to the left!',
   right: 'Lean to the right!',
+  trick: 'Lean in the air for a trick!',
   top: 'You made it to the top!',
 };
 // The moment something is seen, the child is told so, as words on the screen.
-const SEEN_WORDS = { lean: ['Good lean!', 'კარგი დახრა!'], bend: ['Smooth!', 'მშვენიერია!'] };
+const SEEN_WORDS = { lean: ['Good lean!', 'კარგი დახრა!'], bend: ['Smooth!', 'მშვენიერია!'], air: ['Big air!', 'დიდი ნახტომი!'], trick: ['Trick!', 'ტრიუკი!'], over: ['Over!', 'გადაახტი!'] };
 const HINTS = { left: SAY.left, right: SAY.right };
 const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
@@ -95,11 +100,17 @@ class MotoMountain extends BodyGame {
     this.newLeft = 0;
     this.newGap = 0;
     this.filmFor = null;
+    this.roadSeed = null;
+  }
+
+  /** Whether it's the wild ride, which is how the game comes: a race over hills, with jumps and hay bales. */
+  get wild() {
+    return this.settings?.motoRide !== 'gentle';
   }
 
   /** What a level brings that's new, for the cards: see NEW_THINGS in ride.js. */
   newAt(level) {
-    return newAtLevel(level);
+    return newAtLevel(level, this.wild);
   }
 
   setUp() {
@@ -178,6 +189,8 @@ class MotoMountain extends BodyGame {
       get mates() {
         return game.mates;
       },
+      /** How high the road is at a place, for the tests to say how far over it the bike is drawn. */
+      roadY: (along, across = 0) => placeAt(game.world.shape, along, across, {}).y,
     };
   }
 
@@ -191,6 +204,8 @@ class MotoMountain extends BodyGame {
   settingChanged(change) {
     const { settings } = this;
     if ('motoLean' in change) this.leaner.setSize(settings.motoLean);
+    // What level 7 brings is different on the wild ride, so the cards say it again.
+    if ('motoRide' in change) this.levelUi?.refresh();
     if ('motoFriends' in change && this.friends) {
       if (this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
       this.friends.showTeams();
@@ -388,8 +403,12 @@ class MotoMountain extends BodyGame {
       side: settings.hands,
       pace: friendly && PACES[friendly.mode] ? friendly.mode : settings.motoPace,
       help: settings.motoHelp,
-      random: friendly ? seededRandom(friendly.seed) : Math.random,
+      // A road can be asked for by its number, as the tests do, to ride the same one every time.
+      random: friendly ? seededRandom(friendly.seed) : this.roadSeed !== null ? seededRandom(this.roadSeed) : Math.random,
       plain: Boolean(friendly),
+      // On their own it's the wild ride, unless a grown-up chose the gentle one. Friends are each other's race.
+      wild: !friendly && this.wild,
+      rivalry: settings.motoRivals,
       team: this.team,
       leaner: this.leaner,
       onEvent: (event) => this.onRideEvent(event),
@@ -466,7 +485,10 @@ class MotoMountain extends BodyGame {
     if (ride.state === 'finished') return;
 
     const hint = ride.hint;
+    // In the air there's nothing to steer, and a lean is a trick: said on the first jumps, until one is landed.
+    const trickNow = ride.air !== null && ride.stats.tricks === 0 && ride.stats.jumps < TRICK_HINTS;
     if (lost) this.prompt.show({ key: 'come-back', text: BODY_SAY.comeBack, side: null }, now);
+    else if (trickNow) this.prompt.show({ key: 'trick', text: SAY.trick, side: null }, now);
     else this.prompt.show(hint ? { key: hint, text: HINTS[hint], side: hint } : null, now);
     if (hint && !lost) {
       this.showFilm(hint);
@@ -515,6 +537,16 @@ class MotoMountain extends BodyGame {
     set('bend', Math.min(stats.bends, ride.nextBend), 'bends-done');
     set('bends', stats.bends, 'bends-all');
     set('clean', stats.clean, 'bends-clean');
+    // In a race, where the child is in it.
+    const racing = ride.rivals.length > 0;
+    if (lastNumbers.racing !== racing) {
+      lastNumbers.racing = racing;
+      byElementId('place-chip').hidden = !racing;
+    }
+    if (racing) {
+      set('place', ORDINALS[ride.place - 1] ?? ride.place, 'place');
+      set('riders', ride.rivals.length + 1, 'riders');
+    }
     // Prizes, from the levels that have them, each with its little picture.
     const prizes = [['⭐', stats.stars, ride.plan.stars > 0], ['⛄', stats.snow, ride.plan.snows > 0], ['🏅', 1, stats.medal], ['🏆', 1, stats.cup]].filter(([, , has]) => has);
     const words = prizes.map(([mark, count]) => `${mark} ${count}`).join('  ');
@@ -534,7 +566,7 @@ class MotoMountain extends BodyGame {
   pointOutNew(id) {
     const { ride } = this;
     if (!ride || ride.plain || this.newShown.has(id)) return;
-    const thing = newThingsAt(ride.levelNumber).find((one) => one.id === id);
+    const thing = newThingsAt(ride.levelNumber, ride.rules.wild).find((one) => one.id === id);
     if (!thing) return;
     this.newShown.add(id);
     this.newQueue.push(thing);
@@ -606,7 +638,22 @@ class MotoMountain extends BodyGame {
       splash: () => sound.splash(),
       boost: () => sound.boost(),
       jump: () => sound.jump(),
-      land: () => sound.land(),
+      land: () => {
+        sound.land();
+        const words = event.trick ? SEEN_WORDS.trick : event.seconds >= BIG_AIR_SECONDS ? SEEN_WORDS.air : null;
+        if (event.trick) sound.trick();
+        if (words) this.callout(this.settings.language === 'ka' ? words[1] : words[0], { kind: 'is-seen', ...at() });
+      },
+      crash: () => sound.crash(),
+      clear: () => this.callout(this.settings.language === 'ka' ? SEEN_WORDS.over[1] : SEEN_WORDS.over[0], { kind: 'is-seen', ...at() }),
+      wade: () => sound.wade(),
+      river: () => this.callout('🌊 👍', { kind: 'is-number', ...at() }),
+      place: () => {
+        // A place gained is said, big. One lost isn't.
+        if (event.place >= event.before) return;
+        sound.placeUp();
+        this.callout(ORDINALS[event.place - 1] ?? String(event.place), { kind: 'is-number', ...world.bikeOnScreen(2.6) });
+      },
       'sheep-goes': () => {
         sound.ring();
         sound.sheepGoes();
@@ -651,11 +698,16 @@ class MotoMountain extends BodyGame {
   showFinish() {
     const { ride } = this;
     const { stats } = ride;
-    byElementId('finish-clean').textContent = `${stats.clean} of ${plural(stats.bends, 'bend')}`;
+    const clean = `${stats.clean} of ${plural(stats.bends, 'bend')}`;
+    // After a race, it's where the child came in it that's said biggest.
+    const raced = stats.place !== null;
+    byElementId('finish-clean').textContent = raced ? `${ORDINALS[stats.place - 1] ?? stats.place} of ${stats.riders}` : clean;
+    byElementId('finish-what').textContent = raced ? 'in the race' : 'ridden all on the road';
     const longest = Math.round(stats.longest * 10) / 10;
     const eased = stats.eased.left + stats.eased.right ? ' The bends asked for a little less lean as the ride went on, to meet how far the body goes.' : '';
     const towed = stats.tows ? ` The bike was helped round ${plural(stats.tows, 'bend')}.` : '';
-    byElementId('finish-line').textContent = `${this.chosen.name} leaned ${plural(stats.leans.left, 'time')} to the left and ${plural(stats.leans.right, 'time')} to the right, and the longest lean was held for ${longest} seconds.${eased}${towed}`;
+    const onRoad = raced ? ` ${clean} were ridden all on the road.` : '';
+    byElementId('finish-line').textContent = `${this.chosen.name} leaned ${plural(stats.leans.left, 'time')} to the left and ${plural(stats.leans.right, 'time')} to the right, and the longest lean was held for ${longest} seconds.${onRoad}${eased}${towed}`;
     byElementId('finish-prizes').textContent = this.prizeWords();
     this.fillTallyCards(byElementId('finish-tally'), [
       { name: 'left', icon: 'leanLeft', label: 'Leans to the left', value: stats.leans.left },
@@ -671,6 +723,8 @@ class MotoMountain extends BodyGame {
       this.finishLevel(true);
     }
     this.friends.showResults();
+    // After a race, the card's title says how it went. With friends, the friends box has said it already.
+    if (raced && !this.friends.current && stats.place <= 3) byElementId('finish-title').textContent = stats.place === 1 ? 'You won the race!' : 'On the podium!';
     this.confetti.start();
     this.setScreen('finish');
   }
@@ -682,7 +736,10 @@ class MotoMountain extends BodyGame {
     if (plan.stars) parts.push(`caught ${stats.stars} of ${plural(plan.stars, 'star')}`);
     if (plan.snows) parts.push(`burst ${stats.snow} of ${plural(plan.snows, 'heap')} of snow`);
     if (stats.splashes) parts.push(`splashed through ${plural(stats.splashes, 'puddle')}`);
-    if (stats.jumps) parts.push(`made ${plural(stats.jumps, 'jump')}`);
+    if (stats.jumps) parts.push(`made ${plural(stats.jumps, 'jump')}, with ${Math.round(stats.air)} seconds in the air`);
+    if (stats.tricks) parts.push(`did ${plural(stats.tricks, 'trick')}`);
+    if (stats.rivers) parts.push(`jumped ${plural(stats.rivers, 'river')}`);
+    if (stats.crashes) parts.push(`went through ${plural(stats.crashes, 'row')} of hay bales`);
     if (stats.passed) parts.push(`passed ${stats.passed} on the road`);
     if (stats.medal) parts.push('won the medal for the big bend');
     if (stats.cup) parts.push('won the cup');
@@ -829,11 +886,11 @@ const choice = (name, value, words) => `<label><input type="radio" name="${name}
 
 mountBodyShell({
   title: 'Moto Mountain',
-  tagline: 'Ride a motorbike up the mountain! Lean your body into each bend to stay on the road, all the way to the top.',
+  tagline: 'Race a motorbike up the mountain! Lean your body into each bend, fly off the hills, and beat the other riders to the top.',
   startLabel: 'Choose your rider',
   chooseTitle: 'Who’s riding today?',
   chooseSide: `
-      <p class="choose-tip">Lean to the side, and the bike leans too. Lean into each bend, and hold it until the road is straight again.</p>
+      <p class="choose-tip">Lean to the side, and the bike leans too. Lean into each bend, and hold it until the road is straight again. In the air, lean for a trick!</p>
       <button id="moto-start" class="big-button" type="button">Let’s ride!</button>`,
   hud: `
   <div id="lean-meter" class="lean-meter" data-zone="in" aria-hidden="true">
@@ -848,6 +905,7 @@ mountBodyShell({
     <button id="warm-skip" class="soft-button" type="button">Skip the warm-up</button>
   </div>
   <header id="moto-top" class="moto-top">
+    <div id="place-chip" class="chip chip-place" hidden><span class="chip-label">Race</span><span class="chip-value"><span id="place">5th</span> of <span id="riders">5</span></span></div>
     <div class="chip"><span class="chip-label">Bends</span><span class="chip-value"><span id="bends-done">0</span> / <span id="bends-all">0</span></span></div>
     <div class="chip"><span class="chip-label">On the road</span><span id="bends-clean" class="chip-value">0</span></div>
     <div id="prizes-chip" class="chip" hidden><span class="chip-label">Prizes</span><span id="prizes" class="chip-value"></span></div>
@@ -856,7 +914,7 @@ mountBodyShell({
   <div id="moto-new" class="moto-new" aria-hidden="true"></div>`,
   finishBody: `
       <h2 id="finish-title">You made it to the top!</h2>
-      <p class="finish-hero"><span id="finish-clean">0 of 0 bends</span> ridden all on the road</p>
+      <p class="finish-hero"><span id="finish-clean">0 of 0 bends</span> <span id="finish-what">ridden all on the road</span></p>
       <p id="finish-line" class="finish-open"></p>
       <p id="finish-prizes" class="finish-prizes"></p>
       <div id="finish-tally" class="finish-tally"></div>
@@ -870,6 +928,17 @@ mountBodyShell({
   handLegend: 'Side being worked on',
   safetyPrint: 'Please make room to lean to each side, on a seat that won’t tip, and stay close by.',
   panelSettings: `
+    <fieldset class="choice">
+      <legend>The ride</legend>
+      ${choice('motoRide', 'wild', 'Wild: a race against other riders, over steep hills that throw the bike into the air, with ramps, hay bales in the way and, from level 7, a river to jump')}
+      ${choice('motoRide', 'gentle', 'Gentle: the road alone, with nobody to race and nothing in the way')}
+    </fieldset>
+    <fieldset class="choice">
+      <legend>The other riders in the race</legend>
+      ${choice('motoRivals', 'easy', 'Easy to beat')}
+      ${choice('motoRivals', 'medium', 'A fair race: riding well is a place on the podium')}
+      ${choice('motoRivals', 'hard', 'Hard to beat')}
+    </fieldset>
     <fieldset class="choice">
       <legend>How far a whole lean is, at most, as the camera reads it: a body bending at the waist reads as about half as far as it bends. It’s never more than most of this child’s own lean to that side, as measured in the warm-up, and ${LEAN.unmeasured} degrees if the warm-up is skipped. A bend asks for a little over half of a whole lean</legend>
       ${choice('motoLean', 'tiny', `A little: about ${LEAN.full.tiny} degrees from upright`)}

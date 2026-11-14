@@ -247,15 +247,61 @@ export function buildRamp(reach) {
   shape.lineTo(length, height);
   shape.closePath();
   const wedge = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false }).translate(-length / 2, 0, -width / 2).rotateY(-QUARTER);
-  const parts = [{ geometry: wedge, colour: '#d9a55b' }];
+  // Wood and stripes that aren't much brighter than the road: a bike that takes the ramp has the camera go
+  // close over it, where it fills the bottom of the picture for a moment.
+  const parts = [{ geometry: wedge, colour: '#c08a4a' }];
   // Stripes up the slope, so it's seen as a ramp from a long way off.
   const slope = Math.atan2(height, length);
   for (let n = 0; n < 4; n += 1) {
     const along = -length / 2 + 0.55 + n * 1.1;
     const up = ((along + length / 2) / length) * height;
-    parts.push({ geometry: box(width + 0.02, 0.05, 0.42), colour: n % 2 ? '#f7f2e6' : '#e4572e', at: [0, up + 0.035, along], turn: [-slope, 0, 0] });
+    parts.push({ geometry: box(width + 0.02, 0.05, 0.42), colour: n % 2 ? '#ecd9ac' : '#e4572e', at: [0, up + 0.035, along], turn: [-slope, 0, 0] });
   }
   return solid(parts, { outline: 0.03 });
+}
+
+/**
+ * A row of hay bales across the road, reach metres to each side of its middle, with a second row on top, a
+ * bale shorter. They're soft: a bike goes through them, and they burst.
+ */
+export function buildBales(reach) {
+  const [wide, tall, deep] = [1.24, 0.62, 0.8];
+  const count = Math.max(2, Math.round((reach * 2) / wide));
+  const from = -((count - 1) * wide) / 2;
+  const parts = [];
+  // Hay that's about as bright as the road and the grass it lies across, between the two. A row of it right
+  // across the road goes by close under a bike that's flying over, and fills the bottom of the picture for a
+  // moment: pale yellow bales changed the whole picture's brightness by 4.7 out of 255 in one frame there,
+  // where the most the games allow is 4.
+  const bale = (x, y) => {
+    parts.push({ geometry: roundedBox(wide - 0.06, tall, deep, 0.08), colour: '#d0a244', at: [x, y, 0] });
+    // The two strings round each bale.
+    for (const side of [-0.3, 0.3]) parts.push({ geometry: box(0.05, tall + 0.02, deep + 0.02), colour: '#8f6420', at: [x + side, y, 0] });
+  };
+  for (let n = 0; n < count; n += 1) bale(from + n * wide, tall / 2);
+  for (let n = 0; n < count - 1; n += 1) bale(from + (n + 0.5) * wide, tall * 1.5);
+  return solid(parts, { outline: 0.025 });
+}
+
+/**
+ * The water of a river that crosses the road, long metres of it along the road and out to each side for less
+ * than half as far as the road ever comes to itself, flat, with pale streaks across it. Its far side is the one
+ * a bike wades out of. The ground has a bed dug for it: see buildGround in land.js.
+ */
+export function buildWater(long, wide = 84) {
+  const group = new THREE.Group();
+  // A blue between the road's grey and the grass in brightness: it comes into the picture all at once under a
+  // bike that flies over the bank, and a paler one changed the picture's brightness by nearly 4 out of 255 there.
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(wide, long).rotateX(-QUARTER), new THREE.MeshBasicMaterial({ color: '#4590cf', transparent: true, opacity: 0.72 }));
+  group.add(water);
+  // Streaks the way the water runs, which is across the road.
+  const streak = new THREE.MeshBasicMaterial({ color: '#bfdff5', transparent: true, opacity: 0.7 });
+  for (let n = 0; n < 9; n += 1) {
+    const line = new THREE.Mesh(new THREE.PlaneGeometry(3 + (n % 3) * 1.4, 0.16).rotateX(-QUARTER), streak);
+    line.position.set(((n * 37) % 23) - 11, 0.02, -long / 2 + ((n + 0.5) * long) / 9);
+    group.add(line);
+  }
+  return group;
 }
 
 /** One length of a wooden bridge's deck, as wide as the bridge, and a railing post for each side. */

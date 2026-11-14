@@ -85,6 +85,26 @@ export class MotoSound extends CarSound {
     this.play('swish', { gain: 0.45 });
   }
 
+  /** Through a row of hay bales: a thud, and straw. */
+  crash() {
+    this.play('landed', { gain: 0.5, rate: 0.7 });
+    this.play('rustle', { gain: 0.55, rate: 0.8 });
+  }
+
+  /** Into a river. */
+  wade() {
+    this.play('splash', { gain: 0.45, rate: 0.9 * near(0.1) });
+  }
+
+  /** A trick in the air, and a place gained in the race. */
+  trick() {
+    this.play('harp', { gain: 0.35, rate: 1.3 });
+  }
+
+  placeUp() {
+    this.play('sparkle', { gain: 0.35, rate: 1.5 });
+  }
+
   land() {
     this.play('landed', { gain: 0.4, rate: near(0.1) });
   }

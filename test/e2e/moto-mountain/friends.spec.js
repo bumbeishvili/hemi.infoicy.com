@@ -17,7 +17,8 @@ test('two friends ride up the mountain together from their own computers, as one
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
   // The host is at level 9, whose own road has puddles, sheep, a bridge, a jump, the big bend and a scooter.
-  await openMoto(page, { motoBends: 6, motoPace: 'quick', levels: { [GAME]: 9 } });
+  // And she has the wild ride chosen, which is how the game comes: a race against other riders, over hills.
+  await openMoto(page, { motoBends: 6, motoPace: 'quick', motoRide: 'wild', levels: { [GAME]: 9 } });
   const code = await makeRide(page, 'Ana');
   expect(page.url()).toContain(`#ride=${code}`);
   // Together is how it comes, and whoever made the ride can change it.
@@ -49,6 +50,10 @@ test('two friends ride up the mountain together from their own computers, as one
   for (const kind of hers.plan.kinds) expect(['star', 'boost']).toContain(kind);
   expect(hers.plan.kinds).toContain('star');
   expect(hers.plan.bends.some(({ big }) => big)).toBe(false);
+  // With friends it's the road alone, whatever ride is chosen: no other riders, no hills, nothing in the way.
+  // Friends are each other's race.
+  for (const each of [hers, his]) expect([each.rivals.length, each.riders, each.hills.length, each.barriers.length]).toEqual([0, 0, 0, 0]);
+  await expect(page.locator('#place-chip')).toBeHidden();
   // Each keeps their own lean: a little for Ben, 7 degrees, and for Ana the 8 of a child who skipped the warm-up.
   expect([Math.round(hers.reach.left), Math.round(his.reach.left)]).toEqual([8, 7]);
 

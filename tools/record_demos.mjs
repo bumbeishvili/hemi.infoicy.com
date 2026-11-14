@@ -905,9 +905,14 @@ const FILMS = {
       await page.locator('#start').click();
       await page.locator('#moto-start').click();
       await screenIs(page, 'warmup');
+      // The wild ride, which is how the game comes, on a road with a bend and then a hill to fly off, and
+      // nothing in the way that this rider, who only leans as the bends ask, would have to steer round.
+      await page.evaluate(() => {
+        window.__game.game.roadSeed = 5;
+      });
       await page.locator('#warm-skip').click();
       await screenIs(page, 'playing');
-      // Up to speed, and coming to the first bend.
+      // Up to speed, in among the other riders, and coming to the first bend.
       await page.waitForFunction(() => window.__game.ride.s > 40, null, { timeout: 30_000 });
     },
     async play(page) {
@@ -938,8 +943,8 @@ const FILMS = {
       }));
     },
     report: (page) => page.evaluate(() => {
-      const { stats, s } = window.__game.ride;
-      return { s: Math.round(s), clean: stats.clean, stars: stats.stars, leans: stats.leans, verge: stats.vergeSeconds };
+      const { stats, s, place } = window.__game.ride;
+      return { s: Math.round(s), clean: stats.clean, stars: stats.stars, leans: stats.leans, verge: stats.vergeSeconds, jumps: stats.jumps, air: stats.air, place };
     }),
   },
   'rooftop-rope': {

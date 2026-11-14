@@ -6,5 +6,6 @@
   {"id": "ready", "text": "That’s it! You’re ready to ride!", "speak": "That's it! You're ready to ride!", "ka": "აი ასე, ახლა მზად ხარ წასასვლელად!"},
   {"id": "left", "text": "Lean to the left!", "ka": "გადაიხარე მარცხნივ!"},
   {"id": "right", "text": "Lean to the right!", "ka": "გადაიხარე მარჯვნივ!"},
+  {"id": "trick", "text": "Lean in the air for a trick!", "ka": "ჰაერში გადაიხარე და ტრიუკი გააკეთე!"},
   {"id": "top", "text": "You made it to the top!", "ka": "მწვერვალზე ახვედი!"}
 ]
