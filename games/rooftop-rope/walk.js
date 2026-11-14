@@ -266,6 +266,10 @@ export const ROPE_COUNTS = [4, 6, 8];
 export const HOLDS = { short: 3, medium: 5, long: 8 };
 // Seconds of standing on the rope with both feet down before the walker drops into the net.
 export const WOBBLES = { soon: 5, later: 9, never: Infinity };
+// How many drops into the net a crossing has, as a grown-up chooses. After the last of them the walker doesn't
+// go back up: the crossing is over, and is to be tried again. With any number it always goes back up, which is
+// how the game was to begin with, when nothing in it could be lost.
+export const DROPS = { three: 3, five: 5, any: Infinity };
 // Which foot lifts: taking turns, a rope each; always standing on the leg being worked on; always lifting
 // that leg's foot; or whichever the child likes.
 export const WHICH = ['turns', 'stand', 'lift', 'any'];
@@ -397,7 +401,7 @@ export class Walk {
    * level, ropes, hold, which and side lay the game out: see layOut. wobble is the grown-ups' setting for how
    * soon the walker falls. team is true when friends cross together. onEvent hears what happens.
    */
-  constructor({ level = 1, ropes = 6, hold = 'medium', which = 'turns', side = 'left', wobble = 'later', random = Math.random, plain = false, team = false, lifter = null, plan = null, onEvent = () => {} } = {}) {
+  constructor({ level = 1, ropes = 6, hold = 'medium', which = 'turns', side = 'left', wobble = 'later', drops = 'any', random = Math.random, plain = false, team = false, lifter = null, plan = null, onEvent = () => {} } = {}) {
     // A game already laid out can be handed in, as the tests do.
     this.plan = plan ?? layOut({ level, ropes, hold, which, side, random, plain });
     this.rules = this.plan.rules;
@@ -407,7 +411,8 @@ export class Walk {
     this.lifter = lifter;
     this.onEvent = onEvent;
     this.grace = WOBBLES[wobble] ?? WOBBLES.later;
-    this.state = 'ready'; // ready, roof, rope, falling, stepping, finished
+    this.dropsMost = DROPS[drops] ?? Infinity; // The drops into the net that end the crossing.
+    this.state = 'ready'; // ready, roof, rope, falling, stepping, finished, lost
     this.index = 0; // Which rope the walker is on, or about to cross.
     this.progress = 0; // How far along it, from 0 to 1.
     this.leg = this.plan.ropes[0].leg; // The foot to lift now: left, right or any.
@@ -514,7 +519,7 @@ export class Walk {
    * the friends in a game together, each { index, progress }.
    */
   update(dt, lifter, mates = []) {
-    if (this.state === 'ready' || this.state === 'finished') return;
+    if (this.state === 'ready' || this.state === 'finished' || this.state === 'lost') return;
     const { stats } = this;
     this.elapsed += dt;
     const seen = Boolean(lifter?.seen);
@@ -529,7 +534,10 @@ export class Walk {
     if (this.state === 'falling' || this.state === 'stepping') {
       this.timer -= dt;
       if (this.timer > 0) return;
-      if (this.state === 'falling') {
+      if (this.lastDrop) {
+        // That was the last drop the crossing had: the walker stays in the net, and it's over.
+        this.lose();
+      } else if (this.state === 'falling') {
         this.state = 'roof';
         this.startRope();
         this.onEvent({ type: 'back', index: this.index });
@@ -761,6 +769,28 @@ export class Walk {
     this.foot = null;
     this.idle = 0;
     this.setRope(this.index + 1);
+  }
+
+  /** How many more drops into the net the crossing has, or Infinity where the walker always goes back up. */
+  get dropsLeft() {
+    return Math.max(0, this.dropsMost - this.stats.falls);
+  }
+
+  /** Whether the walker is on its way down for the last time: the drop it won't come back up from. */
+  get lastDrop() {
+    return this.state === 'falling' && this.stats.falls >= this.dropsMost;
+  }
+
+  /** The crossing is over: the walker has dropped into the net once too often. */
+  lose() {
+    if (this.state === 'lost' || this.state === 'finished') return;
+    this.state = 'lost';
+    this.gliding = false;
+    this.foot = null;
+    this.lift = 0;
+    this.wobble = 0;
+    this.stats.seconds = this.elapsed;
+    this.onEvent({ type: 'lost', index: this.index });
   }
 
   finish() {

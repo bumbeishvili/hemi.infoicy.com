@@ -333,6 +333,28 @@ export function cheerPose(out = makePose(), time = 0, amount = 1) {
   return out;
 }
 
+/** Sat in the net, legs out in front, bobbing a little: where the walker is left by the last drop it had. */
+export function netPose(out = makePose(), time = 0) {
+  Object.assign(out, makePose());
+  const bob = Math.sin(time * 2.2);
+  out.hipDrop = 0.4;
+  out.up = bob * 0.03;
+  out.pitch = -0.1;
+  out.footLX = 0.2;
+  out.footRX = -0.2;
+  out.footLZ = 0.42;
+  out.footRZ = 0.42;
+  out.footLY = 0.06;
+  out.footRY = 0.06;
+  out.handLX = 0.5;
+  out.handLY = -0.5 + bob * 0.05;
+  out.handLZ = 0.25;
+  out.handRX = -0.5;
+  out.handRY = -0.5 - bob * 0.05;
+  out.handRZ = 0.25;
+  return out;
+}
+
 /** Tumbling through the air, on the way down to the net. */
 export function fallPose(out = makePose(), time = 0) {
   Object.assign(out, makePose());

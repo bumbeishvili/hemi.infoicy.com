@@ -250,6 +250,143 @@ test('with both feet down on the rope for too long, the walker drops slowly into
   await stopChild(page);
 });
 
+/** Onto the rope the walker is standing before, and then both feet down until it has been dropped so many times in all. */
+async function dropsTo(page, count) {
+  await childFeet(page, 'follow');
+  await expectSoon(async () => (await state(page)).state, { timeout: 30_000 }).toBe('rope');
+  await childFeet(page, null);
+  await expectSoon(async () => (await state(page)).stats.falls, { timeout: 30_000 }).toBe(count);
+}
+
+/** Where the walker's middle is in the picture, as shares of its width and height, and whether it's in front of the camera. */
+const walkerInPicture = (page) => page.evaluate(() => {
+  const { world } = window.__game;
+  const { position } = world.walker.root;
+  const at = world.project(position.x, position.y + 0.5, position.z);
+  return { x: at.x / world.canvas.clientWidth, y: at.y / world.canvas.clientHeight, behind: at.behind };
+});
+
+test('three drops into the net and the crossing is over: the walker stays sat in the net, the card says so, and the level is to be tried again', async ({ page }) => {
+  test.setTimeout(420_000);
+  // Nothing chosen about the drops, so it's as the game comes: three of them, with a heart for each.
+  await reachPlay(page, short({ ropeFall: 'soon', ropeDrops: undefined }));
+  await listen(page);
+  const hearts = page.locator('#drops');
+  await expect(page.locator('#drops-chip')).toBeVisible();
+  await expect(hearts).toHaveText('❤️❤️❤️');
+  const start = await state(page);
+  expect([start.dropsMost, start.dropsLeft]).toEqual([3, 3]);
+  await childWalks(page);
+  // Two drops from the first rope, a heart gone each time, and back up after each.
+  await dropsTo(page, 1);
+  await expect(hearts).toHaveText('❤️❤️🤍');
+  await expectSoon(async () => (await state(page)).state).toBe('roof');
+  await dropsTo(page, 2);
+  await expect(hearts).toHaveText('❤️🤍🤍');
+  await expectSoon(async () => (await state(page)).state).toBe('roof');
+  expect((await state(page)).screen).toBe('playing');
+  // Across that rope, which won't drop the walker a third time, and both feet down on the next.
+  await childFeet(page, 'follow');
+  await expectSoon(async () => (await state(page)).index, { timeout: 60_000 }).toBe(1);
+  const up = (await state(page)).walker.y;
+  await dropsTo(page, 3);
+  await expect(hearts).toHaveText('🤍🤍🤍');
+  // This time the walker isn't put back on the rooftop: it's over, and the card says so.
+  await expectSoon(async () => (await state(page)).state, { timeout: 20_000 }).toBe('lost');
+  await waitForScreen(page, 'finish');
+  expect(await heard(page)).toContain('lost');
+  expect((await heard(page)).filter((type) => type === 'back')).toHaveLength(2);
+  await expect(page.locator('#finish-title')).toHaveText('Into the net! Try again.');
+  await expect(page.locator('#finish-line')).toContainText('The walker dropped into the net 3 times, and that’s as many as a crossing has.');
+  await expect(page.locator('#finish-crossed')).toHaveText('1 rope');
+  // The walker is sat in the net, whole, without its wheel, and can be seen there beside the card.
+  await expectSoon(async () => {
+    const { x, y, behind } = await walkerInPicture(page);
+    return !behind && x > 0.04 && x < 0.96 && y > 0.1 && y < 0.95;
+  }, { timeout: 15_000 }).toBe(true);
+  const down = await state(page);
+  expect(down.walker.size).toBeGreaterThan(0.9);
+  expect(down.walker.y).toBeLessThan(up - 4);
+  expect(down.walker.wheelSeen).toBe(false);
+  expect(down.view).toBe('finish');
+  // The level is to be tried again: it doesn't move on, the big button says so, and nothing is cheered. What's
+  // said is that it's into the net, with no fanfare.
+  await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 1 again!');
+  await expect(page.locator('#cross-again')).toHaveText('Try again');
+  expect(await page.evaluate(() => [window.__game.game.levels.current, window.__game.game.confetti.running])).toEqual([1, false]);
+  expect(await page.evaluate(() => window.__game.game.sound.finished)).toEqual({ line: 'Into the net! Try again!', lost: true });
+  expect(await page.evaluate(() => window.__camera.activeTracks)).toBe(0);
+  await shot(page, 'rope-lost');
+  // Again: the same level, on the first rooftop, with all three drops to go.
+  await page.locator('#cross-again').click();
+  await waitForScreen(page, 'countdown');
+  await waitForScreen(page, 'playing');
+  const again = await state(page);
+  expect([again.level, again.index, again.stats.falls, again.dropsLeft]).toEqual([1, 0, 0, 3]);
+  await expect(hearts).toHaveText('❤️❤️❤️');
+  // And a crossing that gets there says so as it always did: the card of the lost one is gone.
+  await childFeet(page, 'follow');
+  await putBefore(page, 'last', { at: 0.6, before: 0 });
+  await waitForScreen(page, 'finish');
+  await expect(page.locator('#finish-title')).toHaveText('You crossed them all!');
+  await expect(page.locator('#cross-again')).not.toHaveText('Try again');
+  await expect(page.locator('#level-done-text')).toHaveText('Level 1 done! Next: level 2');
+  expect(await page.evaluate(() => window.__game.game.confetti.running)).toBe(true);
+  await stopChild(page);
+});
+
+test('the grown-ups choose how many drops a crossing has: three as it comes, five, or any number, and then no hearts are counted and nothing is lost', async ({ page }) => {
+  test.setTimeout(300_000);
+  await reachPlay(page, short({ ropeFall: 'soon', ropeDrops: undefined }));
+  // The panel has the choice, with three chosen.
+  await page.locator('#open-panel').click();
+  await expect(page.locator('#panel')).toContainText('Drops into the net before the crossing is over');
+  await expect(page.locator('input[name="ropeDrops"]')).toHaveCount(3);
+  await expect(page.locator('input[name="ropeDrops"][value="three"]')).toBeChecked();
+  // Five, from the next crossing.
+  await page.locator('input[name="ropeDrops"][value="five"]').check();
+  await page.locator('#close-panel').click();
+  await page.reload();
+  await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
+  await standing(page);
+  await toChoosing(page);
+  await page.locator('#rope-start').click();
+  await waitForScreen(page, 'warmup');
+  await page.locator('#warm-skip').click();
+  await waitForScreen(page, 'playing');
+  expect((await state(page)).dropsMost).toBe(5);
+  await expect(page.locator('#drops')).toHaveText('❤️❤️❤️❤️❤️');
+  // Any number: the game as it was, where the walker always goes back up.
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('camera-games-settings'));
+    localStorage.setItem('camera-games-settings', JSON.stringify({ ...saved, ropeDrops: 'any' }));
+  });
+  await page.reload();
+  await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
+  await standing(page);
+  await toChoosing(page);
+  await page.locator('#rope-start').click();
+  await waitForScreen(page, 'warmup');
+  await page.locator('#warm-skip').click();
+  await waitForScreen(page, 'playing');
+  const any = await state(page);
+  expect([any.dropsMost, any.dropsLeft]).toEqual([null, null]);
+  await expect(page.locator('#drops-chip')).toBeHidden();
+  // Three drops, two from the first rope and one from the second, and it's back up on the rooftop every time.
+  await childWalks(page);
+  await dropsTo(page, 1);
+  await expectSoon(async () => (await state(page)).state).toBe('roof');
+  await dropsTo(page, 2);
+  await expectSoon(async () => (await state(page)).state).toBe('roof');
+  await childFeet(page, 'follow');
+  await expectSoon(async () => (await state(page)).index, { timeout: 60_000 }).toBe(1);
+  await dropsTo(page, 3);
+  await expectSoon(async () => (await state(page)).state, { timeout: 20_000 }).toBe('roof');
+  const after = await state(page);
+  expect([after.screen, after.index, after.stats.falls]).toEqual(['playing', 1, 3]);
+  await stopChild(page);
+});
+
 test('resting on a rooftop costs nothing, for as long as the child likes, and the child is told so once', async ({ page }) => {
   await reachPlay(page, short({ ropeFall: 'soon', sound: true, voice: true }));
   await listen(page);

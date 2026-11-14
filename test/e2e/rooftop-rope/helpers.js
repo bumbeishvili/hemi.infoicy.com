@@ -8,8 +8,13 @@ export { test, expect, waitForScreen };
 
 export const GAME = 'rooftop-rope';
 
+/**
+ * Opens the game with a walker that always goes back up from the net, unless a test says otherwise: most of
+ * these tests were written when it always did. The crossing that can be lost, which is how the game comes, has
+ * its own tests in play.spec.js.
+ */
 export async function openRope(page, settings = {}, hash = '') {
-  await openGame(page, settings, GAME, hash);
+  await openGame(page, { ropeDrops: 'any', ...settings }, GAME, hash);
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
 }
 
@@ -84,6 +89,9 @@ export const state = (page) => page.evaluate(() => {
     inGust: walk ? walk.inGust() : false,
     atPost: Boolean(walk?.atPost),
     stats: walk && JSON.parse(JSON.stringify(walk.stats)),
+    // The drops into the net that end the crossing, and how many of them are left: null where it's any number.
+    dropsMost: walk && Number.isFinite(walk.dropsMost) ? walk.dropsMost : null,
+    dropsLeft: walk && Number.isFinite(walk.dropsLeft) ? walk.dropsLeft : null,
     plan: walk && {
       ropes: walk.plan.ropes.map(({ leg, seconds, long, climb, things }) => ({ leg, seconds, long, climb, kinds: things.map(({ kind }) => kind) })),
       stars: walk.plan.stars,

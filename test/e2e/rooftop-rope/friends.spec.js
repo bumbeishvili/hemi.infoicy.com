@@ -18,7 +18,8 @@ test('two friends cross the rooftops together from their own computers, side by 
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
   // The host is at level 9, whose own ropes have balloons, birds, lights, a climb, the long rope and gusts.
-  await openRope(page, { ropeCount: 4, ropeHold: 'short', levels: { [GAME]: 9 } });
+  // She has three drops chosen, as the game comes, and he has five: with friends neither is counted.
+  await openRope(page, { ropeCount: 4, ropeHold: 'short', ropeDrops: 'three', levels: { [GAME]: 9 } });
   const code = await makeCrossing(page, 'Ana');
   expect(page.url()).toContain(`#rope=${code}`);
   // Together is how it comes, and whoever made the crossing can change it.
@@ -28,7 +29,7 @@ test('two friends cross the rooftops together from their own computers, side by 
 
   // The friend has settings of their own, and crosses the host's ropes with their own lift and their own legs.
   const ben = await secondPlayer(browser);
-  await joinCrossing(ben.page, code, { ropeCount: 8, ropeHold: 'long', ropeLift: 'tiny', ropeLeg: 'any', fighter: 'kit' }, 'Ben');
+  await joinCrossing(ben.page, code, { ropeCount: 8, ropeHold: 'long', ropeLift: 'tiny', ropeLeg: 'any', ropeDrops: 'five', fighter: 'kit' }, 'Ben');
   await expect(page.locator('#friends-here')).toContainText('Ben');
   await expect(ben.page.locator('input[name="friends-team"][value="together"]')).toBeChecked();
   await expect(ben.page.locator('input[name="friends-team"][value="together"]')).toBeDisabled();
@@ -41,6 +42,10 @@ test('two friends cross the rooftops together from their own computers, side by 
   await waitForScreen(ben.page, 'playing');
   const [hers, his] = [await state(page), await state(ben.page)];
   expect([await team(page), await team(ben.page)]).toEqual([true, true]);
+  // Nobody's crossing ends before the others': the walker always goes back up, and no hearts are shown.
+  expect([hers.dropsMost, his.dropsMost]).toEqual([null, null]);
+  await expect(page.locator('#drops-chip')).toBeHidden();
+  await expect(ben.page.locator('#drops-chip')).toBeHidden();
   // The host's ropes on both: four of them, each as long, with their stars and nothing else, whatever the level.
   expect(hers.plan.ropes).toHaveLength(4);
   expect(his.plan.ropes.map(({ seconds, kinds, long, climb }) => ({ seconds, kinds, long, climb }))).toEqual(hers.plan.ropes.map(({ seconds, kinds, long, climb }) => ({ seconds, kinds, long, climb })));

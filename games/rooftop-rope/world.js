@@ -10,7 +10,7 @@ import { Fighter3D, makePose } from '../../core/body/characters.js';
 import { ROSTER } from '../../core/body/roster.js';
 import { Sparks } from '../../core/body/sparks.js';
 import { WALK } from './walk.js';
-import { WHEEL, balancePose, buildBalloon, buildBird, buildBuildings, buildCup, buildLight, buildNet, buildPost, buildRoofTop, buildStar, buildSwapFlag, buildWheel, cheerPose, cloudGeometry, fallPose, seededRandom, wallColour } from './models.js';
+import { WHEEL, balancePose, buildBalloon, buildBird, buildBuildings, buildCup, buildLight, buildNet, buildPost, buildRoofTop, buildStar, buildSwapFlag, buildWheel, cheerPose, cloudGeometry, fallPose, netPose, seededRandom, wallColour } from './models.js';
 
 const MOST_PIXELS = 3_200_000; // A very big screen is drawn a little less sharply, so that it stays quick.
 const SLOW_FRAME_SECONDS = 1 / 45;
@@ -518,15 +518,25 @@ export class World {
       const bounce = t > 1.1 ? Math.abs(Math.sin((t - 1.1) * 4.2)) * 1.6 * Math.max(0, 1 - (t - 1.1) / 0.9) : 0;
       target = scratch.v.set(from.x, lerp(from.y, net, drop * drop) + bounce, from.z);
       pose = (out, time) => fallPose(out, time);
-      size = t > 2 ? 0 : 1;
+      // After the last drop the crossing has, the walker isn't put back: it sits where it landed.
+      const stays = walk.lastDrop;
+      if (stays && t > 2) pose = (out, time) => netPose(out, time);
+      size = t > 2 && !stays ? 0 : 1;
       rate = 60;
-      if (t > 2.3) {
+      if (t > 2.3 && !stays) {
         // Out of sight in the net, the walker is put back on the rooftop, and grows there again.
         this.walkerAt.copy(this.spotOn(walk.index, scratch.w));
         target = this.walkerAt;
         size = 1;
         pose = (out, time) => balancePose(out, { time, onRope: false });
       }
+    } else if (walk.state === 'lost') {
+      // Sat in the net, where the last drop left it.
+      const from = this.fallFrom ?? walker.root.position;
+      const net = Math.min(place.ropes[walk.index].from.y, place.ropes[walk.index].to.y) - NET_DROP + 0.2;
+      target = scratch.v.set(from.x, net, from.z);
+      pose = (out, time) => netPose(out, time);
+      rate = 60;
     } else if (walk.state === 'finished') {
       // On the last rooftop of all.
       target = this.spotOn(walk.index + 1, scratch.v);
@@ -607,7 +617,9 @@ export class World {
     const look = scratch.w;
     const here = walker.root.position;
     // When the walker drops into the net, the camera stays up by the rope and looks down after it.
-    const high = walk.state === 'falling' && this.fallFrom ? this.fallFrom.y : this.walkerAt.y;
+    // After the last drop it goes on looking down, until the card comes, and then goes down to the net itself.
+    const dropped = walk.state === 'falling' || (walk.state === 'lost' && this.view === 'play');
+    const high = dropped && this.fallFrom ? this.fallFrom.y : this.walkerAt.y;
     const down = Math.max(0, high - here.y);
     let fov = 56;
     if (this.view === 'play') {

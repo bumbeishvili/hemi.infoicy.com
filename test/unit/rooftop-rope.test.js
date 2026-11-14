@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { HIGHER, HOLDS, LIFT, Lifter, NEW_THINGS, ROPE_COUNTS, WALK, WARM, WOBBLES, Walk, Warmup, layOut, liftOf, newAt, otherLeg, thingsUpTo, walkLevel } from '../../games/rooftop-rope/walk.js';
+import { DROPS, HIGHER, HOLDS, LIFT, Lifter, NEW_THINGS, ROPE_COUNTS, WALK, WARM, WOBBLES, Walk, Warmup, layOut, liftOf, newAt, otherLeg, thingsUpTo, walkLevel } from '../../games/rooftop-rope/walk.js';
 import { STEP, bodyStanding, measuredLifter, planOf, seeded, valueFor, walk } from './rope-walker.js';
 
 const near = (actual, expected, within, message) => assert.ok(Math.abs(actual - expected) <= within, `${message ?? ''} expected about ${expected}, got ${actual}`);
@@ -498,6 +498,81 @@ test('how soon the walker falls is the grown-ups’ setting, and it can be never
   near(fallsAfter('later'), WOBBLES.later, 0.8);
   assert.equal(fallsAfter('never'), null, 'with never, the walker waits on the rope for ever');
   assert.ok(WOBBLES.soon < WOBBLES.later);
+});
+
+/* A child who gets onto every rope and then can't keep the foot up: half a second up, three seconds down. */
+const cantHold = (ride, time) => (ride.state === 'roof' || time % 3.5 < 0.5 ? { foot: ride.asked, share: 1 } : null);
+
+test('a crossing has so many drops into the net, as a grown-up chooses: after the last of them the walker stays down, and it’s over', () => {
+  // Two drops from the first rope, across it once it has stopped dropping them, and a third from the second.
+  const plan = planOf([{ seconds: 4 }, { seconds: 4, leg: 'left' }, { seconds: 4 }]);
+  const last = [];
+  const { game, events, time } = walk({ plan, wobble: 'soon', drops: 'three' }, {
+    feet: cantHold,
+    seconds: 600,
+    until: (ride) => {
+      if (ride.state === 'falling') last[ride.stats.falls] = ride.lastDrop;
+      return false;
+    },
+  });
+  assert.equal(game.state, 'lost');
+  assert.equal(game.stats.falls, DROPS.three);
+  assert.equal(game.dropsLeft, 0);
+  // Only the third is the one it doesn't come back up from.
+  assert.deepEqual(last.slice(1), [false, false, true]);
+  assert.equal(game.lastDrop, false, 'and that one is over');
+  // Back up twice, and not the third time. That it's over is said once.
+  assert.deepEqual(types(events).filter((type) => ['fall', 'back', 'lost', 'finished'].includes(type)), ['fall', 'back', 'fall', 'back', 'fall', 'lost']);
+  assert.equal(game.index, 1, 'in the net under the second rope');
+  assert.equal(game.stats.crossed, 1);
+  near(game.stats.seconds, time, 0.2, 'how long it lasted is kept for the card');
+  // Nothing more happens, whatever the child does: the foot the rope was for held up, and then the other.
+  const all = () => JSON.stringify([game.state, game.index, game.progress, game.elapsed, game.stats]);
+  const before = all();
+  const lifter = measuredLifter();
+  for (let n = 0; n < 300; n += 1) {
+    lifter.update(valueFor(lifter, n < 150 ? game.asked : otherLeg(game.asked), 1), STEP);
+    game.update(STEP, lifter, []);
+  }
+  assert.equal(all(), before);
+  assert.equal(events.filter(({ type }) => type === 'lost').length, 1);
+});
+
+test('five drops can be chosen instead, or any number, which is how the rules come: then the walker always goes back up', () => {
+  const plan = () => planOf([{ seconds: 4 }, { seconds: 4, leg: 'left' }, { seconds: 4 }, { seconds: 4, leg: 'left' }]);
+  const five = walk({ plan: plan(), wobble: 'soon', drops: 'five' }, { feet: cantHold, seconds: 900 });
+  assert.equal(five.game.state, 'lost');
+  assert.equal(five.game.stats.falls, DROPS.five);
+  assert.equal(five.game.index, 2, 'two from each of the first two ropes, and the fifth from the third');
+  // Any number: two from every rope, and all the way across. It's what an unknown choice is taken as, too.
+  for (const drops of ['any', undefined, 'nonsense']) {
+    const any = walk({ plan: plan(), wobble: 'soon', ...(drops ? { drops } : {}) }, { feet: cantHold, seconds: 900 });
+    assert.equal(any.game.state, 'finished', String(drops));
+    assert.equal(any.game.stats.falls, WALK.fallsMost * 4);
+    assert.equal(any.game.dropsLeft, Infinity);
+    assert.equal(any.game.lastDrop, false);
+    assert.equal(any.types.includes('lost'), false);
+  }
+  assert.deepEqual(DROPS, { three: 3, five: 5, any: Infinity });
+});
+
+test('a drop or two on the way is not the end of a crossing: it’s finished with the drops that are left', () => {
+  const plan = planOf([{ seconds: 4 }, { seconds: 4, leg: 'left' }, { seconds: 4 }]);
+  // Both feet down on the second rope until it has dropped the walker twice, and a foot held up for the rest.
+  const { game, types: happened } = walk({ plan, wobble: 'soon', drops: 'three' }, {
+    feet: (ride) => (ride.index === 1 && ride.state === 'rope' && ride.stats.falls < 2 ? null : { foot: ride.asked, share: 1 }),
+  });
+  assert.equal(game.state, 'finished');
+  assert.equal(game.stats.crossed, 3);
+  assert.equal(game.stats.falls, 2);
+  assert.equal(game.dropsLeft, 1);
+  assert.equal(happened.includes('lost'), false);
+  // And a child who holds the foot up all the way has them all at the end, at every level.
+  for (const level of [1, 5, 10]) {
+    const steady = walk({ level, ropes: 4, hold: 'short', drops: 'three', random: seeded(level) });
+    assert.equal(steady.game.state, 'finished', `level ${level}`);
+    assert.equal(steady.game.dropsLeft, DROPS.three, `level ${level}`);
+  }
 });
 
 test('with nobody in the picture nothing happens: the walker neither goes on nor wobbles, and carries on when they’re back', () => {
