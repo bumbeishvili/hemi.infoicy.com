@@ -10,7 +10,10 @@ const wild = (level = 1, settings = {}) => ({ motoRide: 'wild', levels: { 'moto-
 // has two rivers, and bales, walls and hills. At level 10, road 1 has eight hills.
 const ROADS = { busy: 2, short: 3, third: 11, rivers: 2, top: 1 };
 
-/** What the page has heard happen in this ride, by name, in order. */
+/**
+ * What the page has heard happen in this ride, by name, in order, and what's been said big on the screen. That
+ * is there for about a second, so it's noted as it comes: a busy computer would otherwise look too late.
+ */
 const listen = (page) => page.evaluate(() => {
   const { ride } = window.__game;
   window.__heard = [];
@@ -19,8 +22,15 @@ const listen = (page) => page.evaluate(() => {
     window.__heard.push(event.type);
     tell(event);
   };
+  window.__said = [];
+  new MutationObserver((changes) => {
+    for (const { addedNodes } of changes) {
+      for (const node of addedNodes) if (node.classList?.contains('callout') && node.classList.contains('is-number')) window.__said.push(node.textContent);
+    }
+  }).observe(document.body, { childList: true, subtree: true });
 });
 const heard = (page) => page.evaluate(() => window.__heard);
+const said = (page) => page.evaluate(() => window.__said);
 
 /**
  * Puts the bike in the straight before the next row of bales that's right across the road, in line with the ramp
@@ -269,7 +279,7 @@ test('the race: passing a rider is a place gained, said big, and the card at the
   await expectSoon(async () => (await state(page)).place, { timeout: 30_000 }).toBe(1);
   await expect(page.locator('#place')).toHaveText('1st');
   expect(await heard(page)).toContain('place');
-  await expect(page.locator('.callout.is-number').filter({ hasText: '1st' }).first()).toBeVisible();
+  await expectSoon(() => said(page)).toContain('1st');
   // On to the top, in front.
   await putBefore(page, 'top', { before: 60 });
   await rivalsAt(page, [-300, -320, -340, -30]);
@@ -280,6 +290,9 @@ test('the race: passing a rider is a place gained, said big, and the card at the
   await expect(page.locator('#finish-clean')).toHaveText('1st of 5');
   await expect(page.locator('#finish-what')).toHaveText('in the race');
   await expect(page.locator('#finish-line')).toContainText(`${stats.clean} of 6 bends were ridden all on the road.`);
+  // On the podium, the level moves on.
+  await expect(page.locator('#level-done-text')).toHaveText('Level 1 done! Next: level 2');
+  expect(await page.evaluate(() => window.__game.game.levels.current)).toBe(2);
   await shot(page, 'moto-wild-finish');
   await stopChild(page);
 });
@@ -304,6 +317,10 @@ test('riders who get to the top first are counted in front, and wait there, off 
   await waitForScreen(page, 'finish');
   await expect(page.locator('#finish-clean')).toHaveText('4th of 5');
   await expect(page.locator('#finish-title')).toHaveText('You made it to the top!');
+  // Off the podium, the level is to be tried again.
+  await expect(page.locator('#level-done-text')).toHaveText('Let’s try level 1 again!');
+  await expect(page.locator('#ride-again')).toHaveText('Try again');
+  expect(await page.evaluate(() => window.__game.game.levels.current)).toBe(1);
   await stopChild(page);
 });
 
