@@ -12,12 +12,15 @@ import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { TIP_LIMITS, UprightReader } from '../../core/upright.js';
 import { giraffePixels, renderGiraffe } from '../giraffe-garden/giraffe.js';
-import { BIG, bigFor, Goal, goalNewAt, KICKERS, PARTY_SECONDS, REACH_NAMES, SAVES_CHOICES } from './goal.js';
+import { BIG, bigFor, Goal, goalNewAt, KICKERS, LOST_SECONDS, PARTY_SECONDS, REACH_NAMES, SAVES_CHOICES, STAKES } from './goal.js';
 import { playerPixels, renderPlayers } from './players.js';
 import { GIRAFFE, GoalView, KICKER_TALL } from './view.js';
 
 const byId = (id) => document.getElementById(id);
 const FINISH = 'We won! What a goalkeeper!';
+// On the card when the other team wins a real match. It's only shown, not said.
+const LOST = 'The other team won the shoot-out!';
+const TRY_AGAIN = 'Try again';
 const INTRO = 'It’s penalties! Will you be our goalkeeper?';
 const HOLD_UP = 'Hold your hand up, like a high five!';
 const OPEN_TO_SAVE = 'Open your hand to save the ball!';
@@ -109,11 +112,12 @@ class GoalGame {
   }
 
   newGoal(level) {
-    const { goalSaves, goalReach, hands } = this.settings;
+    const { goalSaves, goalReach, goalStakes, hands } = this.settings;
     return new Goal({
       level,
       saves: SAVES_CHOICES.includes(Number(goalSaves)) ? Number(goalSaves) : 10,
       reach: REACH_NAMES.includes(goalReach) ? goalReach : 'middle',
+      stakes: STAKES.includes(goalStakes) ? goalStakes : 'match',
       side: hands,
       aspect: window.innerWidth / window.innerHeight,
       onEvent: (event) => this.onGoal(event),
@@ -150,7 +154,7 @@ class GoalGame {
   restage(change) {
     const { screen } = this.session;
     if (screen === 'playing' || screen === 'countdown' || !this.goal) return;
-    if ('goalSaves' in change || 'goalReach' in change || 'hands' in change) this.goal = this.newGoal(this.session.level);
+    if ('goalSaves' in change || 'goalReach' in change || 'goalStakes' in change || 'hands' in change) this.goal = this.newGoal(this.session.level);
   }
 
   /* ---------- a new match ---------- */
@@ -172,7 +176,10 @@ class GoalGame {
     this.view.reset();
     this.resetCounts();
     this.story.hide();
+    this.session.sound.lost = false;
     this.showProgress();
+    // The other team's goals are only counted in a real match.
+    byId('chip-goals-box').hidden = !this.goal.real;
     // Stars only come from level 2.
     const { stars } = this.goal.plan;
     byId('chip-stars-box').hidden = !stars;
@@ -211,6 +218,13 @@ class GoalGame {
       case 'goal':
         sound.play('in', { gain: 0.22 });
         view.glad();
+        this.showProgress();
+        break;
+      case 'lost':
+        // The other team's kickers cheer, and the crowd with them, softly. Nothing flashes.
+        sound.play('cheer', { gain: 0.25 });
+        view.glad(LOST_SECONDS);
+        this.story.hide();
         break;
       case 'star': {
         const { star } = event;
@@ -310,7 +324,20 @@ class GoalGame {
       this.storyFor -= dt;
       if (this.storyFor <= 0) this.story.hide();
     }
-    if (goal.done && session.screen === 'playing') session.finish();
+    if (goal.done && session.screen === 'playing') this.end();
+  }
+
+  /** The match is over. A lost one is told kindly, with no party, and Try again on the big button. */
+  end() {
+    const { session, goal } = this;
+    const lost = goal.lost;
+    session.sound.lost = lost;
+    document.querySelector('#screen-finish h2').textContent = lost ? LOST : FINISH;
+    session.finish();
+    if (lost) {
+      session.hud.hideSummary();
+      byId('play-again').textContent = TRY_AGAIN;
+    }
   }
 
   idle(dt, snapshot) {
@@ -345,8 +372,9 @@ class GoalGame {
   /* ---------- the top of the screen ---------- */
 
   showProgress() {
-    const { stats, target } = this.goal;
+    const { stats, target, toLose, real } = this.goal;
     byId('chip-saves').textContent = `${Math.min(stats.saves, target)} of ${target}`;
+    if (real) byId('chip-goals').textContent = `${Math.min(stats.goals, toLose)} of ${toLose}`;
     byId('chip-stars').textContent = String(stats.stars);
   }
 
@@ -354,11 +382,12 @@ class GoalGame {
 
   prompt(snapshot, dt) {
     const needed = this.session.handsPrompt(snapshot, dt);
-    // Once the match is won there's nothing to ask for.
+    // Once the match is over there's nothing to ask for.
     if (this.goal.phase !== 'play') return null;
     if (needed && !needed.key.startsWith('closed')) return needed;
-    // The hand can rest whenever it likes: the kicker just waits. After a while, it's said that's fine.
-    if (this.restFor > RESTING_AFTER) return { key: 'resting', text: SPOKEN.resting, side: null };
+    // In the gentle match the hand can rest whenever it likes: the kicker just waits. After a while, it's said that's
+    // fine. In a real match the kicker doesn't wait, so that isn't said, and a hand taken out of the picture rests.
+    if (!this.goal.real && this.restFor > RESTING_AFTER) return { key: 'resting', text: SPOKEN.resting, side: null };
     if (this.lowFor > HOLD_UP_AFTER) return { key: 'hold-up', text: HOLD_UP, side: null };
     if (this.closedFor > CLOSED_PROMPT_AFTER) return { key: 'open-to-save', text: OPEN_TO_SAVE, side: null, asks: 'open' };
     return null;
@@ -378,9 +407,19 @@ class GoalGame {
       hero: stats.saves,
       noun: 'match',
       rows: { saves: row(`${stats.saves} of ${stats.shots}`), across: row(stats.across), held: row(`${Math.round(stats.held)} s`), stars: row(stats.stars) },
-      // Nobody can lose: the match is won by saves, however many shots it takes.
-      won: true,
+      // A real match the other team won comes round again at the same level. The gentle one can't be lost.
+      won: !this.goal.lost,
     };
+  }
+}
+
+/** The game's sounds. A match the other team won ends softly, with no fanfare and nothing said. */
+class GoalSound extends Sound {
+  lost = false;
+
+  finish(line) {
+    if (this.lost) this.play('sparkle', { gain: 0.3 });
+    else super.finish(line);
   }
 }
 
@@ -400,6 +439,7 @@ new GameSession({
     hudTop: `
       <div class="goal-hud">
         <div class="chip chip-saves"><span class="chip-label">Saves</span><span id="chip-saves" class="chip-value">0 of 10</span></div>
+        <div id="chip-goals-box" class="chip chip-goals"><span class="chip-label">Goals in</span><span id="chip-goals" class="chip-value">0 of 6</span></div>
         <div id="chip-stars-box" class="chip chip-stars" hidden><span class="chip-label">Stars</span><span id="chip-stars" class="chip-value">0</span></div>
       </div>
       ${STORY_BOX}
@@ -436,19 +476,24 @@ new GameSession({
         ${choice('goalReach', 'far', 'Far')}
       </fieldset>
       <fieldset class="choice">
+        <legend>The other team's kicks</legend>
+        ${choice('goalStakes', 'match', 'A real match: they shoot on time, and can win it')}
+        ${choice('goalStakes', 'gentle', 'Gentle: they wait for a ready hand, and goals cost nothing')}
+      </fieldset>
+      <fieldset class="choice">
         <legend>Saves to win the match</legend>
         ${choice('goalSaves', '6', '6')}
         ${choice('goalSaves', '10', '10')}
         ${choice('goalSaves', '14', '14')}
       </fieldset>`,
   },
-  defaults: { goalWrist: 'little', goalReach: 'middle', goalSaves: 10 },
-  choices: { goalWrist: String, goalReach: String, goalSaves: Number },
+  defaults: { goalWrist: 'little', goalReach: 'middle', goalSaves: 10, goalStakes: 'match' },
+  choices: { goalWrist: String, goalReach: String, goalSaves: Number, goalStakes: String },
   tagline: (side) => `Giraffe’s team needs a goalkeeper! Hold your open ${side} hand up like a high five, and get it to the ring before the ball.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),
   portraits: () => renderPortraits(ROSTER),
-  createSound: (options) => new Sound({
+  createSound: (options) => new GoalSound({
     ...options,
     sounds: {
       birds: new URL('../tank-patrol/audio/birds.ogg', import.meta.url),

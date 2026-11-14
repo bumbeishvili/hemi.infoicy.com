@@ -1,12 +1,13 @@
-// Giraffe's Goal: kickers who wait for a hand that's ready, balls a ready glove saves at their rings, where the balls
-// go, what each level brings, and that a ball going in or a rest costs nothing. Everything here runs without a
-// screen, with a pretend child moving a glove.
+// Giraffe's Goal: a real match, with kickers who shoot on a clock and another team that can win it; the gentle match,
+// with kickers who wait for a hand that's ready, and where a ball going in or a rest costs nothing; balls a ready
+// glove saves at their rings, where the balls go, and what each level brings. Everything here runs without a screen,
+// with a pretend child moving a glove. The tests of the old kind rules play the gentle match, as makeGoal does.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  BALL, BIG, bigFor, EXTRAS, Goal, goalLevel, goalNewAt, KICKERS, LABELS, LINGER, NEWS, newsIsOn, PARTY_SECONDS, REACHES,
-  REACH_NAMES, RUN_UP, SAVES_CHOICES, SAVE_FROM, SPOT,
+  BALL, BIG, bigFor, EXTRAS, Goal, goalLevel, goalNewAt, goalsToLose, KICKERS, LABELS, LET_IN, LINGER, LOST_SECONDS, NEWS,
+  newsIsOn, PARTY_SECONDS, REACHES, REACH_NAMES, RUN_UP, SAVES_CHOICES, SAVE_FROM, SPOT,
 } from '../../games/giraffe-goal/goal.js';
 import { byId } from '../../core/body/roster.js';
 
@@ -26,7 +27,7 @@ function seeded(seed = 7) {
 
 function makeGoal(options = {}) {
   const log = [];
-  const goal = new Goal({ random: seeded(), onEvent: (event) => log.push(event), ...options });
+  const goal = new Goal({ random: seeded(), stakes: 'gentle', onEvent: (event) => log.push(event), ...options });
   goal.log = log;
   return goal;
 }
@@ -228,6 +229,94 @@ test('a child who rests comes back to a kicker who has waited: nothing is kicked
   assert.ok(back < 1.5, `${back} s`);
 });
 
+/* ---------- a real match, which the other team can win ---------- */
+
+const realMatch = (options = {}) => makeGoal({ stakes: 'match', ...options });
+
+test('in a real match the kicker shoots on the clock, at a hand that is not ready too, and waits only for no hand', () => {
+  const goal = realMatch();
+  assert.equal(goal.real, true);
+  // No hand in the picture: nothing happens, for as long as that lasts.
+  run(goal, 30, NO_HAND);
+  assert.equal(goal.stats.shots, 0);
+  assert.equal(said(goal, 'runup').length, 0);
+  // A closed hand, or one that isn't held up, in the picture: the kicker runs up all the same, and soon.
+  const waited = run(goal, 5, gloveAt(MIDDLE, { ready: false }), () => goal.stats.shots > 0);
+  assert.ok(waited < 1.6 + RUN_UP + 0.1, `the kick came after ${waited} s`);
+  // And the next, once that ball has gone in, after the level's gap.
+  const [first] = goal.shots;
+  run(goal, 10, gloveAt(MIDDLE, { ready: false }), () => first.state === 'in');
+  const next = run(goal, 5, gloveAt(MIDDLE, { ready: false }), () => goal.stats.shots > 1);
+  assert.ok(Math.abs(next - (goalLevel(1).gap + RUN_UP)) < 0.05, `the next came after ${next} s`);
+});
+
+test('in a real match a ball on its way stops where it is while no hand is in the picture, and goes on when one is', () => {
+  const goal = realMatch();
+  const shot = kickOff(goal);
+  run(goal, 0.8, gloveAt(MIDDLE));
+  const where = shot.t;
+  run(goal, 20, NO_HAND);
+  assert.equal(shot.t, where, 'it waited');
+  assert.deepEqual([shot.state, goal.stats.goals], ['flying', 0]);
+  run(goal, 10, gloveAt(shot.to), () => shot.state !== 'flying');
+  assert.equal(shot.state, 'saved');
+});
+
+test('in a real match a ball that goes in is a goal to the other team, with no help after it, and enough of them win the match', () => {
+  const goal = realMatch();
+  assert.equal(goal.toLose, 6, 'at level 1, six goals of ten saves');
+  const flights = [];
+  // A hand that's in the picture and never ready: every ball goes in.
+  run(goal, 120, gloveAt({ x: 0.5, y: 0.9 }, { ready: false }), () => {
+    for (const { shot } of said(goal, 'kick')) if (!flights.includes(shot)) flights.push(shot);
+    return goal.phase !== 'play';
+  });
+  assert.equal(goal.phase, 'lost');
+  assert.deepEqual([goal.stats.goals, goal.stats.saves, goal.stats.shots], [6, 0, 6]);
+  assert.ok(flights.every((shot) => shot.flight === goalLevel(1).flight), 'a goal makes the next ball no slower');
+  assert.equal(said(goal, 'lost').length, 1);
+  assert.equal(said(goal, 'won').length, 0);
+  assert.equal(goal.lost, true);
+  // The other team cheers for a moment, and then it's over, with nothing more kicked.
+  assert.equal(goal.done, false);
+  const cheered = run(goal, 10, gloveAt(MIDDLE), () => goal.done);
+  assert.ok(Math.abs(cheered - LOST_SECONDS) < 0.05, `${cheered} s`);
+  assert.equal(goal.stats.shots, 6);
+});
+
+test('in a real match the other team needs fewer goals as the levels go up, out of the saves that win it', () => {
+  assert.deepEqual(LEVELS.map((level) => goalsToLose(level, 10)), [6, 6, 5, 5, 5, 4, 4, 4, 3, 3]);
+  assert.deepEqual([goalsToLose(1, 6), goalsToLose(10, 6), goalsToLose(1, 14), goalsToLose(10, 14)], [4, 2, 8, 4]);
+  for (const level of LEVELS) for (const saves of SAVES_CHOICES) assert.ok(goalsToLose(level, saves) >= LET_IN.least);
+  assert.equal(makeGoal().toLose, Infinity, 'the gentle match can never be lost');
+});
+
+test('a real match can be won by a quick hand at every level, and a slow hand that wins level 1 loses level 10', () => {
+  for (const level of LEVELS) {
+    const goal = realMatch({ level });
+    const took = playThrough(goal, { speed: 1.4 });
+    assert.equal(goal.done, true, `level ${level}: not over after ${took} s`);
+    assert.equal(goal.lost, false, `level ${level}: lost, ${goal.stats.goals} went in`);
+  }
+  const first = realMatch({ level: 1 });
+  playThrough(first, { speed: 0.3 });
+  assert.equal(first.lost, false, `level 1, slowly: ${first.stats.goals} went in`);
+  const last = realMatch({ level: 10 });
+  playThrough(last, { speed: 0.3 });
+  assert.equal(last.lost, true, `level 10, slowly: ${last.stats.saves} saves`);
+});
+
+test('the gentle match is the game as it was: the kicker waits for a ready hand, and no number of goals loses it', () => {
+  const goal = makeGoal({ stakes: 'gentle' });
+  run(goal, 30, gloveAt(MIDDLE, { ready: false }));
+  assert.equal(goal.stats.shots, 0);
+  const took = playThrough(goal, { misses: (shot) => shot % 3 !== 0 });
+  assert.equal(goal.done, true, `${took} s`);
+  assert.equal(goal.lost, false);
+  assert.ok(goal.stats.goals > 10, `${goal.stats.goals} went in`);
+  assert.deepEqual([goalLevel(1, { gentle: true }).flight, goalLevel(1, { gentle: true }).gap], [3.4, 1.3]);
+});
+
 /* ---------- where the balls go ---------- */
 
 test('the balls go near the hand, far out to its side, across the middle and up high, in turn, inside the goal', () => {
@@ -293,12 +382,19 @@ test('each level from 2 brings something new, named in both languages, that the 
   }
   assert.equal(new Set(keys).size, 9);
   assert.deepEqual(Object.keys(NEWS).map(Number), LEVELS.slice(1));
-  // Balls come a little quicker each level, and never quicker than a child can get a hand across to.
-  for (const level of LEVELS.slice(1)) {
-    assert.ok(goalLevel(level).flight < goalLevel(level - 1).flight);
-    assert.ok(goalLevel(level).gap < goalLevel(level - 1).gap);
+  // Balls come quicker each level. In a real match level 10 leaves about half of level 1's time, and in the gentle
+  // one, as it always was, about three quarters.
+  for (const gentle of [false, true]) {
+    for (const level of LEVELS.slice(1)) {
+      assert.ok(goalLevel(level, { gentle }).flight < goalLevel(level - 1, { gentle }).flight);
+      assert.ok(goalLevel(level, { gentle }).gap < goalLevel(level - 1, { gentle }).gap);
+    }
   }
-  assert.ok(goalLevel(10).flight >= 2.4 && goalLevel(1).flight <= 3.6);
+  assert.equal(goalLevel(1).flight, 3.4);
+  assert.ok(Math.abs(goalLevel(10).flight - 1.5) < 1e-9 && goalLevel(10).flight >= goalLevel(1).flight * 0.44);
+  assert.ok(goalLevel(10).linger < goalLevel(1).linger);
+  assert.ok(goalLevel(10, { gentle: true }).flight >= 2.4 && goalLevel(1, { gentle: true }).flight <= 3.6);
+  assert.equal(goalLevel(10, { gentle: true }).linger, LINGER);
 });
 
 test('a level\'s new kind of ball is the first to come, every other ball is a plain one, and each has its kicker', () => {
@@ -594,6 +690,6 @@ test('every line the game says has its English and Georgian voice files, and the
 
 test('the grown-ups\' settings for this game have names of their own, as every game\'s are kept together', () => {
   const source = readFileSync(new URL('../../games/giraffe-goal/main.js', import.meta.url), 'utf8');
-  assert.match(source, /defaults: \{ goalWrist: 'little', goalReach: 'middle', goalSaves: 10 \}/);
-  assert.match(source, /choices: \{ goalWrist: String, goalReach: String, goalSaves: Number \}/);
+  assert.match(source, /defaults: \{ goalWrist: 'little', goalReach: 'middle', goalSaves: 10, goalStakes: 'match' \}/);
+  assert.match(source, /choices: \{ goalWrist: String, goalReach: String, goalSaves: Number, goalStakes: String \}/);
 });

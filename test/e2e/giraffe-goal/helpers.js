@@ -7,6 +7,8 @@ import { expect, openGame, show, test, waitForScreen } from '../helpers.js';
 export { judge, watchBrightness } from '../giraffe-garden/helpers.js';
 
 export const GAME = 'giraffe-goal';
+// The gentle match, which is the game as it always was: the kicker waits for a hand that's ready, and nothing is lost.
+export const GENTLE = { goalStakes: 'gentle' };
 export const PALM = [null, 'palm', { scale: 0.62 }];
 export const FIST = [null, 'fist', { scale: 0.62 }];
 export const NO_HAND = [null, null, { scale: 0.62 }];
@@ -29,6 +31,8 @@ export const state = (page) => page.evaluate(() => {
   return {
     level: goal.level,
     phase: goal.phase,
+    real: goal.real,
+    toLose: goal.toLose,
     done: goal.done,
     target: goal.target,
     sign: goal.sign,
