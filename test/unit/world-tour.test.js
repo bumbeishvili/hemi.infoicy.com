@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { FLAGS as REAL_FLAGS } from '../../games/world-tour/flags.js';
 import { apart, between, Globe } from '../../games/world-tour/globe.js';
+import { inShape } from '../../games/world-tour/shapes.js';
 import { allLines, SAY, thisIs, whereIs } from '../../games/world-tour/words.js';
 import { COUNTRIES, choicesFor, JOURNEYS, MEMORY, NEW_THINGS, newAt, Painting, TOUR, Tour, tourLevel, WIND } from '../../games/world-tour/tour.js';
 
@@ -676,15 +677,31 @@ test('level 6: a fuel can on the way tops the tank up by one, and never past ful
   run(brimming, 0.1, { ...HAND, onCan: true });
   assert.equal(brimming.cans, full);
 
-  // Before level 6 there's no can, and none on the gentle tour, where fuel isn't counted.
+  // Before level 6 there's no can.
   const early = makeTour({ level: 5, hold: 'never' });
   early.begin();
   choose(early);
   assert.equal(early.can, null);
+  // On the gentle tour, where there's always fuel, it's there to catch all the same: it's what the level brings.
   const gentle = makeTour({ level: 6, gentle: true });
   gentle.begin();
   choose(gentle);
-  assert.equal(gentle.can, null);
+  run(gentle, 0.1, { ...HAND, onCan: true });
+  assert.equal(gentle.stats.cans, 1);
+  assert.equal(gentle.cans, Infinity);
+});
+
+test('the squares of a flag belong to the part on top there, whichever way they are worked out', () => {
+  for (const id of ['USA', 'GBR', 'GEO', 'TUR', 'ZAF', 'NOR']) {
+    const flag = REAL_FLAGS[id];
+    const painting = new Painting(flag);
+    for (let y = 0; y < painting.high; y += 7) {
+      for (let x = 0; x < painting.wide; x += 3) {
+        const top = flag.parts.findLastIndex((part) => part.shapes.some((shape) => inShape(shape, x + 0.5, y + 0.5)));
+        assert.equal(painting.partAt(x + 0.5, y + 0.5), top, `${id} at ${x}, ${y}`);
+      }
+    }
+  }
 });
 
 test('a flag with a part nothing shows of can still be finished', () => {

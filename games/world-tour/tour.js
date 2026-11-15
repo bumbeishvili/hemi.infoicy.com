@@ -19,7 +19,7 @@
 // they're over, and view.js draws what this says. Places on a flag are in its own units: see shapes.js.
 import { clampLevel } from '../../core/levels.js';
 import { apart } from './globe.js';
-import { inPart } from './shapes.js';
+import { boxOf, inShape } from './shapes.js';
 
 // Each level's journey, in the order the countries are flown to. The flags get harder to paint as they go.
 export const JOURNEYS = {
@@ -155,16 +155,19 @@ export class Painting {
     this.painted = new Uint8Array(this.wide * this.high);
     this.sizes = flag.parts.map(() => 0);
     this.counts = flag.parts.map(() => 0);
-    for (let y = 0; y < this.high; y += 1) {
-      for (let x = 0; x < this.wide; x += 1) {
-        for (let part = flag.parts.length - 1; part >= 0; part -= 1) {
-          if (!inPart(flag.parts[part], x + 0.5, y + 0.5)) continue;
-          this.owner[y * this.wide + x] = part;
-          this.sizes[part] += 1;
-          break;
+    // Each part in turn, from the bottom one up, takes the squares whose middles are in its shapes. Only the
+    // squares round each shape are asked about, so that a flag of many little shapes is as quick as any.
+    flag.parts.forEach((part, number) => {
+      for (const shape of part.shapes) {
+        const box = boxOf(shape);
+        const [left, right] = [Math.max(0, Math.floor(box.left)), Math.min(this.wide, Math.ceil(box.right))];
+        const [top, bottom] = [Math.max(0, Math.floor(box.top)), Math.min(this.high, Math.ceil(box.bottom))];
+        for (let y = top; y < bottom; y += 1) {
+          for (let x = left; x < right; x += 1) if (inShape(shape, x + 0.5, y + 0.5)) this.owner[y * this.wide + x] = number;
         }
       }
-    }
+    });
+    for (const part of this.owner) if (part >= 0) this.sizes[part] += 1;
     // A part with nothing of it to be seen has nothing to paint.
     this.done = this.sizes.map((size) => size === 0);
   }
@@ -359,7 +362,7 @@ export class Tour {
   takeOff() {
     this.state = 'fly';
     this.from = this.flown.at(-1) ?? null;
-    const withCan = this.rules.can && this.counted;
+    const withCan = this.rules.can;
     this.timer = (withCan ? TOUR.flyWithCan : TOUR.fly) * this.rules.fly;
     this.flight = this.timer;
     this.can = withCan ? { taken: false } : null;
@@ -376,7 +379,7 @@ export class Tour {
     if (this.can && !this.can.taken && open && onCan) {
       this.can.taken = true;
       this.stats.cans += 1;
-      // It tops the tank up by a can, and never past full.
+      // It tops the tank up by a can, and never past full. On the gentle tour it's caught for the fun of it.
       this.cans = Math.min(this.rules.cans, this.cans + 1);
       this.onEvent({ type: 'can', cans: this.cans });
     }
