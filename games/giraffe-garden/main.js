@@ -745,6 +745,8 @@ new GameSession({
   },
   defaults: { turn: 'little', spread: 'middle', plants: 6, gardenSun: 'dries' },
   choices: { turn: String, spread: String, plants: Number, gardenSun: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['turn'],
   tagline: (side) => `Giraffe’s garden is thirsty! Hold the watering can with your open ${side} hand, and turn your hand over to pour.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

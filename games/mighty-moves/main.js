@@ -95,6 +95,8 @@ class MightyMoves extends BodyGame {
     super({
       defaults: DEFAULTS,
       choices: CHOICES,
+      // These go on to a game that's being played at once. The rest, and the level, start it again.
+      atOnce: ['jumps'],
       lines: new URL('./audio/voice/lines.json', import.meta.url),
       createSound: (options) => new FightSound(options),
     });
@@ -1089,6 +1091,14 @@ class MightyMoves extends BodyGame {
     const names = { coin: ['coin', 'coins'], gem: ['gem', 'gems'], medal: ['medal', 'medals'], trophy: ['trophy', 'trophies'] };
     const got = this.fight.levelRules.prizes.map((kind) => `<span class="finish-prize">${markHtml(kind)} ${prizes[kind]} ${names[kind][prizes[kind] === 1 ? 0 : 1]}</span>`);
     return got.length ? `Prizes: ${got.join(' · ')}` : '';
+  }
+
+  /**
+   * What a round leaves going, stopped when a grown-up's change in the panel starts the game again: see
+   * startAgain in core/body/game.js.
+   */
+  leaveRound() {
+    this.sound.stopFightMusic();
   }
 
   playAgain() {

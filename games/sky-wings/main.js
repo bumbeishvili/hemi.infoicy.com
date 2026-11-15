@@ -122,6 +122,8 @@ class SkyWings extends BodyGame {
     super({
       defaults: DEFAULTS,
       choices: CHOICES,
+      // These go on to a game that's being played at once. The rest, and the level, start it again.
+      atOnce: [],
       lines: new URL('./audio/voice/lines.json', import.meta.url),
       createSound: (options) => new FlightSound(options),
     });
@@ -812,6 +814,14 @@ class SkyWings extends BodyGame {
       this.sound.say(BODY_SAY.waiting, { ifQuiet: true });
       this.clearAsk();
     }
+  }
+
+  /**
+   * What a round leaves going, stopped when a grown-up's change in the panel starts the game again: see
+   * startAgain in core/body/game.js.
+   */
+  leaveRound() {
+    this.sound.stopFlying();
   }
 
   onFinished(won) {

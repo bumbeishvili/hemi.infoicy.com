@@ -994,6 +994,8 @@ new GameSession({
   },
   defaults: { arenaRifle: 'ak', arenaSens: 'medium', arenaAssist: 'on', arenaHard: 'medium', arenaWin: 10, arenaFriends: 'together' },
   choices: { arenaRifle: String, arenaSens: String, arenaAssist: String, arenaHard: String, arenaWin: Number, arenaFriends: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['arenaSens', 'arenaRifle', 'arenaAssist'],
   tagline: (side) => `A team match, played like a shooter on a phone. Open your ${side} hand and drag it to look round, thumb up to fire. Your other hand walks.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

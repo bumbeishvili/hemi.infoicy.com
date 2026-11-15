@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { beforeEach, test } from 'node:test';
-import { OLD_DEFAULTS, loadSettings, saveSettings } from '../../core/settings.js';
+import { OLD_DEFAULTS, appliesAtOnce, loadSettings, saveSettings } from '../../core/settings.js';
 
 const KEY = 'camera-games-settings';
 let stored = {};
@@ -115,4 +115,48 @@ test('no two games save a setting under one name and have it come two ways', () 
   const known = new Set(['reach']);
   const twoWays = [...comes].filter(([name, games]) => !known.has(name) && new Set(games.values()).size > 1).map(([name, games]) => `${name}: ${[...games].map(([game, value]) => `${game} ${value}`).join(', ')}`);
   assert.deepEqual(twoWays, []);
+});
+
+test('some settings go on to a game that is being played at once, and the rest start it again', () => {
+  // In every game: the sound, the voice and its language, the hand in play, how open a hand has to be and its
+  // shapes, and how big a move has to be.
+  for (const name of ['sound', 'voice', 'language', 'hands', 'strictness', 'shapes', 'moveSize']) assert.equal(appliesAtOnce(name), true, name);
+  // Together or against each other is for a game with friends, whatever a game calls it.
+  assert.equal(appliesAtOnce('ropeFriends'), true);
+  assert.equal(appliesAtOnce('tankFriends', []), true);
+  // A game's own, the ones that tune how its movement is read or helped.
+  assert.equal(appliesAtOnce('ropeLift', ['ropeLift']), true);
+  assert.equal(appliesAtOnce('ropeLift'), false);
+  // The rest start the game again: what the game is, how long it is, and what can be lost in it.
+  for (const name of ['maths', 'balloons', 'ropeDrops', 'flapFox', 'laps', 'fighter']) assert.equal(appliesAtOnce(name, ['reach', 'pace']), false, name);
+  // And in a game that's laid out for one hand, the hand in play does too.
+  assert.equal(appliesAtOnce('hands', [], ['hands']), false);
+  assert.equal(appliesAtOnce('hands', ['flapRise'], []), true);
+});
+
+test('every game says which of its own settings go on at once, and each of them is one of its settings', () => {
+  const games = new URL('../../games/', import.meta.url);
+  let count = 0;
+  for (const game of readdirSync(games)) {
+    let source;
+    try {
+      source = readFileSync(new URL(`${game}/main.js`, games), 'utf8');
+    } catch {
+      continue;
+    }
+    count += 1;
+    const lists = [...source.matchAll(/atOnce: \[([^\]]*)\]/g)];
+    assert.equal(lists.length, 1, `${game} has one list of what goes on at once`);
+    const names = [...lists[0][1].matchAll(/'(\w+)'/g)].map(([, name]) => name);
+    const own = new Set();
+    for (const [, block] of source.matchAll(/(?:const DEFAULTS = |defaults: )\{([\s\S]*?)\}[;,]/g)) {
+      for (const [, name] of block.matchAll(/(\w+): /g)) own.add(name);
+    }
+    for (const name of names) {
+      assert.ok(own.has(name), `${game}: ${name} is one of its settings`);
+      // What can be lost, and what the game is, are never among them.
+      assert.equal(/Friends$/.test(name), false, `${game}: ${name} needn't be listed`);
+    }
+  }
+  assert.equal(count, 25);
 });

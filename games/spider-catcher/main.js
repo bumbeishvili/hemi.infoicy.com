@@ -602,6 +602,8 @@ new GameSession({
   },
   defaults: { reach: 'little', spiderAway: 'away' },
   choices: { reach: String, spiderAway: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['reach'],
   tagline: (side) => `Giraffe’s little spiders ran off! Close your ${side} hand on one, carry it to its web, and open your hand to put it home.`,
   finishLine: ALL_HOME,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

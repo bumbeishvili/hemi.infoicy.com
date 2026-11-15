@@ -870,6 +870,8 @@ new GameSession({
   },
   defaults: { paintBrush: 'small', paintDone: 'most', paintRival: 'contest', paintReach: 'little', paintColours: 'own', paintFriends: 'together' },
   choices: { paintBrush: String, paintDone: String, paintRival: String, paintReach: String, paintColours: String, paintFriends: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['paintBrush', 'paintReach'],
   tagline: (side) => `Giraffe is painting pictures for the party. Dip your open ${side} hand in a paint pot, and colour them in!`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

@@ -34,7 +34,7 @@ import { CameraProblem, TrackingCamera } from './camera.js';
 import { HandCheck, HandMonitor, OPEN_RULES, PlayStats, promptFor } from './hands.js';
 import { Hud } from './hud.js';
 import { Levels, mountLevels } from './levels.js';
-import { loadSettings, saveSettings } from './settings.js';
+import { appliesAtOnce, loadSettings, saveSettings } from './settings.js';
 import { SHAPE_RESTING, choiceOf, shapesFor } from './shapes.js';
 import { givenFor } from './mapping.js';
 import { mountShell } from './shell.js';
@@ -81,8 +81,12 @@ export class GameSession {
    * saved value that the row doesn't offer any more is its fallback. The game hears a change as
    * settingChanged({ given: id }).
    */
-  constructor({ shell, defaults = {}, choices = {}, tagline, finishLine, createSound, createGame, lines = null, portraits = null, moves = { open: 'Play', closed: null }, mapping = null }) {
+  constructor({ shell, defaults = {}, choices = {}, atOnce = [], startsAgain = [], tagline, finishLine, createSound, createGame, lines = null, portraits = null, moves = { open: 'Play', closed: null }, mapping = null }) {
     this.shell = shell;
+    // The game's settings that go on to a round that's being played at once: see appliesAtOnce in settings.js.
+    this.atOnce = atOnce;
+    this.startsAgain = startsAgain;
+    this.startAgainWanted = false;
     this.moves = moves;
     this.mapping = mapping;
     this.defaults = defaults;
@@ -173,8 +177,9 @@ export class GameSession {
       // What each level brings that's new, if the game says.
       newAt: (level) => this.game?.newAt?.(level) ?? [],
       onChoose: (level) => {
-        // Mid-round, the new level starts with the next round.
-        if (this.screen !== 'playing' && this.screen !== 'countdown') this.level = level;
+        // Mid-round, the round starts again at the new level when the panel is closed.
+        if (this.midRound) this.startAgainWanted = true;
+        else this.level = level;
       },
     });
 
@@ -201,6 +206,7 @@ export class GameSession {
     this.hud.panel.addEventListener('close', () => {
       this.paused = false;
       this.sound.resume();
+      if (this.startAgainWanted) this.startAgain();
     });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.sound.quiet();
@@ -245,7 +251,34 @@ export class GameSession {
       this.hud.prompt.clear();
     }
     this.game.settingChanged?.(change);
+    // In the middle of a round, what doesn't go on to it at once starts it again when the panel is closed.
+    if (this.midRound && Object.keys(change).some((name) => !appliesAtOnce(name, this.atOnce, this.startsAgain))) this.startAgainWanted = true;
     saveSettings(settings);
+  }
+
+  /** Whether a round is being counted in or played. */
+  get midRound() {
+    return this.screen === 'playing' || this.screen === 'countdown';
+  }
+
+  /**
+   * A grown-up chose another level, or changed how the game is, in the middle of a round: the round starts again,
+   * so that what they chose is what's played. Not in a game with friends, which is theirs too.
+   */
+  startAgain() {
+    this.startAgainWanted = false;
+    if (this.game.friends?.current) return;
+    // Asked for with a hand check on its way, it's a new round that comes after the check.
+    if (this.screen === 'check' && this.afterCheck === 'resume') {
+      this.game.finished?.();
+      this.afterCheck = 'countdown';
+      return;
+    }
+    if (!this.midRound) return;
+    this.game.finished?.();
+    this.hud.prompt.clear();
+    this.hud.setCount('');
+    this.countdownOrWait();
   }
 
   /** A grown-up has chosen the hand shape for this game's open move: see core/shapes.js. */

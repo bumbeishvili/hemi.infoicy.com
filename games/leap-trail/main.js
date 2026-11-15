@@ -116,6 +116,8 @@ class LeapTrail extends BodyGame {
     super({
       defaults: DEFAULTS,
       choices: CHOICES,
+      // These go on to a game that's being played at once. The rest, and the level, start it again.
+      atOnce: ['jumpWith'],
       lines: new URL('./audio/voice/lines.json', import.meta.url),
       createSound: (options) => new TrailSound(options),
     });
@@ -1051,6 +1053,14 @@ class LeapTrail extends BodyGame {
     const last = parts.pop();
     const words = parts.length ? `${parts.join(', ')} and ${last}` : last;
     return `${words[0].toUpperCase()}${words.slice(1)}.`;
+  }
+
+  /**
+   * What a round leaves going, stopped when a grown-up's change in the panel starts the game again: see
+   * startAgain in core/body/game.js.
+   */
+  leaveRound() {
+    this.sound.stopMusic();
   }
 
   runAgain() {

@@ -744,6 +744,8 @@ new GameSession({
   },
   defaults: { steering: 'help', laps: 2, reach: 'medium', fighter: ROSTER[0].id, rivals: 'race' },
   choices: { steering: String, laps: Number, reach: String, fighter: String, rivals: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['steering', 'reach'],
   tagline: (side) => `Open your ${side} hand to make your car go!`,
   finishLine: 'You did it! Great racing!',
   portraits: () => renderPortraits(ROSTER),

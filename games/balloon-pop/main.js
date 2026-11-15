@@ -697,6 +697,8 @@ new GameSession({
   },
   defaults: { balloons: 20, pace: 'slow', reach: 'little', maths: 'off', away: 'count' },
   choices: { balloons: Number, pace: String, reach: String, maths: String, away: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['pace', 'reach'],
   tagline: (side) => `Pop the balloons with your open ${side} hand!`,
   finishLine: 'You popped them all!',
   portraits: () => renderPortraits(ROSTER),

@@ -625,6 +625,8 @@ new GameSession({
   },
   defaults: { pace: 'slow', reach: 'little', reloading: 'on', rescueGoo: 'medium', stops: 5 },
   choices: { pace: String, reach: String, reloading: String, rescueGoo: String, stops: Number },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['pace', 'reach', 'reloading'],
   tagline: (side) => `Robots have caught your friends! Ride the tram through town. Open your ${side} hand to fire, and close it for your shield.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

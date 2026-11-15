@@ -661,6 +661,8 @@ new GameSession({
   },
   defaults: { reach: 'little', ships: 4, storm: 'drift' },
   choices: { reach: String, ships: Number, storm: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['reach'],
   tagline: (side) => `Ships are lost in the storm! Wipe the mud off the lighthouse windows with your open ${side} hand, and bring them home.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

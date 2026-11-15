@@ -930,6 +930,8 @@ new GameSession({
   },
   defaults: { mazeSize: 'hard', mazeSun: 'sets', mazeReach: 'little', mazeWays: 'lead', mazes: 3, fighter: ROSTER[0].id },
   choices: { mazeSize: String, mazeSun: String, mazeReach: String, mazeWays: String, mazes: Number, fighter: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['mazeReach'],
   tagline: (side) => `Friends are lost in the maze! Lead the way to them with your open ${side} hand.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

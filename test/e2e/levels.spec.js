@@ -115,19 +115,5 @@ test('level 1 has nothing new to show', async ({ page }) => {
   await expect(page.locator('#level-new')).toBeHidden();
 });
 
-test('a level a grown-up chooses mid-game starts next time, and the one played is what the card says', async ({ page }) => {
-  await openGame(page, { levels: { lighthouse: 3 } }, 'lighthouse');
-  await show(page, null, 'open');
-  await page.locator('#start').click();
-  await waitForScreen(page, 'playing');
-  await page.locator('#open-panel').click();
-  await page.locator('#level-choice label', { hasText: '7' }).click();
-  await page.locator('#close-panel').click();
-  expect(await page.evaluate(() => window.__game.session.level)).toBe(3);
-
-  await page.evaluate(() => window.__game.session.finish());
-  await expect(page.locator('#level-done-text')).toHaveText('Level 3 done! Next: level 7');
-  await page.locator('#play-again').click();
-  await waitForScreen(page, 'countdown');
-  expect(await page.evaluate(() => window.__game.session.level)).toBe(7);
-});
+// A level chosen in the middle of a game starts the game again at it: see start-again.spec.js. It used to wait
+// for the next game, which looked as though nothing had happened.

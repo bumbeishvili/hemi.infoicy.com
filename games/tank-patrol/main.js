@@ -950,6 +950,8 @@ new GameSession({
   },
   defaults: { pace: 'slow', reach: 'little', driving: 'closed', tankShells: 'medium', tanks: 6, tankFriends: 'together' },
   choices: { pace: String, reach: String, driving: String, tankShells: String, tanks: Number, tankFriends: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['pace', 'reach', 'driving'],
   tagline: (side) => `Robot tanks are rolling into Giraffe’s valley! Close your ${side} hand to drive, and open it to fire.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

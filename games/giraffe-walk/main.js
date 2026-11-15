@@ -423,6 +423,8 @@ new GameSession({
   },
   defaults: { reach: 'little', daylight: 'sets' },
   choices: { reach: String, daylight: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['reach'],
   tagline: (side) => `Giraffe is lost! Pick fruit with your ${side} hand, carry it to him, and open your hand to feed him, all the way home.`,
   finishLine: HOME,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

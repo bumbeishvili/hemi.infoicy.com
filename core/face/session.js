@@ -30,7 +30,7 @@
 // ?debug in the address, a stand-in for the tracker can be given as window.__faceTracker: see test/e2e/fake-face.js.
 import { CameraProblem, TrackingCamera } from '../camera.js';
 import { Levels, mountLevels } from '../levels.js';
-import { loadSettings, saveSettings } from '../settings.js';
+import { appliesAtOnce, loadSettings, saveSettings } from '../settings.js';
 import { Sound } from '../sound.js';
 import { FaceHud } from './hud.js';
 import { MOUTH_RULES, MOUTH_SAY, MouthCheck, MouthMonitor, mouthPrompt, MouthStats } from './mouth.js';
@@ -58,8 +58,11 @@ export class FaceSession {
    * the title card, and finishLine what the voice says at the end, unless the game's summary says another.
    * createSound and createGame build the game's sound and the game itself, and lines is where its voice lines are.
    */
-  constructor({ shell, defaults = {}, choices = {}, tagline = '', finishLine, createSound, createGame, lines = null }) {
+  constructor({ shell, defaults = {}, choices = {}, atOnce = [], tagline = '', finishLine, createSound, createGame, lines = null }) {
     this.shell = shell;
+    // The game's settings that go on to a round that's being played at once: see appliesAtOnce in settings.js.
+    this.atOnce = atOnce;
+    this.startAgainWanted = false;
     this.defaults = defaults;
     this.choices = choices;
     this.tagline = tagline;
@@ -136,8 +139,9 @@ export class FaceSession {
       // What each level brings that's new, if the game says.
       newAt: (level) => this.game?.newAt?.(level) ?? [],
       onChoose: (level) => {
-        // Mid-round, the new level starts with the next round.
-        if (this.screen !== 'playing' && this.screen !== 'countdown') this.level = level;
+        // Mid-round, the round starts again at the new level when the panel is closed.
+        if (this.midRound) this.startAgainWanted = true;
+        else this.level = level;
         this.game?.levelChosen?.(level);
       },
     });
@@ -159,6 +163,7 @@ export class FaceSession {
     this.hud.panel.addEventListener('close', () => {
       this.paused = false;
       this.sound.resume();
+      if (this.startAgainWanted) this.startAgain();
     });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.sound.quiet();
@@ -199,7 +204,27 @@ export class FaceSession {
       this.hud.prompt.clear();
     }
     this.game.settingChanged?.(change);
+    // In the middle of a round, what doesn't go on to it at once starts it again when the panel is closed.
+    if (this.midRound && Object.keys(change).some((name) => !appliesAtOnce(name, this.atOnce))) this.startAgainWanted = true;
     saveSettings(settings);
+  }
+
+  /** Whether a round is being counted in or played. */
+  get midRound() {
+    return this.screen === 'playing' || this.screen === 'countdown';
+  }
+
+  /**
+   * A grown-up chose another level, or changed how the game is, in the middle of a round: the round starts again,
+   * so that what they chose is what's played. Not in a game with friends, which is theirs too.
+   */
+  startAgain() {
+    this.startAgainWanted = false;
+    if (this.game.friends?.current || !this.midRound) return;
+    this.game.finished?.();
+    this.hud.prompt.clear();
+    this.hud.setCount('');
+    this.countdownOrWait();
   }
 
   setScreen(name) {

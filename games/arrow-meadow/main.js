@@ -757,6 +757,8 @@ new GameSession({
   },
   defaults: { arrowReach: 'small', arrowHelp: 'off', arrowQuiver: 'quiver', arrowGoal: 10, arrowFriends: 'together' },
   choices: { arrowReach: String, arrowHelp: String, arrowQuiver: String, arrowGoal: Number, arrowFriends: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['arrowReach', 'arrowHelp'],
   tagline: (side) => `Giraffe needs an archer! One hand holds the bow up. Close your ${side} hand on the string, pull it back, and open your hand to let the arrow fly.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

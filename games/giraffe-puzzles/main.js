@@ -868,6 +868,10 @@ new GameSession({
   },
   defaults: { puzzlePieces: 'more', puzzleSnap: 'closer', puzzleClock: 'ticks', puzzleReach: 'little', puzzleFriends: 'together' },
   choices: { puzzlePieces: String, puzzleSnap: String, puzzleClock: String, puzzleReach: String, puzzleFriends: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['puzzleSnap', 'puzzleReach'],
+  // The game is laid out for the hand in play, so the other hand chosen in the middle of it starts it again.
+  startsAgain: ['hands'],
   tagline: (side) => `Giraffe’s picture fell and broke! Pick up each piece with your open ${side} hand, and put it back in its place.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

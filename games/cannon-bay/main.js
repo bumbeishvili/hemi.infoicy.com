@@ -1173,6 +1173,8 @@ new GameSession({
   },
   defaults: DEFAULTS,
   choices: CHOICES,
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['bayPace', 'bayCannons', 'bayPirates'],
   tagline: (side) => `Pirates have come for the island’s treasure! Open your ${side} hand to raise the sails, and move it to turn the wheel.`,
   finishLine: WON,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

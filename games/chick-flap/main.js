@@ -780,6 +780,10 @@ new GameSession({
   },
   defaults: { flapRise: 'little', flapWings: 'both', flapFox: 'catch', flapWay: 'medium', flapFriends: 'together' },
   choices: { flapRise: String, flapWings: String, flapFox: String, flapWay: String, flapFriends: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['flapRise'],
+  // The game is laid out for the hand in play, so the other hand chosen in the middle of it starts it again.
+  startsAgain: ['hands'],
   tagline: () => 'Flap home before the fox! Your hands are the chick’s wings: bring them up like high fives, and it flies over what’s in the way.',
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

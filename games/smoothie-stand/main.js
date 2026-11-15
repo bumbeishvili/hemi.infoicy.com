@@ -879,6 +879,8 @@ new GameSession({
   // since this game came to be medium and those two stayed slow, whichever was played last decided for all.
   defaults: { smoothiePace: 'medium', slicing: 'swipe', customers: 6, patience: 'hurry' },
   choices: { smoothiePace: String, slicing: String, customers: Number, patience: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['smoothiePace', 'slicing'],
   tagline: (side) => `It’s the Harvest Fair! Slice what the customers order, with your open ${side} hand.`,
   finishLine: WON,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

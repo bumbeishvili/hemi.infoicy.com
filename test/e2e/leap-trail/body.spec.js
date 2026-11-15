@@ -247,16 +247,24 @@ test('the grown-ups\' panel pauses the run and remembers what it\'s told', async
   await page.waitForTimeout(600);
   expect((await runState(page)).distance).toBe(paused.distance);
 
+  // How a jump is made, how big a move has to be and which side is worked on go on to the run at once: it
+  // carries on from where it was.
   await page.locator('input[name="jumpWith"][value="reach"]').check();
   await expect(page.locator('body')).toHaveAttribute('data-jump-with', 'reach');
-  await page.locator('input[name="trailPace"][value="fast"]').check();
-  await page.locator('input[name="obstacles"][value="40"]').check();
-  await page.locator('input[name="onMissed"][value="stumble"]').check();
-  await page.locator('input[name="trailLanes"][value="no"]').check();
   await page.locator('input[name="moveSize"][value="tiny"]').check();
   await page.locator('input[name="hands"][value="left"]').check();
   await page.locator('#close-panel').click();
   await expect.poll(async () => (await runState(page)).distance).toBeGreaterThan(paused.distance);
+  expect(await page.evaluate(() => window.__game.screen)).toBe('run');
+  // The pace, the length, what a missed move does and the lanes change what the run is: it starts again, from
+  // the check that the child can be seen. See start-again.spec.js.
+  await page.locator('#open-panel').click();
+  await page.locator('input[name="trailPace"][value="fast"]').check();
+  await page.locator('input[name="obstacles"][value="40"]').check();
+  await page.locator('input[name="onMissed"][value="stumble"]').check();
+  await page.locator('input[name="trailLanes"][value="no"]').check();
+  await page.locator('#close-panel').click();
+  await expect.poll(() => page.evaluate(() => window.__game.screen)).not.toBe('run');
 
   await page.reload();
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');

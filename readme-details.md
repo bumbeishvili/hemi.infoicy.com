@@ -167,7 +167,7 @@ Every hand shape any game offers is named and drawn in one place, [core/shapes.j
 
 ## Levels
 
-Every game has ten levels, and each is harder than the one before. Winning a game moves it on to the next level, up to level 10. A game that's lost comes round again at the same level, and the big button on its finish card says **Try again**. Each game remembers its own level. It's on the title card, under the countdown's numbers and on the finish card, with a dot for each level. A grown-up can choose any level under the gear icon, and the new level starts with the next game.
+Every game has ten levels, and each is harder than the one before. Winning a game moves it on to the next level, up to level 10. A game that's lost comes round again at the same level, and the big button on its finish card says **Try again**. Each game remembers its own level. It's on the title card, under the countdown's numbers and on the finish card, with a dot for each level. A grown-up can choose any level under the gear icon. Chosen in the middle of a game, it starts that game again at the new level, once the panel is closed.
 
 Level 1 plays the way each game always has. After that, levels bring more going on at once and a quicker pace, and every level from 2 brings something new to see and play with, such as a new kind of enemy or obstacle, a new kind of fire, or prizes to pick up. What's new is named on the title card and under the countdown, and the finish card shows what the next level brings. Missing a prize never costs anything. What each game changes is in its own section below, and its numbers are in its rules file.
 
@@ -206,6 +206,14 @@ Level 1 plays the way each game always has. After that, levels bring more going 
 | Rooftop Rope | Three drops into the net | **Drops into the net**: Gentle, any number |
 
 Playing with friends, most games still can't be lost, as each computer would have to agree on the moment it was. Tank Patrol and Cannon Bay can be lost together. All of this has only been tried by scripted players in the tests: see **Not tested yet**.
+
+**Changing things in the middle of a game.** What a grown-up changes under the gear icon while a game is going either goes on to that game at once, or starts it again when the panel is closed, so that what they chose is what's played. Until 15 November 2026 the level, and most of what shapes a game, such as Balloon Pop's maths challenge, waited for the next game, which looked as though nothing had happened.
+
+- **These go on at once,** in every game: the sound, the voice and its language, the hand in play, how open a hand has to be and its shapes, and how big a move has to be. So do each game's own settings that tune how its movement is read or helped, such as reach help, how high a lift is, how far the wrist has to bend, the brush's size, or the pace. A therapist can change these while watching the child, and nothing is lost.
+- **Everything else starts the game again:** the level, and whatever changes what the game is, how long it is, or what can be lost in it. It starts from the countdown in the hand games and the mouth game, and from the check that the child can be seen in the body games.
+- **The hand in play** goes on at once, except in Flap, Little Chick!, Giraffe's Goal and Giraffe's Puzzles, which are laid out for one hand: there the other hand chosen in the middle of a game starts it again.
+- **Not with friends,** whose game it is too: there a change waits, as it did.
+- Which of a game's settings go on at once is its `atOnce` list in its `main.js`, and the rule is `appliesAtOnce` in `core/settings.js`.
 
 **What a level never changes:** anything a grown-up or therapist chose. That's the hand in play, how open a hand has to be, how far there is to reach, how big a movement has to be, a gentle setting, help like a car that steers itself, and how long a game was set to be. With nobody in the picture, or no hand to see, a game waits, and so does whatever threatens in it: a child who walks away isn't caught for it. Every level-10 game is also tested to make sure nothing flashes. How much harder level 10 is than level 1 is in each game's section. It's no longer held to 70% of level 1's time to react, as it was when nothing could be lost.
 

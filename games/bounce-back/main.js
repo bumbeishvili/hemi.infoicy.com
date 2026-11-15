@@ -841,6 +841,8 @@ new GameSession({
   // when Gentle was how it came, is left behind, so that the game as it comes now reaches everyone.
   defaults: { bounceHard: 'medium', bouncePace: 'slow', bounceHelp: 'little', bouncePoints: 5, bounceFriends: 'together', fighter: ROSTER[0].id },
   choices: { bounceHard: String, bouncePace: String, bounceHelp: String, bouncePoints: Number, bounceFriends: String, fighter: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['bounceHelp'],
   tagline: (side) => `Hit the big ball back over the net with your open ${side} hand!`,
   finishLine: 'Great job!',
   portraits: () => renderPortraits(ROSTER),

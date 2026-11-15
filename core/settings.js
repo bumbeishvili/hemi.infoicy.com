@@ -50,6 +50,24 @@ function dropOldDefaults(saved) {
   saved.settled = settled;
 }
 
+// What a grown-up changes in the panel while a game is going either goes on to that game at once, or starts it
+// again when the panel is closed, so that what they chose is what's played: it used to wait for the next game,
+// and looked as though nothing had happened. These go on at once in every game: the sound, the voice and its
+// language, the hand in play, how open a hand has to be and its shapes, how big a move has to be, and whether
+// friends play together or against each other, which is for a game with friends. A game adds its own, the ones
+// that tune how its movement is read, as atOnce. All the rest, and the level, start the game again.
+const AT_ONCE = ['sound', 'voice', 'language', 'hands', 'strictness', 'shapes', 'moveSize'];
+
+/**
+ * Whether a setting goes on to the game on the screen at once. own is the game's own list of those that do, and
+ * again its list of those that start it again though they go on at once elsewhere: the hand in play, in a game
+ * that's laid out for one hand.
+ */
+export function appliesAtOnce(name, own = [], again = []) {
+  if (again.includes(name)) return false;
+  return AT_ONCE.includes(name) || /Friends$/.test(name) || own.includes(name);
+}
+
 /** gameDefaults adds a game's own settings to the shared ones. */
 export function loadSettings(gameDefaults = {}) {
   const defaults = { ...SHARED_DEFAULTS, ...gameDefaults };

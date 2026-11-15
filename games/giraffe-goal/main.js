@@ -492,6 +492,10 @@ new GameSession({
   },
   defaults: { goalWrist: 'little', goalReach: 'middle', goalSaves: 10, goalStakes: 'match' },
   choices: { goalWrist: String, goalReach: String, goalSaves: Number, goalStakes: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: ['goalWrist'],
+  // The game is laid out for the hand in play, so the other hand chosen in the middle of it starts it again.
+  startsAgain: ['hands'],
   tagline: (side) => `Giraffe’s team needs a goalkeeper! Hold your open ${side} hand up like a high five, and get it to the ring before the ball.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

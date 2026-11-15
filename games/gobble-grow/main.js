@@ -601,6 +601,8 @@ new FaceSession({
   },
   defaults: { gobbleMove: 'face', gobbleHead: 'medium', gobbleBites: 12, gobbleBig: 'catch', gobbleFriends: 'together' },
   choices: { gobbleMove: String, gobbleHead: String, gobbleBites: Number, gobbleBig: String, gobbleFriends: String },
+  // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
+  atOnce: [],
   tagline: 'You’re a tiny bacterium. Open your mouth wide to gobble up what’s smaller than you, and grow into a whole galaxy!',
   finishLine: SKY,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

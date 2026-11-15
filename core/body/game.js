@@ -13,7 +13,7 @@
 import { CameraProblem, TrackingCamera } from '../camera.js';
 import { Confetti, PromptBox } from '../hud.js';
 import { Levels, mountLevels } from '../levels.js';
-import { loadSettings, saveSettings } from '../settings.js';
+import { appliesAtOnce, loadSettings, saveSettings } from '../settings.js';
 import { MoveDemo } from './demo.js';
 import { ICONS } from './icons.js';
 import { renderPortraits } from './portraits.js';
@@ -70,7 +70,10 @@ export class BodyGame {
    * defaults and choices are the game's own settings, and how to read each from its radio
    * buttons. lines is where the game's voice lines are, and createSound builds its sound.
    */
-  constructor({ defaults, choices, lines, createSound }) {
+  constructor({ defaults, choices, atOnce = [], lines, createSound }) {
+    // The game's settings that go on to a game that's being played at once: see appliesAtOnce in settings.js.
+    this.atOnce = atOnce;
+    this.startAgainWanted = false;
     this.defaults = defaults;
     this.choices = choices;
     this.gameLines = lines;
@@ -135,8 +138,9 @@ export class BodyGame {
       // What each level brings that's new, if the game says: a newAt(level) method, as in core/levels.js.
       newAt: (level) => this.newAt?.(level) ?? [],
       onChoose: (level) => {
-        // In the middle of play, the new level starts next time.
-        if (!this.levelUnderway) this.level = level;
+        // In the middle of play, the game starts again at the new level when the panel is closed.
+        if (this.levelUnderway) this.startAgainWanted = true;
+        else this.level = level;
       },
     });
     this.chooseFighter(settings.fighter, { silent: true });
@@ -188,6 +192,7 @@ export class BodyGame {
     panel.addEventListener('close', () => {
       this.paused = false;
       this.sound.resume();
+      if (this.startAgainWanted) this.startAgain();
     });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.sound.quiet();
@@ -219,7 +224,27 @@ export class BodyGame {
     }
     if ('moveSize' in change) this.reader.setSize(settings.moveSize);
     this.settingChanged?.(change);
+    // In the middle of a game, what doesn't go on to it at once starts it again when the panel is closed.
+    if (this.levelUnderway && Object.keys(change).some((name) => !appliesAtOnce(name, this.atOnce))) this.startAgainWanted = true;
     saveSettings(settings);
+  }
+
+  /**
+   * A grown-up chose another level, or changed how the game is, in the middle of it: it starts again from the
+   * check that the child can be seen, so that what they chose is what's played. A game with friends isn't under
+   * way in this sense, as it's on the host's level, so it's left alone. leaveRound is a game's own, for what
+   * a round leaves going, such as its music.
+   */
+  startAgain() {
+    this.startAgainWanted = false;
+    if (!this.levelUnderway) return;
+    this.levelUnderway = false;
+    this.leaveRound?.();
+    this.prompt.clear();
+    this.setCount('');
+    this.confetti.stop();
+    this.reader.forget();
+    this.openCameraThen(() => this.beginBodyCheck());
   }
 
   setScreen(name) {
