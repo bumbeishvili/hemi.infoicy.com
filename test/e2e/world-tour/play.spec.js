@@ -144,10 +144,13 @@ test('the wrong country is named, goes grey and can\'t be chosen again, a can of
   await expect(page.locator('#story-line')).toHaveText('This is Poland!');
   await expect(emptyCans(page)).toHaveCount(1);
   await expect(page.locator('#chip-fuel .tour-can')).toHaveCount(5);
-  // The hand goes away from the globe, and Poland's pin is grey.
-  await leadHands(page, { aim: { x: 0.88, y: 0.85 }, photo: 'fist' });
-  await expectSoon(async () => (await state(page)).hover, { timeout: 15_000 }).toBe(null);
+  // The hand goes away from the globe, and Poland's pin is grey. The hand is over no country as soon as Poland
+  // is grey, so it's the glove itself that's waited for: the dot in its palm would be over the pin.
   const pin = await page.evaluate(() => window.__game.view.onScreen(window.__game.tour.places.POL));
+  await leadHands(page, { aim: { x: 0.88, y: 0.85 }, photo: 'fist' });
+  await expectSoon(() => gloveFrom(page, pin), { timeout: 15_000 }).toBeGreaterThan(200);
+  // On its way it passes Ukraine: it's waited for to be over nothing at all.
+  await expectSoon(async () => (await state(page)).hover, { timeout: 15_000 }).toBe(null);
   const [grey] = await screenPixels(page, [pin]);
   expect(grey.map((value, n) => Math.abs(value - [200, 206, 214][n]) <= 6), `${grey}`).toEqual([true, true, true]);
   // And Giraffe asks again.
