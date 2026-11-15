@@ -13,7 +13,7 @@ import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { giraffePixels, renderGiraffe } from '../giraffe-garden/giraffe.js';
 import { FLAGS } from './flags.js';
 import { Globe } from './globe.js';
-import { newAt, TOUR, Tour } from './tour.js';
+import { NEIGHBOURS, newAt, TOUR, Tour } from './tour.js';
 import { OTHER_GLOVE, TourView } from './view.js';
 import { SAY, thisIs, whereIs } from './words.js';
 
@@ -51,6 +51,7 @@ class TourGame {
     this.view = new TourView(byId('game'), {
       globe: new Globe(world.countries),
       flags: FLAGS,
+      names: NEIGHBOURS,
       language: () => session.settings.language,
       side: () => session.settings.hands,
     });
@@ -142,7 +143,11 @@ class TourGame {
     // How the tour is played starts with the next journey, and the title shows it now. One that's being flown, or
     // has just ended, stays as it is: in the middle of one, the session starts it again.
     const { screen } = this.session;
-    if (!['playing', 'countdown', 'finish'].includes(screen) && ('tourFuel' in change || 'tourHold' in change)) this.newTour(this.session.levels.current);
+    if (!['playing', 'countdown', 'finish'].includes(screen) && ('tourFuel' in change || 'tourHold' in change)) {
+      this.newTour(this.session.levels.current);
+      // What a level brings can depend on how the flag is held, so the title card says it again.
+      this.session.levelUi?.refresh();
+    }
     if ('language' in change && this.story.who) this.story.hide();
   }
 
@@ -168,7 +173,7 @@ class TourGame {
   }
 
   nameOf(id) {
-    return FLAGS[id].name;
+    return (FLAGS[id] ?? NEIGHBOURS[id]).name;
   }
 
   /** What the rules say happens, heard and seen. */

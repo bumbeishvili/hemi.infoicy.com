@@ -70,5 +70,11 @@
   {"id":"where-usa","text":"Where is the United States?","ka":"სად არის ამერიკის შეერთებული შტატები?","voice":"am_michael","kaVoice":"ka-GE-GiorgiNeural","kaPitch":0},
   {"id":"this-usa","text":"This is the United States!","ka":"ეს არის ამერიკის შეერთებული შტატები!","voice":"am_michael","kaVoice":"ka-GE-GiorgiNeural","kaPitch":0},
   {"id":"where-gbr","text":"Where is the United Kingdom?","ka":"სად არის გაერთიანებული სამეფო?","voice":"am_michael","kaVoice":"ka-GE-GiorgiNeural","kaPitch":0},
-  {"id":"this-gbr","text":"This is the United Kingdom!","ka":"ეს არის გაერთიანებული სამეფო!","voice":"am_michael","kaVoice":"ka-GE-GiorgiNeural","kaPitch":0}
+  {"id":"this-gbr","text":"This is the United Kingdom!","ka":"ეს არის გაერთიანებული სამეფო!","voice":"am_michael","kaVoice":"ka-GE-GiorgiNeural","kaPitch":0},
+  {"id":"this-bra","text":"This is Brazil!","ka":"ეს არის ბრაზილია!","voice":"am_michael","kaVoice":"ka-GE-GiorgiNeural","kaPitch":0},
+  {"id":"this-arg","text":"This is Argentina!","ka":"ეს არის არგენტინა!","voice":"am_michael","kaVoice":"ka-GE-GiorgiNeural","kaPitch":0},
+  {"id":"this-mex","text":"This is Mexico!","ka":"ეს არის მექსიკა!","voice":"am_michael","kaVoice":"ka-GE-GiorgiNeural","kaPitch":0},
+  {"id":"this-can","text":"This is Canada!","ka":"ეს არის კანადა!","voice":"am_michael","kaVoice":"ka-GE-GiorgiNeural","kaPitch":0},
+  {"id":"this-cub","text":"This is Cuba!","ka":"ეს არის კუბა!","voice":"am_michael","kaVoice":"ka-GE-GiorgiNeural","kaPitch":0},
+  {"id":"this-mdg","text":"This is Madagascar!","ka":"ეს არის მადაგასკარი!","voice":"am_michael","kaVoice":"ka-GE-GiorgiNeural","kaPitch":0}
 ]

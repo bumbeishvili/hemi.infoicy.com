@@ -37,7 +37,14 @@ const PICK = 0.2; // How near a country's pin the hand has to be to be over it.
 const PLANE = 0.19; // How long the plane is.
 
 const TURN_RATE = 3.2; // How quickly the globe turns to where it's wanted, and comes nearer.
-const BOARD_SECONDS = 0.5; // The board comes up, and the flag goes to its pole, over this long.
+const BOARD_SECONDS = 0.7; // The board comes in over this long,
+const POLE_SECONDS = 0.5; // and the flag goes from it to its pole over this long.
+// When what's on the screen changes all at once (the board for the pole, the pole for the globe), the last picture
+// of what was there fades out over what's there now, for this long, so that nothing flashes.
+const FADE_SECONDS = 0.6;
+// However long a frame took, these changes go no further in it than they would in a thirtieth of a second: on a
+// computer that's struggling they take longer, and are never a jump.
+const STEP = 1 / 30;
 
 /** The middle of some places on the globe. */
 function middleOf(places) {
@@ -56,17 +63,19 @@ export class TourView {
    * globe is the Globe, flags the flags by country, and language() says which language names are in. side() is
    * the hand in play, 'left' or 'right'.
    */
-  constructor(canvas, { globe, flags, language = () => 'en', side = () => 'right' }) {
+  constructor(canvas, { globe, flags, names = {}, language = () => 'en', side = () => 'right' }) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.globe = globe;
     this.flags = flags;
+    this.names = names; // The names of countries that have no flag here: see NEIGHBOURS in tour.js.
     this.language = language;
     this.side = side;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.time = 0;
     this.giraffe = null; // Giraffe's pictures, if they could be drawn.
     this.back = document.createElement('canvas'); // The globe as it was last drawn, kept while nothing turns.
+    this.snap = document.createElement('canvas'); // The last picture of the board or the pole, to fade out.
     this.backKey = '';
     this.cam = { at: [20, 30], zoom: 1 };
     this.minis = new Map();
@@ -87,6 +96,8 @@ export class TourView {
     this.flagDirty = false;
     this.boardFor = 0;
     this.poleFor = 0;
+    this.fade = 0; // How much of the last picture still shows, from all of it to none.
+    this.snapAt = -Infinity;
     this.gustFor = 0;
     this.wave = 0;
     this.named = null; // A country whose name is shown: { id, until }.
@@ -100,6 +111,10 @@ export class TourView {
     this.canvas.height = Math.round(this.height * this.ratio);
     this.back.width = this.canvas.width;
     this.back.height = this.canvas.height;
+    this.snap.width = this.canvas.width;
+    this.snap.height = this.canvas.height;
+    this.fade = 0;
+    this.snapAt = -Infinity;
     this.backKey = '';
     this.palmSize = Math.max(34, this.height * 0.066);
     this.radius = Math.min(this.height * GLOBE.radius, this.width * GLOBE.widest);
@@ -126,6 +141,8 @@ export class TourView {
   /** What the rules say happened: see tour.js. */
   on(event) {
     const { tour } = this;
+    // The board gives way to the pole, or to the globe: what was there a moment ago fades out over it.
+    if (['painted', 'ask', 'won', 'lost'].includes(event.type) && this.time - this.snapAt < 0.25) this.fade = 1;
     switch (event.type) {
       case 'ask':
         this.colours = new Map(event.choices.map((id, index) => [id, LIT[index % LIT.length]]));
@@ -239,12 +256,12 @@ export class TourView {
     if (!tour || tour.state !== 'find') return null;
     let [best, nearest] = [null, this.height * PICK];
     for (const id of tour.choices) {
-      if (tour.out.has(id)) continue;
       const at = this.onScreen(tour.places[id]);
       const far = Math.hypot(at.x - x, at.y - y);
       if (at.front && far < nearest) [best, nearest] = [id, far];
     }
-    return best;
+    // A hand on a country that's been chosen wrongly is on that one, and not on whichever is next nearest.
+    return best && tour.out.has(best) ? null : best;
   }
 
   /* ---------- the flag on its board ---------- */
@@ -260,7 +277,10 @@ export class TourView {
     // The other hand's side of the screen: the left for a child who paints with the right.
     const away = this.side() === 'right' ? -1 : 1;
     const holding = tour.rules.holding;
-    const middle = w / 2 - (holding ? away * Math.max(0, Math.min(w * SHIFT, (w - wide) / 2 - frame - w * 0.02)) : 0);
+    // It never goes under the little film of what to do, which is at the top left: see style.css.
+    const film = 16 + Math.max(120, Math.min(w * 0.15, h * 0.23)) + 10;
+    const room = (w - wide) / 2 - frame - (away > 0 ? Math.max(w * 0.02, film) : w * 0.02);
+    const middle = w / 2 - (holding ? away * Math.max(0, Math.min(w * SHIFT, room)) : 0);
     this.board = { x: middle - wide / 2, y: h * BOARD.top, wide, high, unit };
     const paints = Object.keys(flag.colours);
     const pots = paints.map((paint) => ({ paint, colour: flag.colours[paint] }));
@@ -270,9 +290,9 @@ export class TourView {
     // What's beside the board: the finished flag to copy from, on the left, or with the flag held, on the other
     // hand's side, over the spot where that hand holds it.
     const beside = holding ? away : -1;
-    const room = beside < 0 ? this.board.x - frame : w - this.board.x - wide - frame;
-    const across = (share) => (beside < 0 ? room * share : w - room * share);
-    const copyHigh = Math.min(h * 0.16, ((room - h * 0.07) * 100) / flag.wide);
+    const space = beside < 0 ? this.board.x - frame : w - this.board.x - wide - frame;
+    const across = (share) => (beside < 0 ? space * share : w - space * share);
+    const copyHigh = Math.min(h * 0.16, ((space - h * 0.07) * 100) / flag.wide);
     this.copy = copyHigh < h * 0.06 ? null : { x: across(0.5) - (copyHigh * flag.wide) / 200, y: this.board.y + h * 0.13, wide: (copyHigh * flag.wide) / 100, high: copyHigh };
     const reach = h * HOLD.radius;
     this.hold = holding ? { x: beside < 0 ? Math.max(reach * 1.15, across(HOLD.in)) : Math.min(w - reach * 1.15, across(HOLD.in)), y: h * HOLD.y, r: reach } : null;
@@ -478,7 +498,7 @@ export class TourView {
   }
 
   nameOf(id) {
-    const flag = this.flags[id];
+    const flag = this.flags[id] ?? this.names[id];
     return (this.language() === 'ka' ? flag?.nameKa : flag?.name) ?? flag?.name ?? id;
   }
 
@@ -520,9 +540,11 @@ export class TourView {
 
     if (tour) this.movePlane(dt, tour);
     const painting = tour && ['paint', 'raise', 'settle'].includes(tour.state);
-    this.boardFor = painting ? Math.min(1, this.boardFor + dt / BOARD_SECONDS) : 0;
+    const step = Math.min(dt, STEP);
+    this.boardFor = painting ? Math.min(1, this.boardFor + step / BOARD_SECONDS) : 0;
+    this.fade = this.reducedMotion ? 0 : Math.max(0, this.fade - step / FADE_SECONDS);
     const raising = tour && ['raise', 'settle'].includes(tour.state);
-    this.poleFor = raising ? Math.min(1, this.poleFor + dt / BOARD_SECONDS) : 0;
+    this.poleFor = raising ? Math.min(1, this.poleFor + step / POLE_SECONDS) : 0;
     this.gustFor = Math.max(0, this.gustFor - dt / 0.9);
     this.wave += dt * (tour?.state === 'settle' ? 6 : 2);
     for (const effect of this.effects) {
@@ -609,7 +631,7 @@ export class TourView {
     this.drawPlane(tour);
     if (this.boardFor > 0) {
       // The globe goes pale behind the board.
-      ctx.fillStyle = `rgb(255 255 255 / ${0.5 * smooth(this.boardFor)})`;
+      ctx.fillStyle = `rgb(255 255 255 / ${0.5 * this.boardFor})`;
       ctx.fillRect(0, 0, w, h);
       if (this.flagDirty) this.compose();
       if (state === 'paint') this.drawBoard(tour);
@@ -617,6 +639,18 @@ export class TourView {
     }
     if (state === 'won' && tour.rules.cup) this.drawCup();
     this.drawEffects();
+    if (this.fade > 0) {
+      // What was on the screen before, fading out.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = this.fade;
+      ctx.drawImage(this.snap, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    } else if (state === 'paint' || state === 'settle') {
+      // The board and the flag on its pole can each go all at once, so a picture of them is kept, without the hands.
+      this.snap.getContext('2d', { alpha: false }).drawImage(this.canvas, 0, 0);
+      this.snapAt = this.time;
+    }
     for (const glove of model.gloves ?? []) this.drawGlove(glove);
     // Over the glove, which would hide them: the pin of the country the hand is on, with its ring closing.
     if (state === 'find' && model.hover) this.drawPin(tour, model.hover, true);
@@ -898,11 +932,10 @@ export class TourView {
   /** The flag on its board, with what to copy beside it, its pots under it, and the spot to hold it by. */
   drawBoard(tour) {
     const { ctx, board, height: h, width: w } = this;
-    const up = smooth(this.boardFor);
+    // It comes up from below, evenly, so that the screen never brightens quickest in the middle of its coming.
+    // It comes in where it stands, a little at a time, so that nothing on the screen jumps.
     ctx.save();
-    ctx.translate(0, (1 - up) * h * 0.6);
-    // In a gust the board shakes a little.
-    if (this.gustFor > 0 && !this.reducedMotion) ctx.translate(Math.sin(this.time * 38) * h * 0.004 * this.gustFor, 0);
+    ctx.globalAlpha = this.boardFor;
     const frame = h * BOARD.frame;
     ctx.fillStyle = 'rgb(18 48 77 / 0.16)';
     ctx.beginPath();

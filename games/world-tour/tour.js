@@ -36,6 +36,18 @@ export const JOURNEYS = {
 };
 export const COUNTRIES = Object.values(JOURNEYS).flat();
 
+// Countries that are never flown to, and are only ever lit among the ones to choose from, where the game's own
+// are too few and far between for a level to light as many as it says: round South America, the United States
+// and South Africa. Each has its name, to be said when it's chosen by mistake.
+export const NEIGHBOURS = {
+  BRA: { name: 'Brazil', nameKa: 'ბრაზილია' },
+  ARG: { name: 'Argentina', nameKa: 'არგენტინა' },
+  MEX: { name: 'Mexico', nameKa: 'მექსიკა' },
+  CAN: { name: 'Canada', nameKa: 'კანადა' },
+  CUB: { name: 'Cuba', nameKa: 'კუბა' },
+  MDG: { name: 'Madagascar', nameKa: 'მადაგასკარი' },
+};
+
 // The fuel the plane sets off with, in cans, at levels 1 to 10. Infinity on the gentle tour.
 const CANS = [5, 5, 5, 4, 4, 4, 4, 3, 3, 3];
 // How many countries are lit to choose from, at levels 1 to 10.
@@ -120,12 +132,12 @@ export function tourLevel(level, { gentle = false, hold = 'later' } = {}) {
 }
 
 /**
- * The countries lit for a stop: the one asked for, and the nearest others in the game. Those of this journey that
- * haven't a flag yet come first, as they're the ones being learnt, and those that have one last. places is each
- * country's place, [lon, lat].
+ * The countries lit for a stop: the one asked for, and the nearest others in the game, with its few neighbours
+ * that are only ever lit. Those of this journey that haven't a flag yet come first, as they're the ones being
+ * learnt, and those that have one last. places is each country's place, [lon, lat].
  */
 export function choicesFor(target, { count, stops, flown, places, random = Math.random }) {
-  const others = COUNTRIES.filter((id) => id !== target && places[id]);
+  const others = [...COUNTRIES, ...Object.keys(NEIGHBOURS)].filter((id) => id !== target && places[id]);
   const near = (id) => apart(places[target], places[id]);
   // A country whose flag is up already gives itself away, so it's only lit if there's no other near.
   const rank = (id) => (flown.includes(id) ? 2 : stops.includes(id) ? 0 : 1);

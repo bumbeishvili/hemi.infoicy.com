@@ -23,14 +23,20 @@ export const SAY = {
   finish: ['What a journey!', 'რა მოგზაურობა იყო!'],
 };
 
-/** Every line the game can say, as { id, text, ka }, with the countries' from their flags. */
-export function allLines(flags) {
+/**
+ * Every line the game can say, as { id, text, ka }, with the countries' from their flags. neighbours are the
+ * countries that are only ever lit to choose from (see tour.js): each is named when it's chosen by mistake.
+ */
+export function allLines(flags, neighbours = {}) {
   const dashed = (key) => key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
   const lines = Object.entries(SAY).map(([key, [text, ka]]) => ({ id: `tour-${dashed(key)}`, text, ka }));
   for (const [code, flag] of Object.entries(flags)) {
     const id = code.toLowerCase();
     lines.push({ id: `where-${id}`, text: whereIs(flag.name), ka: whereIsKa(flag.nameKa), giraffe: true });
     lines.push({ id: `this-${id}`, text: thisIs(flag.name), ka: thisIsKa(flag.nameKa), giraffe: true });
+  }
+  for (const [code, { name, nameKa }] of Object.entries(neighbours)) {
+    lines.push({ id: `this-${code.toLowerCase()}`, text: thisIs(name), ka: thisIsKa(nameKa), giraffe: true });
   }
   return lines;
 }

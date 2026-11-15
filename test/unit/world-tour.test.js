@@ -9,7 +9,7 @@ import { FLAGS as REAL_FLAGS } from '../../games/world-tour/flags.js';
 import { apart, between, Globe } from '../../games/world-tour/globe.js';
 import { inShape } from '../../games/world-tour/shapes.js';
 import { allLines, SAY, thisIs, whereIs } from '../../games/world-tour/words.js';
-import { COUNTRIES, choicesFor, JOURNEYS, MEMORY, NEW_THINGS, newAt, Painting, TOUR, Tour, tourLevel, WIND } from '../../games/world-tour/tour.js';
+import { COUNTRIES, choicesFor, JOURNEYS, MEMORY, NEIGHBOURS, NEW_THINGS, newAt, Painting, TOUR, Tour, tourLevel, WIND } from '../../games/world-tour/tour.js';
 
 const FRAME = 1 / 60;
 const LEVELS = Array.from({ length: 10 }, (_, index) => index + 1);
@@ -187,9 +187,26 @@ test('the countries lit are the one asked for and its neighbours in the game, as
       const lit = choicesFor(target, { count: rules.choices, stops: rules.stops, flown: [], places: PLACES });
       assert.ok(lit.includes(target), `${target} is among them`);
       assert.equal(new Set(lit).size, lit.length);
-      assert.ok(lit.length >= 3 && lit.length <= rules.choices, `${target}: ${lit}`);
-      for (const id of lit) assert.ok(apart(PLACES[target], PLACES[id]) < 80, `${id} is in view with ${target}`);
+      // As many as the level says, every time: four at level 4 is four, and five at level 8 is five.
+      assert.equal(lit.length, rules.choices, `level ${level}, ${target}: ${lit}`);
+      for (const id of lit) assert.ok(apart(PLACES[target], PLACES[id]) < 55, `${id} is in view with ${target}`);
     }
+  }
+});
+
+test('where the game has too few countries near, a few neighbours are lit with them, and are never flown to', () => {
+  for (const [id, { name, nameKa }] of Object.entries(NEIGHBOURS)) {
+    assert.ok(PLACES[id], `${id} is on the map`);
+    assert.ok(!COUNTRIES.includes(id), `${id} isn't a stop of any journey`);
+    assert.ok(name && /[\u10d0-\u10ff]/.test(nameKa), `${id} has its name in both languages`);
+  }
+  const lit = choicesFor('PER', { count: 5, stops: JOURNEYS[8], flown: [], places: PLACES });
+  assert.ok(lit.includes('COL') && lit.includes('CHL'), 'the journey\'s own countries first');
+  assert.ok(lit.some((id) => NEIGHBOURS[id]), `${lit}`);
+  // In Europe, where the game has plenty, none is needed.
+  for (const target of JOURNEYS[9]) {
+    const near = choicesFor(target, { count: 5, stops: JOURNEYS[9], flown: [], places: PLACES });
+    assert.ok(near.every((id) => COUNTRIES.includes(id)), `${near}`);
   }
 });
 
@@ -739,7 +756,9 @@ test('every line the game can say has a rendered voice file, in both languages',
   const known = new Map(lines.map((line) => [line.text, line]));
   const said = [...Object.values(SAY).map(([text]) => text)];
   for (const id of COUNTRIES) said.push(whereIs(REAL_FLAGS[id].name), thisIs(REAL_FLAGS[id].name));
-  assert.equal(said.length, 10 + 31 * 2);
+  // A neighbour that's only ever lit is named when it's chosen by mistake, and never asked for.
+  for (const { name } of Object.values(NEIGHBOURS)) said.push(thisIs(name));
+  assert.equal(said.length, 10 + 31 * 2 + 6);
   for (const text of said) {
     const line = known.get(text);
     assert.ok(line, `"${text}" is in lines.json`);
@@ -748,7 +767,7 @@ test('every line the game can say has a rendered voice file, in both languages',
   }
   // Nothing rendered that the game can no longer say, and the list is what the tool would write.
   assert.deepEqual(lines.map((line) => line.text).filter((text) => !said.includes(text)), []);
-  assert.deepEqual(lines.map(({ id, text, ka }) => ({ id, text, ka })), allLines(REAL_FLAGS).map(({ id, text, ka }) => ({ id, text, ka })));
+  assert.deepEqual(lines.map(({ id, text, ka }) => ({ id, text, ka })), allLines(REAL_FLAGS, NEIGHBOURS).map(({ id, text, ka }) => ({ id, text, ka })));
   assert.equal(whereIs('United States'), 'Where is the United States?');
   assert.equal(thisIs('Georgia'), 'This is Georgia!');
 });
