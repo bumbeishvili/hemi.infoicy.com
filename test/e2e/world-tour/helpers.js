@@ -274,7 +274,8 @@ export const recorded = (page) => page.evaluate(() => {
 /**
  * Reads how bright each part of the picture is, frame by frame, as watchBrightness does, from now until the tour
  * gets somewhere, and for some frames after. until is { state, screen, or a count of the tour's stats such as
- * parts: 1 or gusts: 2 }, all of which have to be so. Gives { reading, reached }.
+ * parts: 1 or gusts: 2 }, all of which have to be so. Gives { reading, reached }, with the tour's state and how
+ * far up the board is at each frame of the reading, so it can be judged a part at a time.
  */
 export const watchUntil = (page, until, { after = 60, most = 4000 } = {}) => page.evaluate(async ({ wanted, extra, limit }) => {
   const there = () => {
@@ -299,7 +300,8 @@ export const watchUntil = (page, until, { after = 60, most = 4000 } = {}) => pag
     const { data } = context.getImageData(0, 0, wide, high);
     const cells = new Array(wide * high);
     for (let j = 0; j < cells.length; j += 1) cells[j] = Math.round((data[j * 4] + data[j * 4 + 1] + data[j * 4 + 2]) / 3);
-    reading.push({ at: performance.now(), cells });
+    const { tour, view } = window.__game;
+    reading.push({ at: performance.now(), cells, state: tour.state, board: view.boardFor });
     if (left === null && there()) left = extra;
     else if (left !== null) left -= 1;
   }

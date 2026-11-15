@@ -392,25 +392,36 @@ test('a hand that wobbles as it goes still gets through a whole stop, with no wr
   expect([now.flown, now.stats.wrong, now.cans]).toEqual([['UKR'], 0, 5]);
 });
 
-test('a hand the tracker loses for a moment while it\'s choosing doesn\'t choose the wrong country', async ({ page }) => {
+test('a hand the tracker loses for a moment while it\'s choosing, and finds again over the country next door, doesn\'t choose the wrong country', async ({ page }) => {
   test.setTimeout(150_000);
+  const hover = async () => (await state(page)).hover;
   await startPlaying(page);
   await waitForState(page, 'find');
   await show(page, ...FIST);
   await waitForHand(page, 'closed');
+  // Where the hand is in the camera's picture when its glove is over Poland.
+  const poland = await page.evaluate(() => window.__game.view.onScreen(window.__game.tour.places.POL));
+  await leadHands(page, { aim: 'country:POL', photo: 'fist', wobble: 0.03 });
+  await expectSoon(() => gloveFrom(page, poland)).toBeLessThan(25);
+  const there = await page.evaluate(() => ({ ...window.__lead.at.play }));
+  // Closed over Ukraine, and then open there, choosing it.
   await leadHands(page, { aim: 'target', photo: 'fist', wobble: 0.03 });
-  await expectSoon(async () => (await state(page)).hover).toBe('UKR');
+  await expectSoon(hover).toBe('UKR');
   await record(page);
   await leadHands(page, { aim: 'target', wobble: 0.03 });
   await expectSoon(async () => (await state(page)).overFor).toBeGreaterThan(0.35);
-  // Gone from the picture for a moment, and back.
+  // Lost for a moment, and while it's lost the hand drifts over Poland, where it's found again, open, and goes
+  // straight back to Ukraine.
   await leadHands(page, { aim: 'target', photo: 'none', wobble: 0.03 });
   await expectSoon(async () => (await state(page)).at, { timeout: 5000 }).toBe(null);
-  await page.waitForTimeout(300);
+  await page.evaluate((to) => Object.assign(window.__lead.at.play, to), there);
+  await leadHands(page, { aim: 'country:POL', wobble: 0.03 });
+  await expectSoon(hover, { timeout: 5000 }).toBe('POL');
   await leadHands(page, { aim: 'target', wobble: 0.03 });
   await waitForState(page, 'fly');
   const frames = await recorded(page);
   expect(frames.some((frame) => frame.state === 'find' && !frame.at)).toBe(true);
+  expect(frames.some((frame) => frame.state === 'find' && frame.hover === 'POL' && frame.open)).toBe(true);
   expect(frames.every((frame) => frame.wrong === 0 && frame.out.length === 0)).toBe(true);
   const now = await state(page);
   expect([now.target, now.stats.wrong, now.cans]).toEqual(['UKR', 0, 5]);
