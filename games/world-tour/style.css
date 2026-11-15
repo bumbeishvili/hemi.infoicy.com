@@ -162,3 +162,6 @@ body[data-film-kind='raise'] .tour-film .film-raise { display: block; }
   .film-hand-find, .film-ring, .film-ring-back, .film-hand-raise, .film-flying { animation-duration: 10s; }
   .film-hand-paint, .film-row-1, .film-blob { animation-duration: 12s; }
 }
+
+/* What the child is told goes along the bottom, under the pots, so that it never covers the flag or the globe. */
+body[data-screen='playing'] .prompt { top: auto; bottom: 10px; }

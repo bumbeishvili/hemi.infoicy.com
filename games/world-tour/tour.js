@@ -52,7 +52,7 @@ export const TOUR = {
   brush: 7, // The brush's reach from the middle of the hand, in flag units,
   roller: 12.5, // and the roller's.
   raised: 0.9, // How far up the pole counts as up, as a share of it.
-  raiseFrom: 0.4, // The hand has to start from under this far up, to pull the flag up from below.
+  raiseFrom: 0.3, // The hand has to start from under this far up, to pull the flag up from below.
   settle: 1.6, // After the flag is up, before the plane sets off again.
   peek: 2.5, // Painting from memory: how long the finished flag shows again after a wrong paint,
   wrong: 0.7, // and how long the wrong paint has to be on a part before it does.

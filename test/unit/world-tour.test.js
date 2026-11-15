@@ -4,8 +4,10 @@
 // are little ones made up here, so that what's tested is the rules: the real flags have their own tests.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { FLAGS as REAL_FLAGS } from '../../games/world-tour/flags.js';
 import { apart, between, Globe } from '../../games/world-tour/globe.js';
+import { allLines, SAY, thisIs, whereIs } from '../../games/world-tour/words.js';
 import { COUNTRIES, choicesFor, JOURNEYS, MEMORY, NEW_THINGS, newAt, Painting, TOUR, Tour, tourLevel, WIND } from '../../games/world-tour/tour.js';
 
 const FRAME = 1 / 60;
@@ -224,9 +226,11 @@ test('a closed hand chooses nothing, however long it stays, and nor does a hand 
   for (let n = 0; n < 12; n += 1) run(tour, TOUR.dwell * 0.6, { ...HAND, over: n % 2 ? 'UKR' : 'POL' });
   assert.equal(tour.state, 'find');
   assert.equal(tour.stats.wrong, 0);
-  // Nor a country that isn't lit.
+  // Nor a country that isn't lit: it isn't a wrong answer either.
   run(tour, 3, { ...HAND, over: 'JPN' });
   assert.equal(tour.state, 'find');
+  assert.equal(tour.stats.wrong, 0);
+  assert.equal(tour.cans, tourLevel(1).cans);
 });
 
 test('the wrong country is named, goes out, and costs a can of fuel', () => {
@@ -237,7 +241,10 @@ test('the wrong country is named, goes out, and costs a can of fuel', () => {
   assert.equal(tour.state, 'find');
   assert.equal(tour.cans, full - 1);
   assert.deepEqual(tour.log.find((event) => event.type === 'wrong'), { type: 'wrong', country: 'POL', target: 'UKR' });
-  // It can't be chosen again, and nothing else can for a moment, while it's named.
+  // Nothing can be chosen for a moment, while it's named: not even the right one.
+  run(tour, TOUR.dwell + 0.2, { ...HAND, over: 'UKR' });
+  assert.equal(tour.state, 'find');
+  // And it can't be chosen again.
   run(tour, 3, { ...HAND, over: 'POL' });
   assert.equal(tour.cans, full - 1);
   assert.equal(tour.stats.wrong, 1);
@@ -256,8 +263,11 @@ test('with no fuel left the journey is lost, and nothing more happens', () => {
   }
   assert.equal(tour.state, 'lost');
   assert.equal(tour.count('lost'), 1);
+  const [events, seconds] = [tour.log.length, tour.stats.seconds];
   run(tour, 5, { ...HAND, over: tour.target });
   assert.equal(tour.state, 'lost');
+  assert.equal(tour.log.length, events);
+  assert.equal(tour.stats.seconds, seconds, 'the clock has stopped');
 });
 
 test('on the gentle tour there is always fuel', () => {
@@ -269,6 +279,8 @@ test('on the gentle tour there is always fuel', () => {
   }
   assert.equal(tour.state, 'find');
   assert.equal(tour.cans, Infinity);
+  assert.equal(tour.count('fuel'), 0, 'and nothing says any was used');
+  assert.ok(tour.stats.wrong >= 2);
   run(tour, TOUR.wrongRest + 0.1, HAND);
   choose(tour);
   assert.equal(tour.state, 'fly');
@@ -683,4 +695,43 @@ test('a flag with a part nothing shows of can still be finished', () => {
   painting.fill(1);
   painting.fill(2);
   assert.equal(painting.allDone, true);
+});
+
+/* ---------- the real flags, and what's said ---------- */
+
+test('every country of every journey has a flag, with every part of it there to paint', () => {
+  for (const id of COUNTRIES) {
+    const flag = REAL_FLAGS[id];
+    assert.ok(flag, `${id} has a flag`);
+    const painting = new Painting(flag);
+    assert.equal(painting.owner.filter((part) => part < 0).length, 0, `${id}: every square belongs to a part`);
+    painting.sizes.forEach((size, part) => assert.ok(size >= 12, `${id}: ${flag.parts[part].id} has ${size} squares to paint`));
+    // Each paint in turn, swept everywhere, paints the whole flag: nothing is left that no paint reaches.
+    for (const paint of Object.keys(flag.colours)) {
+      const takes = flag.parts.map((part) => part.colour === paint);
+      for (let y = 3; y < 100; y += 5) for (let x = 3; x < flag.wide; x += 5) painting.stroke(x, y, TOUR.brush, takes);
+    }
+    assert.equal(painting.progress, 1, `${id} can be painted all over`);
+  }
+  assert.deepEqual(Object.keys(REAL_FLAGS).sort(), [...COUNTRIES].sort(), 'and there is no flag that no journey goes to');
+});
+
+test('every line the game can say has a rendered voice file, in both languages', () => {
+  const folder = new URL('../../games/world-tour/audio/voice/', import.meta.url);
+  const lines = JSON.parse(readFileSync(new URL('lines.json', folder), 'utf8'));
+  const known = new Map(lines.map((line) => [line.text, line]));
+  const said = [...Object.values(SAY).map(([text]) => text)];
+  for (const id of COUNTRIES) said.push(whereIs(REAL_FLAGS[id].name), thisIs(REAL_FLAGS[id].name));
+  assert.equal(said.length, 10 + 31 * 2);
+  for (const text of said) {
+    const line = known.get(text);
+    assert.ok(line, `"${text}" is in lines.json`);
+    assert.match(line.ka, /[\u10d0-\u10ff]/, `"${text}" has its Georgian`);
+    for (const language of ['en', 'ka']) assert.ok(existsSync(new URL(`${language}/${line.id}.ogg`, folder)), `${language}/${line.id}.ogg`);
+  }
+  // Nothing rendered that the game can no longer say, and the list is what the tool would write.
+  assert.deepEqual(lines.map((line) => line.text).filter((text) => !said.includes(text)), []);
+  assert.deepEqual(lines.map(({ id, text, ka }) => ({ id, text, ka })), allLines(REAL_FLAGS).map(({ id, text, ka }) => ({ id, text, ka })));
+  assert.equal(whereIs('United States'), 'Where is the United States?');
+  assert.equal(thisIs('Georgia'), 'This is Georgia!');
 });

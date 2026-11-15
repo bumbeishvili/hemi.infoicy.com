@@ -26,8 +26,12 @@ const OTHER_GLOVE = { fill: '#8fc7ff', ink: INK };
 const GLOBE = { y: 0.55, radius: 0.4, widest: 0.36 }; // widest is a share of the width.
 const BOARD = { top: 0.2, high: 0.48, widest: 0.56, frame: 0.014 };
 const POTS = { below: 0.115, radius: 0.056, gap: 0.165, dip: 1.25 };
-const HOLD = { radius: 0.07, reach: 0.17, out: 0.11, below: 0.02 };
-const POLE = { top: 0.17, bottom: 0.9, flag: 0.24, low: 0.8, high: 0.3 };
+const HOLD = { radius: 0.07, reach: 0.17, y: 0.77, in: 0.36 };
+// With the flag held, the board is nearer the hand that paints, by up to this share of the width, so the two
+// hands are well apart: hands that touch in the camera's picture can't be told apart, and count as closed.
+const SHIFT = 0.09;
+// The pole, and how far the hand has to go to raise the flag: from low down to high up, a good reach.
+const POLE = { top: 0.17, bottom: 0.9, flag: 0.24, low: 0.84, high: 0.24 };
 const CAN = { radius: 0.06, reach: 0.11 };
 const PICK = 0.2; // How near a country's pin the hand has to be to be over it.
 const PLANE = 0.19; // How long the plane is.
@@ -167,6 +171,13 @@ export class TourView {
         }
         break;
       }
+      case 'stamp': {
+        // The country's stamp comes off the flag and goes up to where the stamps are counted.
+        const flag = this.poleFlag(1);
+        const to = this.stampsAt?.() ?? { x: this.width * 0.2, y: this.height * 0.07 };
+        this.effects.push({ kind: 'stamp', id: event.country, from: { x: flag.x + flag.wide / 2, y: flag.y + flag.high / 2 }, to, age: 0, life: 1.5 });
+        break;
+      }
       default:
     }
   }
@@ -245,24 +256,34 @@ export class TourView {
     const high = Math.min(h * BOARD.high, (w * BOARD.widest * 100) / flag.wide);
     const unit = high / 100;
     const wide = flag.wide * unit;
-    this.board = { x: (w - wide) / 2, y: h * BOARD.top, wide, high, unit };
+    const frame = h * BOARD.frame;
+    // The other hand's side of the screen: the left for a child who paints with the right.
+    const away = this.side() === 'right' ? -1 : 1;
+    const holding = tour.rules.holding;
+    const middle = w / 2 - (holding ? away * Math.max(0, Math.min(w * SHIFT, (w - wide) / 2 - frame - w * 0.02)) : 0);
+    this.board = { x: middle - wide / 2, y: h * BOARD.top, wide, high, unit };
     const paints = Object.keys(flag.colours);
     const pots = paints.map((paint) => ({ paint, colour: flag.colours[paint] }));
     if (tour.rules.roller) pots.push({ paint: 'roller' });
     const gap = Math.min(h * POTS.gap, (w * 0.9) / pots.length);
-    this.pots = pots.map((pot, index) => ({ ...pot, x: w / 2 + (index - (pots.length - 1) / 2) * gap, y: this.board.y + high + h * POTS.below, r: h * POTS.radius }));
-    // The spot the other hand holds the flag at: beside the board, on that hand's side of the screen.
-    const left = this.side() === 'right';
-    const out = Math.max(h * HOLD.radius * 1.15, Math.min(h * HOLD.out, this.board.x - h * HOLD.radius * 0.4));
-    this.hold = { x: left ? this.board.x - out : this.board.x + wide + out, y: this.board.y + high + h * HOLD.below + h * HOLD.radius, r: h * HOLD.radius };
+    this.pots = pots.map((pot, index) => ({ ...pot, x: middle + (index - (pots.length - 1) / 2) * gap, y: this.board.y + high + h * POTS.below, r: h * POTS.radius }));
+    // What's beside the board: the finished flag to copy from, on the left, or with the flag held, on the other
+    // hand's side, over the spot where that hand holds it.
+    const beside = holding ? away : -1;
+    const room = beside < 0 ? this.board.x - frame : w - this.board.x - wide - frame;
+    const across = (share) => (beside < 0 ? room * share : w - room * share);
+    const copyHigh = Math.min(h * 0.16, ((room - h * 0.07) * 100) / flag.wide);
+    this.copy = copyHigh < h * 0.06 ? null : { x: across(0.5) - (copyHigh * flag.wide) / 200, y: this.board.y + h * 0.13, wide: (copyHigh * flag.wide) / 100, high: copyHigh };
+    const reach = h * HOLD.radius;
+    this.hold = holding ? { x: beside < 0 ? Math.max(reach * 1.15, across(HOLD.in)) : Math.min(w - reach * 1.15, across(HOLD.in)), y: h * HOLD.y, r: reach } : null;
 
     // A layer of paint to each part, each as sharp as the screen.
     const pixels = unit * this.ratio;
-    const [across, down] = [Math.ceil(flag.wide * pixels), Math.ceil(100 * pixels)];
+    const [pixelsWide, pixelsHigh] = [Math.ceil(flag.wide * pixels), Math.ceil(100 * pixels)];
     const make = () => {
       const canvas = document.createElement('canvas');
-      canvas.width = across;
-      canvas.height = down;
+      canvas.width = pixelsWide;
+      canvas.height = pixelsHigh;
       return canvas;
     };
     this.pixels = pixels;
@@ -383,22 +404,34 @@ export class TourView {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     this.paper ??= this.makePaper();
     const paper = ctx.createPattern(this.paper, 'repeat');
+    const done = tour.painting?.done ?? [];
     flag.parts.forEach((part, index) => {
-      // Bare paper first, over whatever is under this part, and then this part's own paint.
+      // Its lines first, twice as thick as they'll look: dark round what's still to paint, and faint round
+      // what's done. The half of each that's inside the part is then covered, with any line where two of its
+      // own shapes cross, so what's left is one line round the whole part.
+      ctx.setTransform(this.pixels, 0, 0, this.pixels, 0, 0);
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = done[index] ? 0.6 : 1.4;
+      ctx.strokeStyle = done[index] ? 'rgb(18 48 77 / 0.35)' : INK;
+      for (const shape of part.shapes) {
+        ctx.save();
+        if (shape.type === 'crescent') {
+          // Only as much of the disc that's cut out of it as is inside it.
+          ctx.beginPath();
+          ctx.arc(shape.x, shape.y, shape.r + ctx.lineWidth / 2, 0, Math.PI * 2);
+          ctx.clip();
+        }
+        ctx.beginPath();
+        trace(ctx, shape);
+        ctx.stroke();
+        ctx.restore();
+      }
+      // Then bare paper, over whatever is under this part, and this part's own paint.
       this.partPath(ctx, index);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.fillStyle = paper;
       ctx.fill();
       ctx.drawImage(this.layers[index], 0, 0);
-    });
-    // The lines: dark round what's still to paint, and faint round what's done.
-    const done = tour.painting?.done ?? [];
-    flag.parts.forEach((part, index) => {
-      this.partPath(ctx, index);
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = done[index] ? 0.3 : 0.7;
-      ctx.strokeStyle = done[index] ? 'rgb(18 48 77 / 0.35)' : INK;
-      ctx.stroke();
     });
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.flagDirty = false;
@@ -903,14 +936,10 @@ export class TourView {
 
   /** The finished flag to copy from, with the country's name: or, painting from memory, a card that hides it. */
   drawCopy(tour) {
-    const { ctx, board, height: h } = this;
+    const { ctx, height: h } = this;
+    if (!this.copy) return;
     const mini = this.mini(tour.target);
-    const room = board.x - h * 0.05;
-    const high = Math.min(h * 0.16, (room * mini.height) / mini.width);
-    if (high < h * 0.06) return;
-    const wide = (high * mini.width) / mini.height;
-    const x = Math.max(h * 0.025, (board.x - h * BOARD.frame - wide) / 2);
-    const y = board.y + h * 0.13;
+    const { x, y, wide, high } = this.copy;
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = INK;
     ctx.lineWidth = Math.max(2, h * 0.004);
@@ -985,9 +1014,21 @@ export class TourView {
 
   /** The spot where the other hand holds the flag: asking for a hand while there's none, and green with one on it. */
   drawHold(tour) {
-    const { ctx, hold } = this;
+    const { ctx, hold, board, height: h } = this;
     const { x, y, r } = hold;
     const held = tour.held;
+    // A strap from the board's corner to the spot: slack while nobody holds it, and tight when they do.
+    const corner = { x: x < board.x ? board.x - h * BOARD.frame : board.x + board.wide + h * BOARD.frame, y: board.y + board.high };
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = r * 0.2;
+    ctx.beginPath();
+    ctx.moveTo(corner.x, corner.y);
+    ctx.quadraticCurveTo((corner.x + x) / 2, Math.max(corner.y, y) + (held ? 0 : r * 0.9), x, y);
+    ctx.stroke();
+    ctx.strokeStyle = held ? '#22a35a' : WOOD;
+    ctx.lineWidth = r * 0.11;
+    ctx.stroke();
     const asking = !held && !this.reducedMotion ? 1 + Math.sin(this.time * 3) * 0.06 : 1;
     ctx.fillStyle = held ? '#c9f5d9' : 'rgb(255 255 255 / 0.9)';
     ctx.strokeStyle = held ? '#22a35a' : INK;
@@ -998,15 +1039,6 @@ export class TourView {
     ctx.fill();
     ctx.stroke();
     ctx.setLineDash([]);
-    // A peg that grips the flag's corner.
-    ctx.fillStyle = WOOD;
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = r * 0.07;
-    const towards = Math.sign(this.width / 2 - x);
-    ctx.beginPath();
-    ctx.roundRect(towards > 0 ? x + r * 0.2 : x - r * 1.5, y - r * 1.25, r * 1.3, r * 0.42, r * 0.14);
-    ctx.fill();
-    ctx.stroke();
     // A hand to say whose spot it is.
     ctx.fillStyle = held ? '#22a35a' : INK;
     ctx.font = `${r * 0.95}px system-ui, sans-serif`;
@@ -1021,7 +1053,7 @@ export class TourView {
     if (share <= 0 && this.gustFor <= 0) return;
     const { ctx, board, height: h } = this;
     const size = h * (0.035 + 0.045 * Math.max(share, this.gustFor));
-    const onLeft = this.hold && this.hold.x > this.width / 2;
+    const onLeft = Boolean(this.hold) && this.hold.x > this.width / 2;
     const x = onLeft ? board.x - h * 0.09 : board.x + board.wide + h * 0.09;
     const y = board.y + h * 0.06;
     ctx.fillStyle = '#ffffff';
@@ -1142,7 +1174,27 @@ export class TourView {
     const { ctx, height: h } = this;
     for (const effect of this.effects) {
       const share = effect.age / effect.life;
-      if (effect.kind === 'fleck') {
+      if (effect.kind === 'stamp') {
+        // It shows itself for a moment, and then goes up to the others, getting smaller.
+        const going = smooth(clamp((share - 0.4) / 0.6, 0, 1));
+        const [x, y] = [lerp(effect.from.x, effect.to.x, going), lerp(effect.from.y, effect.to.y, going)];
+        const r = h * lerp(0.075, 0.022, going) * Math.min(1, share / 0.12);
+        const mini = this.mini(effect.id);
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = Math.max(2, r * 0.07);
+        ctx.setLineDash([r * 0.16, r * 0.12]);
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const high = r * 0.85;
+        const wide = Math.min(r * 1.5, (high * mini.width) / mini.height);
+        ctx.drawImage(mini, x - wide / 2, y - high / 2, wide, high);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - wide / 2, y - high / 2, wide, high);
+      } else if (effect.kind === 'fleck') {
         ctx.globalAlpha = 1 - share;
         ctx.fillStyle = effect.colour;
         ctx.strokeStyle = 'rgb(18 48 77 / 0.4)';

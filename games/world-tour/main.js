@@ -62,6 +62,11 @@ class TourGame {
       // Without his picture the game still works: the plane just flies with nobody looking out of it.
       console.warn('Could not draw Giraffe:', error);
     }
+    // Where a stamp goes when it's won: to the chip that counts them.
+    this.view.stampsAt = () => {
+      const box = byId('chip-stamps-box')?.getBoundingClientRect();
+      return box && box.width ? { x: box.left + box.width / 2, y: box.top + box.height / 2 } : null;
+    };
     this.story = new StoryBox(session);
     this.gloves = { play: new Glove('right'), other: new Glove('left') };
     this.gloveOffset = { x: 0, y: 0 };
