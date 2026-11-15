@@ -16,7 +16,7 @@ Movement-based games for children, played in front of a webcam.
 | ![Giraffe's Puzzles](demos/gif/giraffe-puzzles.gif)<br>**Giraffe's Puzzles:** put Giraffe's broken picture back together, carrying each piece with an open hand | ![Flap, Little Chick!](demos/gif/chick-flap.gif)<br>**Flap, Little Chick!:** bend your wrists back to flap a chick's wings, and fly it home before the fox |
 | ![Mighty Lift](demos/gif/mighty-lift.gif)<br>**Mighty Lift:** raise your arm to lift heavy things off your friends | ![Gobble and Grow](demos/gif/gobble-grow.gif)<br>**Gobble and Grow:** open your mouth wide to gobble things up, and grow from a bacterium into a galaxy |
 | ![Giraffe's Paint Box](demos/gif/giraffe-paint.gif)<br>**Giraffe's Paint Box:** colour in pictures with your open hand as the brush | ![Moto Mountain](demos/gif/moto-mountain.gif)<br>**Moto Mountain:** lean your body into the bends to race a motorbike up a mountain, flying off the hills |
-| ![Rooftop Rope](demos/gif/rooftop-rope.gif)<br>**Rooftop Rope:** stand on one leg to walk the ropes between the rooftops of a city | |
+| ![Rooftop Rope](demos/gif/rooftop-rope.gif)<br>**Rooftop Rope:** stand on one leg to walk the ropes between the rooftops of a city | ![Giraffe's World Tour](demos/gif/world-tour.gif)<br>**Giraffe's World Tour:** fly round the globe, find each country with an open hand, then paint its flag and raise it |
 
 - Resting never costs anything.
 - Each game has 10 levels.

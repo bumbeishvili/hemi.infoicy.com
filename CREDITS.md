@@ -86,6 +86,8 @@ Moto Mountain has no sounds of its own either, only voices: it plays High Five R
 
 Rooftop Rope has no sounds of its own either, only voices: it plays Cannon Bay's `wind.ogg` and `creak.ogg`, Leap Trail's `music.ogg` and `land.ogg`, Mighty Moves' `sparkle.ogg`, `whoosh-1.ogg`, `bell.ogg` and `cheer.ogg`, Balloon Pop's `pop.ogg`, Robot Rescue's `boing.ogg` and `bell.ogg`, and Spider Catcher's `home.ogg`, with the shared sounds in `core/audio/sfx/`. Its city, rooftops, ropes, nets, birds and the rest on the ropes are original designs, made from simple shapes in the game's own code.
 
+Giraffe's World Tour has no sounds of its own either, only voices: it plays Sky Wings' `propeller.ogg`, The Lighthouse Keeper's `wipe.ogg`, Cannon Bay's `wind.ogg`, `canvas.ogg` and `creak.ogg`, Robot Rescue's `goo-pop.ogg`, `boing.ogg` and `unlock.ogg`, Spider Catcher's `home.ogg`, Mighty Moves' `sparkle.ogg` and `cheer.ogg`, and Tank Patrol's `splutter.ogg`, with the shared sounds in `core/audio/sfx/`. Its globe, plane, paint pots, flagpole and the rest are original designs, made from simple shapes in the game's own code, and its Giraffe is Giraffe's Garden's. Its map and its flags are below.
+
 The ten pictures in Giraffe's Paint Box are drawn by the game itself from simple shapes, and are original designs made for it. Its hidden friends are the computer's own emoji.
 
 The engine loop's CC-BY licence requires this credit to stay with the game: **"Car Engine Loop 96kHz, 4s" by qubodup, CC-BY 3.0, resampled and level adjusted.**
@@ -101,6 +103,17 @@ The folders called `voice/ka/` were rendered with Microsoft's `ka-GE-EkaNeural` 
 All ten characters in `core/body/roster.js`, and the worlds of High Five Racers, Leap Trail, Sky Wings, Robot Rescue, Tank Patrol, Cannon Bay, Spider Catcher, Bounce Back, Giraffe's Maze, Giraffe's Goal, Frost Arena and the games with a mission, with Robot Rescue's robots and Spider Catcher's spiders, are original designs made for these games. So are Mighty Lift's yard, its crane and the heavy things on it.
 
 So are the farm in Flap, Little Chick!, and its chick, fox, mother hen and duck, which are drawn by the game itself.
+
+## The map and the flags
+
+`games/world-tour/world.json`, the map Giraffe's World Tour flies over, is made from [Natural Earth](https://www.naturalearthdata.com)'s countries at 1:50 million, `ne_50m_admin_0_countries.geojson` from the [natural-earth-vector](https://github.com/nvkelso/natural-earth-vector) repository, downloaded on 15 November 2026. Natural Earth is in the public domain, and asks for no credit, though it's welcome: **Made with Natural Earth. Free vector and raster map data @ naturalearthdata.com.** [tools/make_world_map.py](tools/make_world_map.py) changed it, in these ways:
+
+- Each country keeps only its three-letter code, its English name, where its name goes, and the outer line of each of its pieces. The lakes inside are left out.
+- Islands smaller than about 15 km across are left out, though never a country's biggest piece.
+- The outlines are made simpler, keeping every point that's more than 0.03 of a degree from the line drawn without it, and rounded to two decimal places.
+- The borders are drawn as the United Nations recognises them, which is not always how Natural Earth draws them: Crimea is moved from Russia to Ukraine, and Kosovo is made part of Serbia, the north of Cyprus part of Cyprus, Somaliland part of Somalia and Taiwan part of China. Abkhazia and South Ossetia are part of Georgia in Natural Earth already.
+
+The game's 31 flags are drawn by the game itself, from numbers in `games/world-tour/flags.js` taken from each flag's official construction and colours. There are no flag pictures in it.
 
 ## Test photos
 
