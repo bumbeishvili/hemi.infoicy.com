@@ -126,6 +126,7 @@ class GobbleGame {
   resetCounts() {
     this.restFor = 0;
     this.praised = 0;
+    this.unlocked = new Set(); // The kinds that have come into reach and haven't been pointed out yet.
     this.filmShown = false;
     this.cheerFor = 0;
     this.cardDrawn = false;
@@ -249,10 +250,10 @@ class GobbleGame {
         this.showProgress();
         break;
       case 'unlock': {
-        // What was too big a moment ago: one of them is pointed out, if there's one to be seen.
+        // What was too big a moment ago: one of them is pointed out, now, or as soon as there's one to be seen.
         sound.play('sparkle', { gain: 0.3 });
-        const food = this.soup?.foods.find((each) => each.kind === event.kind && this.inView(each));
-        if (food) view.introduce(`can-eat-${event.kind}`, LABELS.canEat, this.placeOf(food), { first: true });
+        this.unlocked.add(event.kind);
+        this.pointOutUnlocked();
         break;
       }
       case 'bump': {
@@ -310,6 +311,20 @@ class GobbleGame {
     }
   }
 
+  /**
+   * A kind that has just come into reach is pointed out once, on one of them that's in view. With none in view
+   * at that moment, it waits for one: it used to be let go, and then the child was never told.
+   */
+  pointOutUnlocked() {
+    const { view, soup } = this;
+    for (const kind of this.unlocked) {
+      const food = soup?.foods.find((each) => each.kind === kind && this.inView(each));
+      if (!food) continue;
+      view.introduce(`can-eat-${kind}`, LABELS.canEat, this.placeOf(food), { first: true });
+      this.unlocked.delete(kind);
+    }
+  }
+
   /** The first time a bigger thing that can catch the creature comes near, it says to keep away from it. */
   warn() {
     const { soup, view } = this;
@@ -349,6 +364,7 @@ class GobbleGame {
     this.restFor = snapshot.mouthOpen || soup.creature.holding ? 0 : this.restFor + dt;
     if (this.friendsOn) this.friends.sendMove('eater', this.eaterState(snapshot), this.sinceGo);
     if (!soup.won) this.nameFoods();
+    if (!soup.won && this.unlocked.size) this.pointOutUnlocked();
     this.warn();
     view.update(dt);
     this.showFilm();

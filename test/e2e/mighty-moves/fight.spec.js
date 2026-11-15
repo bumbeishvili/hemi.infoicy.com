@@ -376,7 +376,8 @@ test('the grown-ups\' panel pauses the fight and remembers what it\'s told', asy
     await expect(page.locator(`input[name="${name}"][value="${value}"]`)).toBeChecked();
   }
   const stored = await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('camera-games-settings'))).sort());
-  expect(stored).toEqual(['fightFriends', 'fightStrength', 'fighter', 'hands', 'jumps', 'language', 'moveSize', 'rounds', 'sound', 'strictness', 'voice']);
+  // settled is the note of which old ways of coming have been looked at: see OLD_DEFAULTS in core/settings.js.
+  expect(stored).toEqual(['fightFriends', 'fightStrength', 'fighter', 'hands', 'jumps', 'language', 'moveSize', 'rounds', 'settled', 'sound', 'strictness', 'voice']);
 });
 
 test('fighters at either end of the mat stay on the mat, and every fighter can fight and show every move', async ({ page }) => {

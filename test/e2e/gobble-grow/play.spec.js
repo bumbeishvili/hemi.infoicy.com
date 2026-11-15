@@ -269,8 +269,9 @@ test('a whole world, eaten: the view pulls back to the next, the card shows how 
   await stopChild(page);
   const won = await state(page);
   expect(won.eaten).toBe(8);
-  // Both of the bigger kinds came into reach on the way.
-  expect(won.named).toEqual(expect.arrayContaining(['can-eat-1']));
+  // The bigger kinds came into reach on the way, and one of them was pointed out as it did. Which of them was
+  // in view to be pointed at is the soup's chance, so it isn't asked that it was the middle kind.
+  expect(won.named.filter((key) => key.startsWith('can-eat-')).length).toBeGreaterThanOrEqual(1);
 
   // The pull back, with the game still on the playing screen and nothing more to do.
   await expectSoon(async () => (await state(page)).pulling).toBe(true);

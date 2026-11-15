@@ -104,8 +104,9 @@ test('settings are remembered, and nothing about the child is stored', async ({ 
 
   const stored = await page.evaluate(() => ({ ...localStorage }));
   expect(Object.keys(stored)).toEqual(['camera-games-settings']);
+  // settled is the note of which old ways of coming have been looked at: see OLD_DEFAULTS in core/settings.js.
   expect(Object.keys(JSON.parse(stored['camera-games-settings'])).sort()).toEqual(
-    ['fighter', 'hands', 'language', 'laps', 'reach', 'rivals', 'sound', 'steering', 'strictness', 'voice'],
+    ['fighter', 'hands', 'language', 'laps', 'reach', 'rivals', 'settled', 'sound', 'steering', 'strictness', 'voice'],
   );
 });
 

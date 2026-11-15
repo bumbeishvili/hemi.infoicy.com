@@ -901,9 +901,25 @@ test('the tractor trundles along ahead: a chick on the ground trots after it, bo
   assert.equal(thing.done, true);
   assert.equal(thing.away, false);
   assert.ok(farm.chick.x > thing.x1);
-  // Its corn rides on the hay, and goes along with it.
+  // Its corn rides over the hay, and goes along with it.
   const corn = farmWith('tractor').farm.corn.filter((piece) => piece.rides);
   assert.equal(corn.length, 4);
+});
+
+test('the corn over the tractor\'s hay is where both wings take the chick, with hands closed, open, or one of each', () => {
+  for (const [hands, open] of [['closed', {}], ['open', { left: true, right: true }], ['one open', { left: true }]]) {
+    // However long the chick has trotted along behind it.
+    for (const behind of [7.2, 7.7, 8.5]) {
+      const { farm, thing } = farmWith('tractor');
+      run(farm, behind);
+      assert.equal(farm.chick.behind, thing, 'trotting after it');
+      run(farm, 0.05, { flaps: ['left', 'right'], open });
+      run(farm, 8, { wings: { left: still(1), right: still(1) } });
+      assert.equal(thing.done, true);
+      const had = farm.corn.filter((piece) => piece.rides === thing.id && piece.taken).length;
+      assert.equal(had, 4, `${had} of 4 with hands ${hands}, after ${behind} seconds`);
+    }
+  }
 });
 
 test('the fox\'s shortcut: he runs round behind the hedge, waits on the track ahead, and leaps and misses as the chick flies over', () => {

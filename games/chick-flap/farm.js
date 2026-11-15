@@ -292,8 +292,12 @@ export function layTrack({ level = 1, things = WAYS.medium, random = Math.random
       if (!plan.corn) {
         // No corn yet.
       } else if (kind === 'tractor') {
-        // Corn on top of the hay, which goes along with the cart.
-        line(thing.x0 + 0.5, thing.x1 - 1.3, thing.tall + CHICK.tall / 2, 4, { rides: thing.id });
+        // Corn over the hay, which goes along with the cart: where a chick that took off right behind it with
+        // both wings goes over. That's a little under the top of its flight, half way between a flap made with
+        // closed hands and one made with open hands, which is stronger. Sat on the hay itself, the corn was under
+        // both: closed hands had one piece of the four, and open hands none.
+        const over = (CHICK.hop * 2 * (1 + CHICK.open)) / 2 + CHICK.tall / 2 - 0.2;
+        line(thing.x0 + 0.5, thing.x1 - 1.3, over, 4, { rides: thing.id });
       } else if (thing.type === 'wall') {
         along(mix(zone.from, zone.to, 0.5), thing.wings, thing.wings === 2 ? [0.35, 0.7, 1.05, 1.45, 1.85] : [0.3, 0.7, 1.1]);
       } else if (kind === 'duckpond') {

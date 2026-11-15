@@ -262,14 +262,14 @@ test('flying with the other hand still works at level 10, and stays under the fo
   await expect.poll(async () => (await car(page)).speed, { timeout: 15_000 }).toBeGreaterThan(12);
   // Just before the footbridge by the lake, which a big hand and a ramp to one side are near at this level.
   await goTo(page, 640);
-  await show(page, 'fist', 'relaxed');
-  await expect.poll(otherHand, { timeout: 15_000 }).toBe('closed');
-  await show(page, 'open', 'relaxed');
-  const flight = await page.evaluate(async () => {
+  // Watched from before the fist is made, as the car is up the moment the hand is seen to open after it, which
+  // can be before the test has shown it open. Started after, the watch saw only what was left of the flight on
+  // its way down, anything from 3.4 to 5.8 metres, and failed when it was late.
+  const watch = page.evaluate(async () => {
     const { race } = window.__game;
     let highest = 0;
     let flew = false;
-    const end = performance.now() + 8000;
+    const end = performance.now() + 40_000;
     while (performance.now() < end) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
       flew = flew || race.soaring;
@@ -278,6 +278,10 @@ test('flying with the other hand still works at level 10, and stays under the fo
     }
     return { flew, highest };
   });
+  await show(page, 'fist', 'relaxed');
+  await expect.poll(otherHand, { timeout: 15_000 }).toBe('closed');
+  await show(page, 'open', 'relaxed');
+  const flight = await watch;
   expect(flight.flew).toBe(true);
   expect(flight.highest).toBeGreaterThan(4);
   // The car's roof is about 1.6 m above where it is, and the footbridge's deck is at 10.6 m.
