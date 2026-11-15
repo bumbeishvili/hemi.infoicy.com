@@ -196,6 +196,10 @@ test('the others of the journey come first, and the answer isn’t always in the
   const places = new Set();
   for (let n = 0; n < 40; n += 1) places.add(choicesFor('UKR', { count: 3, stops: JOURNEYS[1], flown: [], places: PLACES }).indexOf('UKR'));
   assert.ok(places.size > 1);
+  // A country whose flag is up already isn't lit while there are others near.
+  const third = choicesFor('DEU', { count: 3, stops: JOURNEYS[1], flown: ['UKR', 'POL'], places: PLACES });
+  assert.ok(!third.includes('POL') && !third.includes('UKR'), `${third}`);
+  assert.equal(third.length, 3);
 });
 
 test('an open hand held over the right country sends the plane there', () => {

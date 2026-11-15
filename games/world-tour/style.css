@@ -1,0 +1,164 @@
+/* Giraffe's World Tour: the globe, and then the flag on its board, fill the screen, under a band along the top with
+   the fuel and the flags raised on the left, Giraffe's words in the middle, and the hand meter and the mirror on
+   the right. */
+:root {
+  --meter-size: clamp(66px, 7vw, 92px);
+  --camera-small: clamp(140px, 15vw, 230px);
+}
+
+/* The mirror, in the top right corner, by the gear. */
+body:not([data-screen='check']) .camera-frame { left: auto; right: 70px; transform: none; }
+
+/* The hand meter, beside the mirror. */
+.hands-bar {
+  top: 12px;
+  bottom: auto;
+  left: auto;
+  right: calc(70px + var(--camera-small) + 12px);
+  transform: none;
+}
+body[data-screen='check'] .hands-bar { top: auto; bottom: 10px; left: 50%; right: auto; transform: translateX(-50%); }
+.meter { padding: 6px 6px 4px; border-radius: 20px; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* ---------- the fuel, the flags raised and the stamps ---------- */
+.tour-hud {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  top: 12px;
+  left: 12px;
+  align-items: center;
+  gap: 8px;
+}
+body[data-screen='playing'] .tour-hud,
+body[data-screen='countdown'] .tour-hud { display: flex; }
+.tour-hud .chip { min-width: clamp(64px, 7vw, 96px); padding: 4px 10px 6px; }
+.tour-hud .chip[hidden] { display: none; }
+.chip-flags .chip-label::before { content: '🚩 '; }
+.chip-stamps .chip-label::before { content: '📮 '; }
+.chip-fuel .chip-label::before { content: '⛽ '; }
+
+/* The cans of fuel: one for each the plane set off with, and those that are used up are empty. */
+.tour-cans { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 1.2em; }
+.tour-can {
+  width: clamp(12px, 1.3vw, 17px);
+  height: clamp(16px, 1.7vw, 22px);
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  background: #f25c54;
+  transition: background-color 0.6s ease, opacity 0.6s ease;
+}
+.tour-can.is-empty { background: transparent; opacity: 0.35; }
+
+/* ---------- Giraffe's words, in the middle of the band ---------- */
+.story {
+  top: 12px;
+  left: 50%;
+  transform: translateX(-62%);
+  width: min(30vw, 360px);
+}
+body[data-screen='playing']:has(.story.is-visible) .prompt { left: 50%; max-width: calc(100vw - 32px); }
+
+/* ---------- little films of what to do: choosing a country, painting the flag, and raising it ---------- */
+/* They go up under the fuel, out of the way of the globe and the board. */
+.tour-film { top: 92px; bottom: auto; width: min(15vw, 23vh); }
+.tour-film svg { display: none; }
+body[data-film-kind='find'] .tour-film .film-find,
+body[data-film-kind='paint'] .tour-film .film-paint,
+body[data-film-kind='raise'] .tour-film .film-raise { display: block; }
+
+.film-hand rect { fill: #3ddc84; stroke: var(--ink); stroke-width: 3; }
+.film-finger { fill: none; stroke: #3ddc84; stroke-width: 6; stroke-linecap: round; }
+
+/* Choosing: the open hand goes to one of the countries and stays, and a ring closes round it. */
+.film-sea { fill: #8fd0f5; stroke: var(--ink); stroke-width: 3; }
+.film-land { stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
+.film-land-a { fill: #ffb347; }
+.film-land-b { fill: #ff8fb1; }
+.film-land-c { fill: #b79bff; }
+.film-ring-back { fill: none; stroke: rgb(255 255 255 / 0.85); stroke-width: 6; opacity: 0; animation: film-ring-back 6s linear infinite; }
+.film-ring {
+  fill: none;
+  stroke: #ffb703;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 126;
+  stroke-dashoffset: 126;
+  transform: rotate(-90deg);
+  transform-origin: 134px 72px;
+  animation: film-ring 6s linear infinite;
+}
+.film-hand-find { transform: translate(60px, 150px); animation: film-hand-find 6s ease-in-out infinite; }
+
+@keyframes film-hand-find {
+  0%, 8% { transform: translate(60px, 150px); }
+  34%, 86% { transform: translate(134px, 84px); }
+  100% { transform: translate(60px, 150px); }
+}
+@keyframes film-ring {
+  0%, 36% { stroke-dashoffset: 126; }
+  74%, 88% { stroke-dashoffset: 0; }
+  94%, 100% { stroke-dashoffset: 126; }
+}
+@keyframes film-ring-back {
+  0%, 34% { opacity: 0; }
+  38%, 88% { opacity: 1; }
+  94%, 100% { opacity: 0; }
+}
+
+/* Painting: the open hand dips in a pot, and paints the stripe that's that colour. */
+.film-flag { fill: #f4f6f9; stroke: var(--ink); stroke-width: 4; }
+.film-stripe-line { fill: none; stroke: var(--ink); stroke-width: 3; }
+.film-row { fill: none; stroke: #2f7fe0; stroke-width: 40; stroke-dasharray: 128; stroke-dashoffset: 128; }
+.film-row-1 { animation: film-row 8s linear infinite; }
+.film-pot rect { fill: #eef2f6; stroke: var(--ink); stroke-width: 3; }
+.film-pot ellipse { stroke: var(--ink); stroke-width: 3; }
+.film-pot-a ellipse { fill: #2f7fe0; }
+.film-pot-b ellipse { fill: #ffd500; }
+.film-blob { fill: #2f7fe0; stroke: var(--ink); stroke-width: 2; opacity: 0; animation: film-blob 8s linear infinite; }
+.film-hand-paint { transform: translate(110px, 100px); animation: film-hand-paint 8s ease-in-out infinite; }
+
+@keyframes film-hand-paint {
+  0%, 6% { transform: translate(110px, 100px); }
+  20%, 30% { transform: translate(79px, 128px); }
+  46% { transform: translate(46px, 40px); }
+  76%, 90% { transform: translate(174px, 40px); }
+  100% { transform: translate(110px, 100px); }
+}
+@keyframes film-blob {
+  0%, 24% { opacity: 0; }
+  28%, 92% { opacity: 1; }
+  96%, 100% { opacity: 0; }
+}
+@keyframes film-row {
+  0%, 46% { stroke-dashoffset: 128; }
+  76%, 92% { stroke-dashoffset: 0; }
+  98%, 100% { stroke-dashoffset: 128; }
+}
+
+/* Raising: the open hand starts down low and goes up, and the flag goes up its pole with it. */
+.film-pole { fill: none; stroke: #9aa5b1; stroke-width: 7; stroke-linecap: round; }
+.film-ball { fill: #ffb703; stroke: var(--ink); stroke-width: 2.5; }
+.film-top { fill: #2f7fe0; stroke: var(--ink); stroke-width: 2; }
+.film-bottom { fill: #ffd500; stroke: var(--ink); stroke-width: 2; }
+.film-way { fill: none; stroke: rgb(18 48 77 / 0.4); stroke-width: 3; stroke-dasharray: 7 7; }
+.film-arrow { fill: #ffb703; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
+.film-flying { transform: translateY(112px); animation: film-flying 6s ease-in-out infinite; }
+.film-hand-raise { transform: translate(56px, 142px); animation: film-hand-raise 6s ease-in-out infinite; }
+
+@keyframes film-hand-raise {
+  0%, 16% { transform: translate(56px, 142px); }
+  62%, 88% { transform: translate(56px, 52px); }
+  100% { transform: translate(56px, 142px); }
+}
+@keyframes film-flying {
+  0%, 16% { transform: translateY(112px); }
+  62%, 88% { transform: translateY(24px); }
+  100% { transform: translateY(112px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film-hand-find, .film-ring, .film-ring-back, .film-hand-raise, .film-flying { animation-duration: 10s; }
+  .film-hand-paint, .film-row-1, .film-blob { animation-duration: 12s; }
+}

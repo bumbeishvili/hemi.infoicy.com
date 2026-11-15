@@ -121,12 +121,14 @@ export function tourLevel(level, { gentle = false, hold = 'later' } = {}) {
 
 /**
  * The countries lit for a stop: the one asked for, and the nearest others in the game. Those of this journey that
- * haven't a flag yet come first, as they're the ones being learnt. places is each country's place, [lon, lat].
+ * haven't a flag yet come first, as they're the ones being learnt, and those that have one last. places is each
+ * country's place, [lon, lat].
  */
 export function choicesFor(target, { count, stops, flown, places, random = Math.random }) {
   const others = COUNTRIES.filter((id) => id !== target && places[id]);
   const near = (id) => apart(places[target], places[id]);
-  const rank = (id) => (stops.includes(id) && !flown.includes(id) ? 0 : 1);
+  // A country whose flag is up already gives itself away, so it's only lit if there's no other near.
+  const rank = (id) => (flown.includes(id) ? 2 : stops.includes(id) ? 0 : 1);
   others.sort((a, b) => rank(a) - rank(b) || near(a) - near(b));
   // Only ones near enough to be well in view with it. A country a long way from the rest, as the United States
   // is, still has its two nearest, a little further round the globe.
@@ -145,7 +147,8 @@ export function choicesFor(target, { count, stops, flown, places, random = Math.
 export class Painting {
   constructor(flag) {
     this.flag = flag;
-    this.wide = Math.round(flag.wide);
+    // Whole squares only: a flag whose length isn't a whole number, as Norway's isn't, has no square hanging off its end.
+    this.wide = Math.floor(flag.wide);
     this.high = 100;
     // The part on top at each square: the last in the flag's list that the square's middle is in.
     this.owner = new Int8Array(this.wide * this.high).fill(-1);

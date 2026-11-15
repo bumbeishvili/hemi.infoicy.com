@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Children's camera video: this policy stops the page sending anything off this computer. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.googletagmanager.com; style-src 'self'; img-src 'self' data: blob: https://*.google-analytics.com https://*.googletagmanager.com; media-src 'self' blob: mediastream:; connect-src 'self' wss://hemi-race.infoicy.com ws://localhost:* https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; worker-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Giraffe’s World Tour</title>
+  <meta name="description" content="Fly round the globe with Giraffe: find each country, paint its flag with your open hand, and raise it. A webcam game for children with hemiplegia.">
+  <meta property="og:title" content="Giraffe’s World Tour">
+  <meta property="og:description" content="Fly round the globe with Giraffe: find each country, paint its flag with your open hand, and raise it. A webcam game for children with hemiplegia.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Camera Games">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%8D%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../../core/base.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="../../core/analytics.js"></script>
+  <script type="module" src="main.js"></script>
+</head>
+<body data-screen="welcome">
+  <canvas id="game" aria-hidden="true"></canvas>
+</body>
+</html>
