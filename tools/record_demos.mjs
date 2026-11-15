@@ -1100,6 +1100,90 @@ const FILMS = {
       return { done: painting.done, progress: Math.round(painting.progress * 100), cells: painting.stats.cells };
     }),
   },
+  'world-tour': {
+    settings: { tourReach: 'lots', levels: { 'world-tour': 1 } },
+    css: '.camera-frame { --camera-small: 22vw !important; }',
+    async ready(page) {
+      // The hand starts low down, over the sea and none of the countries lit, so the film shows it going to one.
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.62, rightOffsetX: 0, rightOffsetY: 90 }));
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await page.waitForFunction(() => window.__game.tour.state === 'find', null, { timeout: 30_000 });
+      // The globe turning to the three countries lit, and Giraffe asking for the first.
+      await wait(page, 1500);
+    },
+    async play(page) {
+      // The first stop, played as a child would, as leadHands does with aim 'play' in test/e2e/world-tour/helpers.js:
+      // the open hand held over the country Giraffe asks for, then into the pot for the paint a part wants and across
+      // what's still bare of that colour, a little unsteadily, and then down low by the pole and up high. The film ends
+      // with the flag planted on the globe and the next country asked for, the hand resting.
+      await page.evaluate(() => new Promise((done) => {
+        let x = 0;
+        let y = 90;
+        let lifted = false;
+        let askedAgain = 0;
+        const started = performance.now();
+        /** Where a child would put the brush next: the pot that's needed, or the nearest bare place of this colour. */
+        const nextToPaint = (tour, view, from) => {
+          const { painting, flag } = tour;
+          const takes = flag.parts.map((part, number) => !painting.done[number] && part.colour === tour.paint);
+          if (!tour.paint || !takes.some(Boolean)) {
+            const next = flag.parts.findIndex((_, number) => !painting.done[number]);
+            return next < 0 ? null : view.pots.find((pot) => pot.paint === flag.parts[next].colour);
+          }
+          const here = from ? view.toFlag(from.x, from.y) : { x: 0, y: 0 };
+          let [best, nearest] = [null, Infinity];
+          for (let cell = 0; cell < painting.owner.length; cell += 1) {
+            const part = painting.owner[cell];
+            if (part < 0 || !takes[part] || painting.painted[cell]) continue;
+            const [cx, cy] = [(cell % painting.wide) + 0.5, Math.floor(cell / painting.wide) + 0.5];
+            // Along the rows first, as a hand sweeps.
+            const far = Math.abs(cy - here.y) * 2.2 + Math.abs(cx - here.x);
+            if (far < nearest) [best, nearest] = [{ x: cx, y: cy }, far];
+          }
+          return best && { x: view.board.x + best.x * view.board.unit, y: view.board.y + best.y * view.board.unit };
+        };
+        const place = (tour, view, at) => {
+          // The countries lit and the question first, with the hand still, and at the end it rests, away from them all.
+          if (tour.state === 'find' && tour.flown.length) return { x: innerWidth * 0.8, y: innerHeight * 0.8 };
+          if (tour.state === 'find') return performance.now() - started < 1500 ? null : view.onScreen(tour.places[tour.target]);
+          if (tour.state === 'paint') return nextToPaint(tour, view, at);
+          if (tour.state === 'raise') {
+            lifted = tour.gripped;
+            return { x: innerWidth * 0.62, y: innerHeight * (lifted ? 0.24 : 0.78) };
+          }
+          return null;
+        };
+        const timer = setInterval(() => {
+          const { tour, view, game } = window.__game;
+          const at = game.gloveOnScreen('play');
+          const to = place(tour, view, at);
+          const t = (performance.now() - started) / 1000;
+          // The flag goes up a little slower than the hand moves elsewhere, so it can be seen going up.
+          const gain = tour.state === 'raise' && tour.gripped ? 0.03 : 0.15;
+          if (at && to) {
+            x += ((to.x + Math.sin(t * 5.1) * innerHeight * 0.01 - at.x) / innerWidth) * 1280 * gain;
+            y += ((to.y + Math.cos(t * 3.7) * innerHeight * 0.01 - at.y) / innerHeight) * 720 * gain;
+          } else if (!at) {
+            x *= 0.95;
+            y *= 0.95;
+          }
+          x = Math.max(-780, Math.min(220, x));
+          y = Math.max(-260, Math.min(240, y));
+          window.__camera.show({ left: null, right: 'open', scale: 0.62, rightOffsetX: x, rightOffsetY: y });
+          if (tour.flown.length && tour.state === 'find' && !askedAgain) askedAgain = t;
+          if ((askedAgain && t > askedAgain + 2.5) || t > 60) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { stats, flown, cans, state } = window.__game.tour;
+      return { state, flown, cans, wrong: stats.wrong, parts: stats.parts, dips: stats.dips, seconds: Math.round(stats.seconds) };
+    }),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {
