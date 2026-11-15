@@ -618,6 +618,8 @@ export class TourView {
     if (state === 'won' && tour.rules.cup) this.drawCup();
     this.drawEffects();
     for (const glove of model.gloves ?? []) this.drawGlove(glove);
+    // Over the glove, which would hide them: the pin of the country the hand is on, with its ring closing.
+    if (state === 'find' && model.hover) this.drawPin(tour, model.hover, true);
   }
 
   drawGlobe(model) {
@@ -710,39 +712,43 @@ export class TourView {
     ctx.stroke();
   }
 
-  /** A pin on each country to choose from, and a ring that closes round the one the hand is on. */
+  /** A pin on each country to choose from. */
   drawChoices(tour, hover) {
-    const { ctx, height: h } = this;
     for (const id of tour.choices) {
-      const out = tour.out.has(id);
-      if (!out && !tour.rules.lights && id !== hover) continue;
-      const at = this.onScreen(tour.places[id]);
-      if (!at.front) continue;
-      const r = h * 0.02;
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = out ? '#7f8a99' : INK;
-      ctx.lineWidth = Math.max(2, h * 0.004);
-      ctx.beginPath();
-      ctx.arc(at.x, at.y, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = out ? OUT : this.colours.get(id);
-      ctx.beginPath();
-      ctx.arc(at.x, at.y, r * 0.55, 0, Math.PI * 2);
-      ctx.fill();
-      if (id === hover && tour.over === id) {
-        ctx.lineCap = 'round';
-        ctx.lineWidth = h * 0.012;
-        ctx.strokeStyle = 'rgb(255 255 255 / 0.85)';
-        ctx.beginPath();
-        ctx.arc(at.x, at.y, h * 0.05, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.strokeStyle = GOLD;
-        ctx.beginPath();
-        ctx.arc(at.x, at.y, h * 0.05, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(tour.overFor / TOUR.dwell, 0, 1));
-        ctx.stroke();
-      }
+      // With no lights, a country's pin only shows under the hand.
+      if (tour.out.has(id) || tour.rules.lights || id === hover) this.drawPin(tour, id, false);
     }
+  }
+
+  /** A country's pin, and for the one the hand is on, the ring that closes round it as the hand stays. */
+  drawPin(tour, id, chosen) {
+    const { ctx, height: h } = this;
+    const at = this.onScreen(tour.places[id]);
+    if (!at.front) return;
+    const out = tour.out.has(id);
+    const r = h * 0.02;
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = out ? '#7f8a99' : INK;
+    ctx.lineWidth = Math.max(2, h * 0.004);
+    ctx.beginPath();
+    ctx.arc(at.x, at.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = out ? OUT : this.colours.get(id);
+    ctx.beginPath();
+    ctx.arc(at.x, at.y, r * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+    if (!chosen || tour.over !== id) return;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = h * 0.012;
+    ctx.strokeStyle = 'rgb(255 255 255 / 0.85)';
+    ctx.beginPath();
+    ctx.arc(at.x, at.y, h * 0.05, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = GOLD;
+    ctx.beginPath();
+    ctx.arc(at.x, at.y, h * 0.05, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(tour.overFor / TOUR.dwell, 0, 1));
+    ctx.stroke();
   }
 
   /** A country's name, on a tag over it. */
@@ -1246,11 +1252,23 @@ export class TourView {
         ctx.stroke();
       }
     }
+    // Over the globe the glove is seen through, so that the countries under it can be seen, and a dot in its palm
+    // says where it's pointing.
+    const finding = this.tour?.state === 'find';
     ctx.save();
     ctx.translate(x - glove.x, y - glove.y);
-    ctx.globalAlpha = 0.94;
+    ctx.globalAlpha = finding ? 0.55 : 0.94;
     glove.draw(ctx, palmSize, look);
     ctx.restore();
+    if (finding) {
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = Math.max(2, palmSize * 0.05);
+      ctx.beginPath();
+      ctx.arc(x, y, palmSize * 0.13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
     if (colour) {
       ctx.fillStyle = colour;
       ctx.strokeStyle = INK;
