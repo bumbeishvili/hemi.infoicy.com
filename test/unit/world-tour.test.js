@@ -220,6 +220,10 @@ test('the others of the journey come first, and the answer isn’t always in the
   const third = choicesFor('DEU', { count: 3, stops: JOURNEYS[1], flown: ['UKR', 'POL'], places: PLACES });
   assert.ok(!third.includes('POL') && !third.includes('UKR'), `${third}`);
   assert.equal(third.length, 3);
+  // Not even the nearest of all: Georgia is next to Armenia, and with its flag up it's left out for one further off.
+  const second = choicesFor('ARM', { count: 3, stops: JOURNEYS[3], flown: ['GEO'], places: PLACES });
+  assert.ok(second.includes('AZE') && !second.includes('GEO'), `${second}`);
+  assert.equal(second.length, 3);
 });
 
 test('an open hand held over the right country sends the plane there', () => {
