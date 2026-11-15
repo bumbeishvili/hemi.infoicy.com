@@ -401,6 +401,8 @@ test('a grown-up\'s other choices: how much to eat, how far the head has to move
   // The same move of the head as takes the creature most of the way across on medium goes a little way on big.
   const middle = (await state(page)).creature.x;
   await face(page, { x: 0.55 });
+  // It's waited for to get there, however long this computer takes, and then to have stopped there.
+  await expectSoon(async () => (await state(page)).creature.x - middle, { timeout: 15_000 }).toBeGreaterThan(0.2);
   await page.waitForTimeout(1200);
   const moved = (await state(page)).creature.x - middle;
   expect(moved).toBeGreaterThan(0.2);
