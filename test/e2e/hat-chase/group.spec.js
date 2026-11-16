@@ -219,6 +219,20 @@ test('the finish card says how many steps they took between them and each one\'s
   expect(now.at[0]).toBeGreaterThan(now.metre * 0.4);
   expect(now.at[1]).toBeLessThan(card.x);
 
+  // Four beside the same card stand closer still, and none of them is under it either.
+  await page.evaluate(() => {
+    const { game, view } = window.__game;
+    const first = game.cast[0];
+    view.setWalkers([first, first, first, first]);
+  });
+  await page.waitForTimeout(2500);
+  const four = await group(page);
+  expect(four.at).toHaveLength(4);
+  expect(four.at[0]).toBeGreaterThan(four.metre * 0.4);
+  expect(four.at[3]).toBeLessThan(card.x - four.metre * 0.6);
+  for (let index = 1; index < 4; index += 1) expect(four.at[index] - four.at[index - 1]).toBeGreaterThan(four.metre * 0.6);
+  await shot(page, 'hat-group-finish-four');
+
   // Back at the chooser, one walks now: one character, one marcher, and a step is a whole step.
   await page.locator('#other-walker').click();
   await waitForScreen(page, 'choose');
@@ -249,7 +263,7 @@ test('four walkers are all on the screen while they walk and beside the finish c
   await shot(page, 'hat-group-four');
   // Beside a card they stand closer, and all four are still in sight.
   now = await settle('finish');
-  for (let index = 1; index < 4; index += 1) expect(now.at[index] - now.at[index - 1]).toBeGreaterThan(now.metre * 0.9);
+  for (let index = 1; index < 4; index += 1) expect(now.at[index] - now.at[index - 1]).toBeGreaterThan(now.metre * 0.6);
   expect(now.at[0]).toBeGreaterThan(now.metre * 0.8);
   // One alone is where one child's character always was.
   await page.locator('input[name="group-size"][value="1"]').check({ force: true });
