@@ -26,6 +26,7 @@
   {"id": "lap-3", "text": "Lap 3!", "speak": "Lap three!", "ka": "მესამე წრე!"},
   {"id": "last-lap", "text": "Last lap!", "ka": "ბოლო წრე!"},
   {"id": "you-did-it", "text": "You did it! Great racing!", "ka": "შენ შეძელი! მშვენიერი რბოლა იყო!"},
+  {"id": "did-it-together", "text": "You did it together!", "ka": "ერთად შეძელით!"},
   {"id": "pop-hint", "text": "Pop the balloons with your open hand!", "ka": "გაშლილი ხელით გახეთქე ბუშტები!"},
   {"id": "open-left-to-pop", "text": "Open your left hand to pop it!", "ka": "გაშალე მარცხენა ხელი, რომ გახეთქო!"},
   {"id": "open-right-to-pop", "text": "Open your right hand to pop it!", "ka": "გაშალე მარჯვენა ხელი, რომ გახეთქო!"},

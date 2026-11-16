@@ -212,7 +212,7 @@ Level 1 plays the way each game always has. After that, levels bring more going 
 | Giraffe's World Tour | The plane runs out of fuel: a can for each wrong country, and from level 5 for each gust that finds the flag let go | **The plane's fuel**: Gentle |
 | Swamp Splash | The rain cloud gets there before the window is muddy enough, and washes it | **The rain cloud**: Gentle |
 
-Playing with friends, most games still can't be lost, as each computer would have to agree on the moment it was. Tank Patrol and Cannon Bay can be lost together. All of this has only been tried by scripted players in the tests: see **Not tested yet**.
+Playing with friends, most games still can't be lost, as each computer would have to agree on the moment it was. Tank Patrol and Cannon Bay can be lost together, and so can Balloon Pop, where the time can run out before the team has popped enough: the computer it ends on first tells the others, which end the same way. All of this has only been tried by scripted players in the tests: see **Not tested yet**.
 
 **Changing things in the middle of a game.** What a grown-up changes under the gear icon while a game is going either goes on to that game at once, or starts it again when the panel is closed, so that what they chose is what's played. Until 15 November 2026 the level, and most of what shapes a game, such as Balloon Pop's maths challenge, waited for the next game, which looked as though nothing had happened.
 
@@ -276,18 +276,21 @@ Prizes fall slowly, taking about ten seconds to come down the screen, drift towa
 
 ### Playing Balloon Pop with friends
 
-Up to 4 children can play one game together, each on their own computer with their own camera, with the same balloons and the same sums, to see who pops the most, or with the maths challenge, who gets the most right.
+Up to 4 children can play one game, each on their own computer with their own camera, with the same balloons and the same sums: together, as one team, or against each other, to see who pops the most, or with the maths challenge, who gets the most right.
 
 - **Making and joining:** under **Play with a friend** on the title card, a grown-up presses **Make a game** and tells their friend the 3-letter code, or sends the link. The friend types the code, or opens the link, and is in.
+- **Together or against each other:** whoever made the game chooses, in the box where the code is or under the gear icon as **With friends**, and the others are shown what they chose. Together is how it comes. Everyone else's own choice is kept for the games they make themselves.
 - **Starting:** everyone presses **Let’s pop!**. After the hand check, each waits until everyone is ready, and then all count down together. Whoever made the game can press **Start now**, and anyone can play on their own.
-- **The time:** everyone plays for the same time instead of to a goal: a minute for the host's 20 balloons, two for 40 and three for 60. A clock shows what's left.
+- **The time:** a minute for the host's 20 balloons, two for 40 and three for 60. A clock shows what's left.
+- **Together** (the default): every pop counts for the team, whoever's hand it was. The team has half as many again to pop between them as the host chose, so 30, 60 or 90, before the time is up. That number is the same for two friends or four, as the balloons are the host's and no more of them come for more players: at the slowest speed and level 1 about 57 come up in a minute. With the maths challenge it's right answers, and far fewer, 7, 14 or 21, as only one child can have each sum. The top of the screen says how many the team has of how many, the bar is how far they've got, and each one's own count is top right, nobody ranked. As soon as they have enough between them the game is won for everyone at once: "You popped them together!", and the voice says "You did it together!". When the time is up first, it ends for everyone, kindly: "Time's up!", how many they popped of how many, no cheering, and **Try again**. With the host's game on **Gentle** there's no clock at all, and the team plays until it has enough. Whichever computer the game ends on first, the others end the same way as soon as they hear, so everyone sees the same ending, and a pop on a friend's computer has 0.8 seconds to arrive after the time is up. A friend who goes leaves what they popped with the team.
+- **Against each other:** everyone plays for the same time instead of to a goal, and whoever has popped the most when it's up comes first.
 - **One game for everyone:** the host's game runs the balloons and the sums, and everyone sees the same ones, where they are on the host's screen. Whoever's hand gets to a balloon first has it, and it's gone for everyone: the server decides, as each touch reaches it. Each sum is the same for everyone, and once anyone has the right answer, everyone gets the next. A wrong answer burns only that child's glove, and goes for everyone.
 - **Fair for everyone:** with friends, the balloons are plain ones, without the presents, stars and power-ups the levels add, at the host's speed. They come up right across the screen, as each child may play with a different hand, and none drift towards a hand, as reach help would make a balloon one child's before anyone else could get to it.
-- **Scores:** everyone's score shows as they play, the most first. The finish card says who came where, and equal scores share a place.
+- **Scores:** everyone's score shows as they play. Against each other the most comes first, the finish card says who came where, and equal scores share a place. Together nobody is placed.
 - **Friends' hands:** each friend's glove shows in light grey, with their name over it, where their hand is on their own screen, copying it finger by finger. It's only there to see, and pops nothing.
 - **Levels and settings:** a game with friends doesn't move anyone's own level on, and nobody's settings change.
 
-Only the name typed, the character from the other games, the score, where the glove is and which balloons it got to go to friends, and from the host's game, where the balloons are and the sum. Never anything from the camera.
+Only the name typed, the character from the other games, whether together or against each other was chosen, the score, where the glove is and which balloons it got to go to friends, and from the host's game, where the balloons are, the sum, and, together, whether it's on Gentle. Never anything from the camera.
 
 ## High Five Racers
 

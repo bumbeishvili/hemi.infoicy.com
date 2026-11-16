@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { toScreen } from '../../games/balloon-pop/balloons.js';
 import { LEVELS, MathsDeck, answersFor, choicesFor } from '../../games/balloon-pop/maths.js';
 import {
-  awayAllowed, balloonLevel, balloonNewAt, balloonsPerMinute, LEAST_AWAY, MOST_ANSWERS, newsIsOn, PACES, PLACES, POWER_SECONDS, PRIZE, secondsOnScreen, STAR_HOLD_SECONDS, WANDERER_CHANCE,
+  awayAllowed, balloonLevel, balloonNewAt, balloonsPerMinute, friendsMode, LEAST_AWAY, MOST_ANSWERS, newsIsOn, PACES, PLACES, POWER_SECONDS, PRIZE, readFriendsMode, secondsOnScreen, STAR_HOLD_SECONDS, TEAM, teamGoal, WANDERER_CHANCE,
 } from '../../games/balloon-pop/rules.js';
 
 test('the middle of the picture lands near the middle of the screen', () => {
@@ -246,4 +246,72 @@ test('how many balloons can float away: twice the number to pop at level 1, down
     for (const level of LEVEL_NUMBERS.slice(1)) assert.ok(awayAllowed(goal, level) <= awayAllowed(goal, level - 1), `${goal} ${level}`);
     assert.ok(awayAllowed(goal, 10) >= LEAST_AWAY);
   }
+});
+
+/* ---------- friends, together ---------- */
+
+// How long a game with friends lasts, for each number of balloons the host can choose: see FRIENDS_SECONDS in main.js.
+const friendsSeconds = () => {
+  const source = readFileSync(new URL('../../games/balloon-pop/main.js', import.meta.url), 'utf8');
+  const [, inside] = source.match(/const FRIENDS_SECONDS = \{([^}]+)\}/);
+  return [...inside.matchAll(/(\d+): (\d+)/g)].map(([, balloons, seconds]) => [Number(balloons), Number(seconds)]);
+};
+
+test('together, the team has half as many again to pop between them as the host chose, and far fewer sums', () => {
+  assert.deepEqual([20, 40, 60].map((balloons) => teamGoal(balloons)), [30, 60, 90]);
+  assert.deepEqual([20, 40, 60].map((balloons) => teamGoal(balloons, { maths: true })), [7, 14, 21]);
+  // More than one child would pop alone, as there are two of them or more, and fewer sums than balloons.
+  for (const balloons of [20, 40, 60]) {
+    assert.ok(teamGoal(balloons) > balloons);
+    assert.ok(teamGoal(balloons, { maths: true }) < balloons / 2);
+    assert.ok(Number.isInteger(teamGoal(balloons)) && Number.isInteger(teamGoal(balloons, { maths: true })));
+  }
+  assert.equal(teamGoal(1, { maths: true }), 1);
+});
+
+test('together, far more balloons come up in the time than the team has to pop, at every speed and level', () => {
+  const games = friendsSeconds();
+  assert.deepEqual(games.map(([balloons]) => balloons), [20, 40, 60]);
+  for (const [balloons, seconds] of games) {
+    for (const pace of Object.keys(PACES)) {
+      for (const level of LEVEL_NUMBERS) {
+        const come = (balloonsPerMinute(pace, level) * seconds) / 60;
+        assert.ok(come >= teamGoal(balloons) * 1.5, `${balloons} balloons, ${pace}, level ${level}: ${Math.round(come)} come for ${teamGoal(balloons)}`);
+      }
+    }
+    // And each sum has at least 8 seconds.
+    assert.ok(seconds / teamGoal(balloons, { maths: true }) >= 8, `${balloons}: ${seconds / teamGoal(balloons, { maths: true })} seconds a sum`);
+  }
+  // A pop on a friend's computer has a moment to arrive after the time is up, and only a moment.
+  assert.ok(TEAM.grace >= 0.5 && TEAM.grace <= 1.5);
+});
+
+test('the host\'s kind of sums and Gentle reach friends as one word the server lets through, and are read back', () => {
+  for (const maths of ['off', 'add', 'addTake', 'times']) {
+    for (const gentle of [false, true]) {
+      const mode = friendsMode(maths, gentle);
+      // The server only passes on a word of 1 to 12 letters: see cleanMode in server/race-room.js.
+      assert.match(mode, /^[A-Za-z]{1,12}$/, mode);
+      assert.deepEqual(readFriendsMode(mode), { maths, gentle });
+    }
+  }
+  assert.equal(friendsMode('add'), 'add');
+  // Anything else is a game with no sums and its clock.
+  for (const odd of ['', 'sums', 'Easy!', undefined, null, 7]) assert.deepEqual(readFriendsMode(odd).maths, 'off', String(odd));
+  assert.deepEqual(readFriendsMode('nonsense'), { maths: 'off', gentle: false });
+  assert.deepEqual(readFriendsMode('Easy'), { maths: 'off', gentle: true });
+});
+
+test('Balloon Pop comes as a game friends play together, and what it says then has a voice file', () => {
+  const source = readFileSync(new URL('../../games/balloon-pop/main.js', import.meta.url), 'utf8');
+  assert.match(source, /defaults: \{[^}]*popFriends: 'together'/);
+  assert.match(source, /choices: \{[^}]*popFriends: String/);
+  for (const value of ['together', 'against']) assert.ok(source.includes(`name="popFriends" value="${value}"`), value);
+  const lines = JSON.parse(readFileSync(new URL('../../core/audio/voice/lines.json', import.meta.url)));
+  const sound = readFileSync(new URL('../../core/sound.js', import.meta.url), 'utf8');
+  const [, text] = sound.match(/export const DID_IT_TOGETHER = '([^']+)'/);
+  const line = lines.find((each) => each.text === text);
+  assert.ok(line, text);
+  assert.match(line.ka, /[Ⴀ-ჿ]/);
+  for (const language of ['en', 'ka']) assert.ok(existsSync(new URL(`../../core/audio/voice/${language}/${line.id}.ogg`, import.meta.url)), `${language}/${line.id}.ogg`);
 });

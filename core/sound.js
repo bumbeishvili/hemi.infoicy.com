@@ -16,6 +16,8 @@ const SHARED_SOUNDS = {
 // What's said at the end of a game that was lost, by a game with no line of its own for it: kind, and short.
 // It's one of the lines every game has: see audio/voice/lines.json.
 export const SO_CLOSE = 'So close! Try again!';
+// What's said at the end of a game that friends won together, on the same side: another of the lines every game has.
+export const DID_IT_TOGETHER = 'You did it together!';
 
 const FETCH_ATTEMPTS = 3;
 

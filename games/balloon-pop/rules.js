@@ -62,6 +62,34 @@ export function awayAllowed(goal, level) {
   return Math.max(LEAST_AWAY, Math.round(goal * ramp(level, AWAY_SHARE[0], AWAY_SHARE[1])));
 }
 
+// Friends playing together, on the same side: what everyone pops adds up, and the team has this many to pop
+// between them before the time is up, as a share of the host's number of balloons. The balloons are the host's,
+// and no more of them come for more players, so the number is the same for two friends or four. With the maths
+// challenge on it's right answers, and far fewer, as only one child can have each sum. grace is how long after
+// the time is up a pop on a friend's computer can still arrive and count, in seconds.
+export const TEAM = { pops: 1.5, sums: 0.35, grace: 0.8 };
+
+/** How many the team has to pop between them, or get right with the maths challenge on. */
+export function teamGoal(balloons, { maths = false } = {}) {
+  return Math.max(1, Math.round(balloons * (maths ? TEAM.sums : TEAM.pops)));
+}
+
+// What the host's game tells the others about its game, in one word of letters: the kind of sums, and, playing
+// together, whether a grown-up chose Gentle, which takes the clock away. See mode in server/race-room.js.
+const GENTLE_MARK = 'Easy';
+
+export function friendsMode(maths, gentle = false) {
+  return `${maths ?? 'off'}${gentle ? GENTLE_MARK : ''}`;
+}
+
+/** The host's kind of sums, 'off' for anything else, and whether their game is Gentle. */
+export function readFriendsMode(mode) {
+  const text = typeof mode === 'string' ? mode : '';
+  const gentle = text.endsWith(GENTLE_MARK);
+  const maths = gentle ? text.slice(0, -GENTLE_MARK.length) : text;
+  return { maths: Object.hasOwn(MATHS, maths) ? maths : 'off', gentle };
+}
+
 /**
  * What changes from level 1 to 10. gentle is the game as it was before balloons could get away: its
  * levels climb as gently as they always did. Otherwise they climb further.
