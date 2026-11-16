@@ -168,6 +168,13 @@ test('the game makes no requests off this computer, and the page refuses to', as
 test('the camera is let go when a chase ends, won or lost, and the panel says what to keep the child safe', async ({ page }) => {
   test.setTimeout(150_000);
   await reachPlay(page, atLevel(1, { chaseLength: 8 }));
+  // The grown-ups' panel: room to move, a floor that isn't slippery, someone close by, and not a medical device.
+  await page.locator('#open-panel').click();
+  await expect(page.locator('.panel-lead')).toContainText('Marching and jumping need room: clear the floor, and stay close by.');
+  await expect(page.locator('#panel .small-print')).toContainText('These games are not medical devices');
+  await expect(page.locator('#panel .small-print')).toContainText('Stop if anything hurts, or if balance is a worry.');
+  await page.locator('#close-panel').click();
+  await expect(page.locator('#panel')).toBeHidden();
   expect(await page.evaluate(() => window.__camera.activeTracks)).toBeGreaterThan(0);
   await page.evaluate(() => {
     window.__game.chase.magpie.x = window.__game.chase.hero.x + 23.9;
@@ -183,11 +190,7 @@ test('the camera is let go when a chase ends, won or lost, and the panel says wh
   await waitForScreen(page, 'finishing');
   expect(await page.evaluate(() => window.__camera.activeTracks)).toBe(0);
   await waitForScreen(page, 'finish');
-  // The grown-ups' panel: room to move, a floor that isn't slippery, someone close by, and not a medical device.
-  await page.locator('#open-panel').click();
-  await expect(page.locator('.panel-lead')).toContainText('Marching and jumping need room: clear the floor, and stay close by.');
-  await expect(page.locator('#panel .small-print')).toContainText('These games are not medical devices');
-  await expect(page.locator('#panel .small-print')).toContainText('Stop if anything hurts, or if balance is a worry.');
+  expect(await page.evaluate(() => window.__camera.activeTracks)).toBe(0);
 });
 
 /* ---------- it fits ---------- */
@@ -256,6 +259,11 @@ for (const viewport of VIEWPORTS) {
       await expect(page.locator('#prompt')).toHaveClass(/is-visible/);
       await expectSoon(async () => (await state(page)).place).toBe(0.24);
       const wrong = await hidden(page, 'at the start');
+      // The gentle magpie gone on to where it waits, with marching still asked for, in the longest words the film has.
+      await expectSoon(async () => (await state(page)).lead, { timeout: 20_000 }).toBeGreaterThan(11.99);
+      await expect(page.locator('#coach-text')).toHaveText('March on the spot to walk!');
+      wrong.push(...(await hidden(page, 'the gentle magpie waiting')));
+      await shot(page, `hat-fit-waiting-${viewport.width}`);
       // At the springboard, the longest thing in the way, with the film asking for a star jump.
       await walkUpTo(page, 'spring');
       await expect(page.locator('#coach-text')).toHaveText('Do a star jump!');

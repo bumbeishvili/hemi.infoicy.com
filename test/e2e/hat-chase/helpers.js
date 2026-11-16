@@ -87,7 +87,9 @@ export async function reopenWith(page, change) {
 
 /** What the rules say right now, and what the screen has of it. */
 export const state = (page) => page.evaluate(() => {
-  const { chase, game, view, marcher } = window.__game;
+  const { chase, game, view } = window.__game;
+  // Each game has a new one, and the game's is the one that reads the steps.
+  const { marcher } = game;
   const copy = (value) => (value ? JSON.parse(JSON.stringify(value)) : value);
   const thing = (it) => it && {
     index: it.index, kind: it.kind, needs: it.needs, at: it.at, wide: it.wide, state: it.state, done: it.done, times: it.times,
@@ -301,62 +303,88 @@ export const liftFoot = (page, side, { height = 0.2, hold = 400, rest = 400 } = 
 
 /* ---------- what's on the screen ---------- */
 
+// In the page: the view drawn once onto a canvas of its own, which the computer draws itself rather than the
+// graphics card, and so the same way every time: the game's own canvas, drawn by the graphics card, can draw the
+// edge of a shape a little differently from one time to the next. without names view methods left out of it.
+const DRAW_ASIDE = `
+  const drawAside = (view, without = {}) => {
+    const { canvas } = view;
+    if (!window.__aside || window.__aside.width !== canvas.width || window.__aside.height !== canvas.height) {
+      window.__aside = document.createElement('canvas');
+      window.__aside.width = canvas.width;
+      window.__aside.height = canvas.height;
+    }
+    const aside = window.__aside.getContext('2d', { alpha: false, willReadFrequently: true });
+    const [ctx, kept] = [view.ctx, Object.keys(without).map((name) => [name, view[name]])];
+    for (const [name, skip] of Object.entries(without)) view[name] = skip;
+    view.ctx = aside;
+    try {
+      view.render();
+    } finally {
+      view.ctx = ctx;
+      for (const [name, method] of kept) view[name] = method;
+    }
+    return aside.getImageData(0, 0, canvas.width, canvas.height).data;
+  };
+`;
+
 /**
  * Where something is drawn on the game's canvas, in CSS pixels: the box around every pixel that changes when it
  * isn't drawn. name is the view's method that draws it, as 'drawHero' or 'drawMagpie', and which, if given, is the
  * one of the things that method draws: the index of a thing in the way, a star on the path, or an apple tree. Drawn
- * three times in a row, at the same moment, so nothing moves in between. null if nothing is drawn.
+ * at the same moment each time, so nothing moves in between. null if nothing is drawn.
  */
-export const drawnBox = (page, name, which = null) => page.evaluate(([method, only]) => {
-  const { view } = window.__game;
-  const { ctx, canvas, ratio } = view;
-  const read = () => ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  view.render();
-  const all = read();
-  const draw = view[method];
-  view[method] = function skip(...args) {
-    if (only !== null && (args[0]?.index ?? args[1]) !== only) draw.apply(this, args);
-  };
-  view.render();
-  const without = read();
-  view[method] = draw;
-  view.render();
-  let box = null;
-  for (let i = 0; i < all.length; i += 4) {
-    // Clearly different: a shadow, drawn faintly, isn't counted.
-    if (Math.abs(all[i] - without[i]) + Math.abs(all[i + 1] - without[i + 1]) + Math.abs(all[i + 2] - without[i + 2]) < 100) continue;
-    const at = i / 4;
-    const [x, y] = [at % canvas.width, Math.floor(at / canvas.width)];
-    if (!box) box = { left: x, right: x, top: y, bottom: y, count: 0 };
-    box.left = Math.min(box.left, x);
-    box.right = Math.max(box.right, x);
-    box.top = Math.min(box.top, y);
-    box.bottom = Math.max(box.bottom, y);
-    box.count += 1;
-  }
-  return box && { left: box.left / ratio, right: (box.right + 1) / ratio, top: box.top / ratio, bottom: (box.bottom + 1) / ratio, count: box.count / (ratio * ratio) };
-}, [name, which]);
+export const drawnBox = (page, name, which = null) => page.evaluate(([source, method, only]) => {
+  const run = new Function('method', 'only', `${source}
+    const { view } = window.__game;
+    const { canvas, ratio } = view;
+    const all = drawAside(view);
+    const draw = view[method];
+    const without = drawAside(view, {
+      [method]: function skip(...args) {
+        if (only !== null && (args[0]?.index ?? args[1]) !== only) draw.apply(this, args);
+      },
+    });
+    const { width, height } = canvas;
+    let box = null;
+    for (let at = 0; at < width * height; at += 1) {
+      const i = at * 4;
+      // Clearly different: a shadow, drawn faintly, isn't counted.
+      if (Math.abs(all[i] - without[i]) + Math.abs(all[i + 1] - without[i + 1]) + Math.abs(all[i + 2] - without[i + 2]) < 100) continue;
+      const [x, y] = [at % width, Math.floor(at / width)];
+      if (!box) box = { left: x, right: x, top: y, bottom: y, count: 0 };
+      box.left = Math.min(box.left, x);
+      box.right = Math.max(box.right, x);
+      box.top = Math.min(box.top, y);
+      box.bottom = Math.max(box.bottom, y);
+      box.count += 1;
+    }
+    return box && { left: box.left / ratio, right: (box.right + 1) / ratio, top: box.top / ratio, bottom: (box.bottom + 1) / ratio, count: box.count / (ratio * ratio) };`);
+  return run(method, only);
+}, [DRAW_ASIDE, name, which]);
 
 /**
  * How many of the canvas's pixels in a box, in CSS pixels, are near a colour, [r, g, b], as it's drawn now. without
  * names view methods that aren't drawn this time, to leave out what isn't being looked at.
  */
-export const colourIn = (page, box, colour, { near = 30, without = [] } = {}) => page.evaluate(([area, wanted, close, skip]) => {
-  const { view } = window.__game;
-  const { ctx, ratio } = view;
-  const kept = skip.map((name) => [name, view[name]]);
-  for (const name of skip) view[name] = () => {};
-  view.render();
-  const [left, top] = [Math.max(0, Math.floor(area.left * ratio)), Math.max(0, Math.floor(area.top * ratio))];
-  const width = Math.max(1, Math.min(view.canvas.width - left, Math.ceil((area.right - area.left) * ratio)));
-  const height = Math.max(1, Math.min(view.canvas.height - top, Math.ceil((area.bottom - area.top) * ratio)));
-  const { data } = ctx.getImageData(left, top, width, height);
-  for (const [name, method] of kept) view[name] = method;
-  view.render();
-  let found = 0;
-  for (let i = 0; i < data.length; i += 4) if (Math.hypot(data[i] - wanted[0], data[i + 1] - wanted[1], data[i + 2] - wanted[2]) < close) found += 1;
-  return found / (ratio * ratio);
-}, [box, colour, near, without]);
+export const colourIn = (page, box, colour, { near = 30, without = [] } = {}) => page.evaluate(([source, area, wanted, close, skip]) => {
+  const run = new Function('area', 'wanted', 'close', 'skip', `${source}
+    const { view } = window.__game;
+    const { ratio, canvas } = view;
+    const data = drawAside(view, Object.fromEntries(skip.map((name) => [name, () => {}])));
+    const [left, top] = [Math.max(0, Math.floor(area.left * ratio)), Math.max(0, Math.floor(area.top * ratio))];
+    const right = Math.min(canvas.width, Math.ceil(area.right * ratio));
+    const bottom = Math.min(canvas.height, Math.ceil(area.bottom * ratio));
+    let found = 0;
+    for (let y = top; y < bottom; y += 1) {
+      for (let x = left; x < right; x += 1) {
+        const i = (y * canvas.width + x) * 4;
+        if (Math.hypot(data[i] - wanted[0], data[i + 1] - wanted[1], data[i + 2] - wanted[2]) < close) found += 1;
+      }
+    }
+    return found / (ratio * ratio);`);
+  return run(area, wanted, close, skip);
+}, [DRAW_ASIDE, box, colour, near, without]);
 
 /**
  * Lays a new path, as starting the game again would, until it has what a test wants: a function of the rules, as a

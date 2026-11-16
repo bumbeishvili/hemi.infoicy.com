@@ -5,7 +5,7 @@
 import {
   GENTLE, armsDown, armsUp, asked, atLevel, calloutsSeen, drawnBox, expect, expectSoon, feetAt, getPast, heard, hold, jumping,
   liftFoot, liftingEachFoot, listen, marchToNext, middle, nobody, noteAsked, noteCallouts, noteWhatIsSaid, onBothFeet, openChase,
-  overlap, partWay, readyToJump, readyToSquat, readyToStarJump, reachPlay, said, shot, squatting, standInView, standsAt, starJumping,
+  overlap, partWay, pathWith, readyToJump, readyToSquat, readyToStarJump, reachPlay, said, shot, squatting, standInView, standsAt, starJumping,
   state, test, waitForScreen, walkUnderATree, walkUpTo,
 } from './helpers.js';
 
@@ -395,9 +395,35 @@ test('a jump made as the character walks its last bit up to a stream does not le
 
 /* ---------- bent knees, a star jump and arms up, through the real tracker ---------- */
 
+/**
+ * The person of another clip, held still, put in front of the camera before anything is in the way: the squat and
+ * the star jumps are filmed so that their people can't pass the check that the child can be seen on their own. A
+ * change of person can be read as a move, so this waits until the reader has settled on them, standing, and says how
+ * many moves it read on the way, which, with nothing in the way, do nothing. measure, for a person who is a different
+ * size in the picture, has the reader take them standing, as the check that the child can be seen does.
+ */
+const settleOn = async (page, person, { measure = false } = {}) => {
+  await person(page);
+  await page.waitForTimeout(1500);
+  if (measure) {
+    await page.evaluate(() => {
+      const { game, reader } = window.__game;
+      reader.setStanding(game.latestBody, game.aspect);
+    });
+  }
+  await expectSoon(() => page.evaluate(() => {
+    const { reader } = window.__game;
+    return !reader.squatting && !reader.inAir && !window.__game.game.air;
+  }), { timeout: 20_000 }).toBe(true);
+  await page.waitForTimeout(1000);
+  return (await state(page)).stats;
+};
+
 test('through the real tracker, a real squat at a branch, at level 2, ducks the character under it, and it is said Under!', async ({ page }) => {
-  test.setTimeout(120_000);
-  await reachPlay(page, atLevel(2, GENTLE), readyToSquat);
+  test.setTimeout(150_000);
+  await reachPlay(page, atLevel(2, GENTLE));
+  const settled = await settleOn(page, readyToSquat, { measure: true });
+  console.log('read while the squatting person was put in front of the camera:', JSON.stringify({ squats: settled.squats, jumps: settled.jumps }));
   await listen(page);
   await noteCallouts(page);
   const index = await walkUpTo(page, 'branch');
@@ -406,10 +432,16 @@ test('through the real tracker, a real squat at a branch, at level 2, ducks the 
   await expect(promptText(page)).toHaveText('Bend your knees!');
   expect((await state(page)).film).toBe('squat');
   const before = await state(page);
+  await page.waitForTimeout(1000);
+  // Standing still in front of the branch, nothing gets the character under it.
+  expect((await state(page)).station?.index).toBe(index);
   await squatting(page);
+  // Not before the person in the footage has begun to go down, which is half a second in.
+  await page.waitForTimeout(350);
+  expect((await state(page)).course[index].state).toBe('at');
   await expectSoon(async () => (await state(page)).course[index].state, { timeout: 30_000 }).toBe('cleared');
   const now = await state(page);
-  expect(now.stats.squats).toBeGreaterThanOrEqual(1);
+  expect(now.stats.squats).toBeGreaterThan(before.stats.squats);
   expect(now.stats.stars).toBe(before.stats.stars + 1);
   expect(now.hero.x).toBeCloseTo(before.station.at + before.station.wide + 0.6, 6);
   expect(await calloutsSeen(page)).toContain('✓ Under!');
@@ -419,7 +451,9 @@ test('through the real tracker, a real squat at a branch, at level 2, ducks the 
 
 test('through the real tracker, a real star jump at a springboard, at level 6, bounces the character over and catches the arc of five stars', async ({ page }) => {
   test.setTimeout(150_000);
-  await reachPlay(page, atLevel(6, GENTLE), readyToStarJump);
+  await reachPlay(page, atLevel(6, GENTLE));
+  const settled = await settleOn(page, readyToStarJump);
+  console.log('read while the star-jumping person was put in front of the camera:', JSON.stringify({ jumps: settled.jumps, starJumps: settled.starJumps }));
   await listen(page);
   await noteCallouts(page);
   const index = await walkUpTo(page, 'spring');
@@ -427,12 +461,14 @@ test('through the real tracker, a real star jump at a springboard, at level 6, b
   await expect(coachText(page)).toHaveText('Do a star jump!');
   await expect(promptText(page)).toHaveText('Do a star jump!');
   expect((await state(page)).film).toBe('starJump');
+  await page.waitForTimeout(1000);
   const before = await state(page);
+  expect(before.station?.index).toBe(index);
   await starJumping(page);
   await expectSoon(async () => (await state(page)).course[index].state, { timeout: 30_000 }).toBe('cleared');
   const now = await state(page);
   console.log('a real star jump at a springboard:', JSON.stringify((await heard(page)).filter(({ type }) => ['jump', 'stars', 'cleared'].includes(type))));
-  expect(now.stats.starJumps).toBeGreaterThanOrEqual(1);
+  expect(now.stats.starJumps).toBeGreaterThan(before.stats.starJumps);
   expect(now.stats.stars).toBe(before.stats.stars + 1 + 5);
   expect(await calloutsSeen(page)).toContain('✓ Star jump!');
   expect(await page.evaluate((at) => window.__game.view.gone.has(`arc-${at}`), index)).toBe(true);
@@ -799,9 +835,10 @@ test('in Georgian, what the child is asked, the words for each move seen, and wh
   await waitForScreen(page, 'playing');
   await expect(promptText(page)).toHaveText('ადგილზე იარე, მუხლები მაღლა!');
   await expect(coachText(page)).toHaveText('ადგილზე იარე, მუხლები მაღლა!');
+  // A path with a stream first: the second thing is a low branch, as level 2 brings.
+  await pathWith(page, "(chase) => chase.course[0].kind === 'stream'");
   const texts = [await promptText(page).textContent()];
   await noteCallouts(page);
-  // The first two things in the way, whatever they are, and the second is a low branch, as level 2 brings.
   const words = { stream: ['ახტი!', '✓ გადახტი!'], branch: ['მუხლები მოხარე!', '✓ გაძვერი!'] };
   const seen = [];
   for (const index of [0, 1]) {

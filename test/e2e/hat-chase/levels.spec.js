@@ -491,7 +491,7 @@ test('level 10: the cup is in the magpie’s tree, on the screen, and catching t
   expect(nine).toBeLessThan(5);
   expect([end.stats.cup, end.cups]).toEqual([true, 1]);
   expect((await heard(page)).map(({ type }) => type).slice(-2)).toEqual(['cup', 'won']);
-  await expect(page.locator('#finish-prizes')).toContainText('the cup is won');
+  await expect(page.locator('#finish-prizes')).toContainText(/the cup is won/i);
   await expect(page.locator('#level-done-text')).toHaveText('All 10 levels done!');
   await shot(page, 'hat-cup');
   expect(end.gold, 'the cup is drawn in the magpie’s tree at level 10').toBeGreaterThan(40);
