@@ -4,8 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import {
-  BIG_JUMP, Chase, chaseLevel, CLAMBER_SECONDS, FEATHER, FUSE, HELP_AFTER, KINDS, layPath, MAGPIE, NEW_THINGS, newAt, PACE,
-  SPRING_STARS, STEP, TREE, TUMBLE_SECONDS,
+  BIG_JUMP, Chase, chaseLevel, CLAMBER_SECONDS, EARLY_JUMP, FEATHER, FUSE, HELP_AFTER, HOP_SECONDS, KINDS, layPath, MAGPIE,
+  NEW_THINGS, newAt, PACE, SPRING_STARS, STEP, TREE, TUMBLE_SECONDS,
 } from '../../games/hat-chase/chase.js';
 import { LEAST_LINE, LIFT, Marcher } from '../../games/hat-chase/march.js';
 
@@ -832,4 +832,110 @@ test('the step that climbs past a thing after a long wait is counted for whoever
   assert.equal(chase.step('right', 1), true);
   assert.deepEqual(chase.stats.by, [before[0], before[1] + 1]);
   assert.equal(chase.stats.helped, 1);
+});
+
+/* ---------- a jump a moment early, a hop on the way, and a star jump seen late ---------- */
+
+/** Steps until the character is walking its last bit up to the next thing, this far short of where it stops. */
+function walkToShortOf(chase, short) {
+  let side = 'left';
+  for (let i = 0; i < 4000 && chase.stopAt - chase.hero.x > short + 1e-6; i += 1) {
+    if (chase.hero.mode !== 'walk' && chase.step(side)) side = side === 'left' ? 'right' : 'left';
+    chase.update(FRAME, { seen: true });
+  }
+}
+
+test('a jump made a moment early, on the last bit of the way up to a stream, is the jump over it', () => {
+  const { chase, events } = setup({ gentle: true });
+  const stream = chase.next;
+  assert.equal(stream.kind, 'stream');
+  walkToShortOf(chase, EARLY_JUMP - 0.05);
+  assert.equal(chase.station, null);
+  assert.equal(chase.hero.mode, 'walk');
+  const from = chase.hero.x;
+  assert.equal(chase.jump(1), true);
+  // It took off from where it was, as the jump over the stream, not as a hop on the spot.
+  assert.equal(chase.hero.move.kind, 'leap');
+  assert.equal(chase.hero.move.from, from);
+  assert.deepEqual(events.filter(({ type }) => type === 'hop'), []);
+  wait(chase, stream.seconds + 0.1);
+  assert.equal(stream.state, 'cleared');
+  assert.equal(chase.stats.cleared, 1);
+  assert.ok(chase.hero.x > stream.at + stream.wide);
+});
+
+test('a jump further off than that is a hop on the spot, and then the walk goes on up to the stream and it asks for its jump', () => {
+  const { chase, events } = setup({ gentle: true });
+  const stream = chase.next;
+  walkToShortOf(chase, EARLY_JUMP + 0.3);
+  const stop = chase.stopAt;
+  // The steps already taken would bring it all the way up to the stream.
+  for (let n = 0; n < 3 && chase.hero.walkTo < stop - 1e-6; n += 1) chase.step(n % 2 ? 'right' : 'left');
+  assert.ok(chase.hero.walkTo >= stop - 1e-6, 'the steps underway would have taken it to the stream');
+  assert.equal(chase.jump(1), true);
+  assert.equal(chase.hero.move.kind, 'hop');
+  assert.equal(events.filter(({ type }) => type === 'hop').length, 1);
+  // The hop over, it walks the rest of the way by itself, and stands at the stream.
+  wait(chase, HOP_SECONDS + 1.5);
+  assert.equal(stream.state, 'at');
+  assert.equal(chase.station, stream);
+  assert.ok(Math.abs(chase.hero.x - stop) < 1e-6, `at ${chase.hero.x}, the stop at ${stop}`);
+  assert.equal(chase.stats.cleared, 0);
+  // A hop with no walking underway leaves it where it is.
+  const still = setup({ gentle: true }).chase;
+  still.jump(1);
+  wait(still, HOP_SECONDS + 0.5);
+  assert.equal(still.hero.x, 0);
+  assert.equal(still.hero.mode, 'stand');
+});
+
+test('a jump a moment early is not for a thing that wants bent knees', () => {
+  const { chase } = setup({ level: 2, things: 18, gentle: true });
+  // Up to the first branch, past whatever comes before it.
+  for (let n = 0; n < 40 && chase.next?.kind !== 'branch'; n += 1) {
+    marchToNext(chase);
+    getPast(chase);
+  }
+  const branch = chase.next;
+  assert.equal(branch.kind, 'branch');
+  walkToShortOf(chase, EARLY_JUMP - 0.1);
+  assert.equal(chase.jump(1), true);
+  assert.equal(chase.hero.move.kind, 'hop');
+  wait(chase, HOP_SECONDS + 1.5);
+  assert.equal(chase.station, branch);
+  assert.equal(branch.state, 'at');
+});
+
+test('a bounce off a springboard becomes a star jump when the arms and legs go out a moment after', () => {
+  const { chase, events } = setup({ level: 6, things: 18, gentle: true });
+  const spring = upTo(chase, 'spring');
+  const stars = chase.stats.stars;
+  // The jump is seen first, as the hips go up, and the star a moment later.
+  assert.equal(chase.jump(1.2), true);
+  assert.equal(chase.hero.move.star, false);
+  wait(chase, spring.seconds * 0.3);
+  assert.equal(chase.spread(), true);
+  assert.equal(chase.hero.move.star, true);
+  assert.equal(chase.stats.starJumps, 1);
+  assert.equal(chase.stats.stars, stars + SPRING_STARS);
+  assert.deepEqual(events.filter(({ type }) => type === 'spread').map(({ thing }) => thing.index), [spring.index]);
+  // Once is all: it's a star jump already.
+  assert.equal(chase.spread(), false);
+  wait(chase, spring.seconds);
+  assert.equal(chase.stats.stars, stars + SPRING_STARS + KINDS.spring.stars);
+  assert.equal(chase.stats.starJumps, 1);
+
+  // Too late, on the way down, and it stays a plain bounce.
+  const late = setup({ level: 6, things: 18, gentle: true }).chase;
+  const second = upTo(late, 'spring');
+  late.jump(1.2);
+  wait(late, second.seconds * 0.7);
+  assert.equal(late.spread(), false);
+  assert.equal(late.stats.starJumps, 0);
+  // And there's nothing to spread into over a stream, or standing on the path.
+  const stream = setup({ gentle: true }).chase;
+  assert.equal(stream.spread(), false);
+  marchToNext(stream);
+  stream.jump(1.2);
+  assert.equal(stream.spread(), false);
 });

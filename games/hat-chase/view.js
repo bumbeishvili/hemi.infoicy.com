@@ -6,6 +6,7 @@
 // and the land goes by, the far hills more slowly than the near ones. Nothing flashes: things come and go a
 // little at a time, and the land only moves as fast as the character walks.
 import { MAGPIE, TREE } from './chase.js';
+import { clearOf } from './clear.js';
 import { renderHiker } from './hikers.js';
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -43,8 +44,19 @@ const FOLLOW = 7; // How quickly the view catches up with the character, a secon
 // stand in front of the camera, left to right, so the last of them is the one in front, and the one in front is
 // where the path's rules have them all.
 const BEHIND = { play: 1.5, rest: 1.15 };
+// Beside a card there's less room: three stand this close, and four closer still, so that none is under it.
+const BEHIND_AT_REST = [1.15, 1.15, 0.9, 0.75];
 const EDGE_ROOM = 0.9; // The last of them is at least this far in from the left of the screen, in metres.
 const STEP_SHOWS = 0.5; // How long a character shows a step of its own walker's, in seconds.
+// What sits on top of the picture and could hide the magpie: the cards of whichever screen it is, the chips along
+// the top, the camera's picture, the gear, the coach's film and the words asking for a move. The magpie flies
+// clear of whichever of them are showing, wherever they are in this window: see clear.js.
+const COVERS = [
+  '#screen-welcome .card', '#screen-choose h2', '#screen-choose .chosen', '#screen-choose .choose-side', '#fighter-grid',
+  '.chase-top .chip', '.path-track', '#camera-frame', '#open-panel', '#coach.is-visible', '#prompt.is-visible',
+];
+const COVERS_EVERY_MS = 120; // How often they're looked up, as they come and go.
+const CLEAR_RATE = 14; // How quickly the magpie goes over to where it's clear, a second.
 const FADE_SECONDS = 0.35; // Something picked up goes over this long.
 
 export class ChaseView {
@@ -145,10 +157,15 @@ export class ChaseView {
     return this.arts.map((_, index) => this.across((hero?.x ?? 0) - (front - index) * this.gap));
   }
 
+  /** How far behind one another several are on this screen, in metres. */
+  behind(view) {
+    return view === 'play' ? BEHIND.play : BEHIND_AT_REST[Math.min(BEHIND_AT_REST.length, this.arts.length) - 1] ?? BEHIND.rest;
+  }
+
   /** Where the one in front stands for this screen, as a share of its width, so the last of several is in sight. */
   placeFor(view) {
     const others = this.arts.length - 1;
-    const gap = (view === 'play' ? BEHIND.play : BEHIND.rest) * this.metre;
+    const gap = this.behind(view) * this.metre;
     const place = HERO_AT[view] ?? HERO_AT.play;
     // To be chosen, they stand in the middle together.
     if (view === 'choose') return place + (others * gap) / 2 / this.width;
@@ -166,10 +183,38 @@ export class ChaseView {
     return { x: this.across(hero?.x ?? 0), y: this.ground - this.lift() * this.metre };
   }
 
-  /** Where the magpie is on the screen, and whether that's in sight. */
+  /**
+   * Where the magpie is on the screen, and whether that's in sight. It's where the path's rules have it, moved
+   * as little as it takes to be clear of what's on top of the picture, and it goes over there smoothly.
+   */
   get magpieAt() {
-    const x = this.across(this.chase?.magpie.x ?? WAITS_AT[this.view] ?? MAGPIE.start);
-    return { x, y: this.ground - HEIGHTS.magpie * this.metre, seen: x < this.width - 12 };
+    const { metre, width } = this;
+    const along = this.across(this.chase?.magpie.x ?? WAITS_AT[this.view] ?? MAGPIE.start);
+    const seen = along < width - 12;
+    // Out of sight ahead, it's the sign at the right edge that's drawn, and that keeps clear too.
+    const wanted = { x: seen ? along : width - metre * 0.75, y: this.ground - HEIGHTS.magpie * metre };
+    const half = { w: metre * 0.95, h: metre * 0.7 };
+    const bounds = { left: half.w, right: width - half.w, top: half.h + 4, bottom: this.ground - metre * 1.3 };
+    const clear = clearOf(wanted, half, this.covers(), bounds);
+    const now = performance.now();
+    const shift = { x: clear.x - wanted.x, y: clear.y - wanted.y };
+    if (!this.cleared) this.cleared = { ...shift, at: now };
+    const blend = 1 - Math.exp((-(now - this.cleared.at) / 1000) * CLEAR_RATE);
+    this.cleared = { x: this.cleared.x + (shift.x - this.cleared.x) * blend, y: this.cleared.y + (shift.y - this.cleared.y) * blend, at: now };
+    return { x: wanted.x + this.cleared.x, y: wanted.y + this.cleared.y, seen };
+  }
+
+  /** The boxes of what's on top of the picture just now: see COVERS. */
+  covers() {
+    const now = performance.now();
+    if (this.coversSeen && now - this.coversAt < COVERS_EVERY_MS) return this.coversSeen;
+    this.coversAt = now;
+    this.coversSeen = [];
+    for (const piece of document.querySelectorAll(COVERS.join(', '))) {
+      const { left, top, right, bottom, width, height } = piece.getBoundingClientRect();
+      if (width > 0 && height > 0) this.coversSeen.push({ left, top, right, bottom });
+    }
+    return this.coversSeen;
   }
 
   /** What the rules say happened: see chase.js. */
@@ -199,6 +244,10 @@ export class ChaseView {
         break;
       case 'jump':
         if (event.thing.kind === 'spring' && event.star) this.gone.set(`arc-${event.thing.index}`, 0);
+        break;
+      case 'spread':
+        // A bounce that turned out to be a star jump: the arc of stars goes after all.
+        this.gone.set(`arc-${event.thing.index}`, 0);
         break;
       case 'tumble':
         for (let n = 0; n < 6; n += 1) this.effects.push({ kind: 'dust', x: hero + (chance(n, 9) - 0.5) * 1.2, y: 0.1 + chance(n, 4) * 0.3, age: 0, life: 0.7, drift: chance(n, 2) - 0.5 });
@@ -232,7 +281,7 @@ export class ChaseView {
     const place = this.placeFor(this.view);
     this.place += (place - this.place) * (1 - Math.exp(-dt * PLACE_RATE));
     if (Math.abs(place - this.place) < 0.0005) this.place = place;
-    const gap = this.view === 'play' ? BEHIND.play : BEHIND.rest;
+    const gap = this.behind(this.view);
     this.gap += (gap - this.gap) * (1 - Math.exp(-dt * PLACE_RATE));
     if (Math.abs(gap - this.gap) < 0.0005) this.gap = gap;
     for (const step of this.stepped) if (step) step.ago += dt;
@@ -432,6 +481,33 @@ export class ChaseView {
     ctx.beginPath();
     ctx.ellipse(x - metre * 0.9, ground - metre * 2.9, metre * 0.55, metre * 0.22, 0, 0, Math.PI * 2);
     ctx.fill();
+    // At level 10 the cup is up in the tree, on the other side from the nest.
+    if (this.chase?.rules.cup) this.drawCup(x + metre * 0.95, ground - metre * 3.05, metre * 0.42);
+  }
+
+  /** A gold cup with two handles, standing on its foot: r is half its width. */
+  drawCup(x, y, r) {
+    const { ctx } = this;
+    ctx.fillStyle = STAR.fill;
+    ctx.strokeStyle = STAR.edge;
+    ctx.lineWidth = Math.max(1.5, r * 0.12);
+    // The handles, behind the bowl.
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(x + side * r * 0.95, y - r * 0.55, r * 0.38, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // The bowl, the stem and the foot.
+    ctx.beginPath();
+    ctx.moveTo(x - r, y - r * 1.1);
+    ctx.lineTo(x + r, y - r * 1.1);
+    ctx.quadraticCurveTo(x + r * 0.95, y + r * 0.1, x, y + r * 0.2);
+    ctx.quadraticCurveTo(x - r * 0.95, y + r * 0.1, x - r, y - r * 1.1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillRect(x - r * 0.14, y + r * 0.15, r * 0.28, r * 0.5);
+    ctx.fillRect(x - r * 0.6, y + r * 0.62, r * 1.2, r * 0.24);
   }
 
   /** Water between two banks, from one place on the path to another. */
@@ -734,8 +810,7 @@ export class ChaseView {
     }
     // Further ahead than the screen shows: a small sign at the right edge, which fills as it gets away.
     const share = clamp((lead - MAGPIE.least) / (MAGPIE.away - MAGPIE.least), 0, 1);
-    const x = w - metre * 0.75;
-    const y = at.y;
+    const { x, y } = at;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
     ctx.beginPath();
     ctx.arc(x, y, metre * 0.62, 0, Math.PI * 2);

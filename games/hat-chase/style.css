@@ -81,3 +81,14 @@ body[data-screen='playing'] .coach.is-visible { display: flex; }
 @media (prefers-reduced-motion: reduce) {
   .magpie-fill, .path-fill { transition: none; }
 }
+
+/* In a narrow window there's no room beside the path for the coach's film as it is. It's a low strip along the
+   bottom there, the picture beside the words, under the path and whatever is in the way. The gear stays in the
+   top corner, where this game has nothing else, and not down on the film. */
+@media (max-width: 620px) {
+  #open-panel { top: 12px; bottom: auto; right: 12px; }
+  .coach { flex-direction: row; align-items: center; width: auto; min-width: 0; max-width: calc(100vw - 190px); }
+  .coach-demo { flex: none; width: 96px; }
+  .coach-text { font-size: 20px; text-align: left; padding: 4px 12px; }
+  .coach-effort { display: none; }
+}

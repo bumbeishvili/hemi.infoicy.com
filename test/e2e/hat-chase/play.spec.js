@@ -3,9 +3,9 @@
 // a move, it says what a tracked body would do by calling the rules in the page, or by saying how high each foot is,
 // as the body reader would, so that the marching goes through the game's own reading of it.
 import {
-  GENTLE, armsDown, armsUp, asked, atLevel, calloutsSeen, drawnBox, expect, expectSoon, feetAt, getPast, heard, hold, jumping,
+  GENTLE, armsDown, armsUp, asked, atLevel, calloutsSeen, drawnBox, expect, expectSoon, feetAt, footage, getPast, heard, hold, jumping,
   liftFoot, liftingEachFoot, listen, marchToNext, middle, nobody, noteAsked, noteCallouts, noteWhatIsSaid, onBothFeet, openChase,
-  overlap, partWay, pathWith, readyToJump, readyToSquat, readyToStarJump, reachPlay, said, shot, squatting, standInView, standsAt, starJumping,
+  overlap, partWay, pathWith, readyToJump, readyToSquat, readyToStarJump, reachPlay, said, shot, squatting, standInView, standsAt,
   state, test, waitForScreen, walkUnderATree, walkUpTo,
 } from './helpers.js';
 
@@ -464,10 +464,13 @@ test('through the real tracker, a real star jump at a springboard, at level 6, b
   await page.waitForTimeout(1000);
   const before = await state(page);
   expect(before.station?.index).toBe(index);
-  await starJumping(page);
+  // The clip opens with a plain hop, arms down, which would bounce the character over before any star jump: it's
+  // played from after that, so the first jump the camera sees is a star jump. The tracker sees the jump a moment
+  // before the arms and legs are out, as it would a child's.
+  await footage(page, 'star-jumps', { from: 1.5, playing: true });
   await expectSoon(async () => (await state(page)).course[index].state, { timeout: 30_000 }).toBe('cleared');
   const now = await state(page);
-  console.log('a real star jump at a springboard:', JSON.stringify((await heard(page)).filter(({ type }) => ['jump', 'stars', 'cleared'].includes(type))));
+  console.log('a real star jump at a springboard:', JSON.stringify((await heard(page)).filter(({ type }) => ['jump', 'spread', 'stars', 'cleared'].includes(type))));
   expect(now.stats.starJumps).toBeGreaterThan(before.stats.starJumps);
   expect(now.stats.stars).toBe(before.stats.stars + 1 + 5);
   expect(await calloutsSeen(page)).toContain('✓ Star jump!');
@@ -543,7 +546,7 @@ test('a hedgehog left too long rolls in: it comes nearer on the screen, then a t
   let now = await state(page);
   expect(now.frame).toBe('sit');
   expect([now.stats.tumbles, now.stats.stars, now.stats.cleared, now.course[index].missed, now.station]).toEqual([1, stars, cleared, true, null]);
-  expect(await calloutsSeen(page)).toEqual(['✓ Bump!']);
+  expect(await calloutsSeen(page)).toEqual(['Bump!']);
   // It has rolled on by, and isn't drawn.
   expect(await drawnBox(page, 'drawInFront', index)).toBe(null);
   await shot(page, 'hat-tumble');

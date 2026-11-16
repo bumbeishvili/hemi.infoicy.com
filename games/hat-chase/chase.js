@@ -33,6 +33,9 @@ export const HELP_AFTER = 12;
 export const CLAMBER_SECONDS = 2.4;
 export const BIG_JUMP = 1.6; // From this size up a jump is a big one: 1 is the smallest that counts as a jump.
 export const HOP_SECONDS = 0.5; // A jump with nothing to jump, on the spot.
+// A jump made this close to where the character will stop at a thing that wants one, in metres, is the jump for
+// it: a child jumps as their character gets there, not after it has stopped and asked.
+export const EARLY_JUMP = 0.5;
 const STOP_SHORT = 0.6; // The character stops this far before a thing, and lands this far past it.
 const FIRST_AT = 6; // Where the first thing is, so there's a little walking first.
 const GAPS = [5, 8]; // Metres of path between one thing and the next.
@@ -286,13 +289,19 @@ export class Chase {
    */
   jump(size = 1, { star = false } = {}) {
     if (this.state !== 'play' || this.busy) return false;
+    // A moment early, on the last bit of the way up to something that wants a jump: it's there, and takes off
+    // from where it is.
+    const { next } = this;
+    if (!this.station && next?.needs === 'jump' && this.stopAt - this.hero.x <= EARLY_JUMP) this.standAt(next);
     const { stats, station } = this;
     const big = size >= BIG_JUMP;
     stats.jumps += 1;
     if (big) stats.big += 1;
     if (star) stats.starJumps += 1;
     if (!station || station.needs !== 'jump') {
-      this.startMove('hop', null, HOP_SECONDS);
+      // A hop on the spot. The walking it interrupts goes on afterwards, so it's never left short of a thing.
+      const walkTo = Math.max(this.hero.walkTo, this.hero.x);
+      this.startMove('hop', null, HOP_SECONDS, { walkTo });
       this.emit('hop', { size, star });
       return true;
     }
@@ -309,6 +318,22 @@ export class Chase {
       if (big) this.takeHigh(station);
     }
     this.emit('jump', { thing: station, size, big, star });
+    return true;
+  }
+
+  /**
+   * A bounce off a springboard has turned out to be a star jump: the camera sees a jump as the hips go up, and
+   * the arms and legs going out a moment after. It goes that much higher, and through the arc of stars after all.
+   */
+  spread() {
+    const { move } = this.hero;
+    if (this.state !== 'play' || !move || move.kind !== 'bounce' || move.star) return false;
+    // Coming down again, it's too late to go any higher.
+    if (move.t > move.seconds * 0.6) return false;
+    move.star = true;
+    this.stats.starJumps += 1;
+    this.addStars(SPRING_STARS, 'arc');
+    this.emit('spread', { thing: move.thing });
     return true;
   }
 
@@ -417,6 +442,11 @@ export class Chase {
       hero.move = null;
       hero.walkTo = hero.x;
       this.finishMove(move);
+      // After a hop on the spot, the walking it interrupted goes on.
+      if (move.kind === 'hop' && this.state === 'play' && move.walkTo > hero.x + 1e-6) {
+        hero.walkTo = Math.min(move.walkTo, this.stopAt);
+        hero.mode = 'walk';
+      }
       return;
     }
     if (hero.mode !== 'walk') return;
@@ -455,11 +485,16 @@ export class Chase {
       this.win();
       return;
     }
-    next.state = 'at';
-    next.waited = 0;
-    if (next.fuse !== undefined) next.left = next.fuse;
-    this.station = next;
-    this.emit('arrive', { thing: next });
+    this.standAt(next);
+  }
+
+  /** The character is at a thing, which waits for its move from now. */
+  standAt(thing) {
+    thing.state = 'at';
+    thing.waited = 0;
+    if (thing.fuse !== undefined) thing.left = thing.fuse;
+    this.station = thing;
+    this.emit('arrive', { thing });
   }
 
   /** The stars on the path the character has walked past are picked up. */

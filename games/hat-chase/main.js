@@ -246,6 +246,8 @@ class HatChase extends BodyGame {
 
   takeOff(walker, now, star) {
     const { chase } = this;
+    // A star jump is seen a moment after the jump it's part of: the bounce that jump began is a star jump after all.
+    if (star && chase.spread()) return;
     const size = star ? Math.max(1.2, this.jumpSize(walker)) : this.jumpSize(walker);
     const wanted = chase.station?.needs === 'jump';
     if (!chase.jump(size, { star })) return;
@@ -434,6 +436,9 @@ class HatChase extends BodyGame {
         else sound.jump();
         if (event.star) this.showSeen(SEEN_WORDS.star, beside);
         break;
+      case 'spread':
+        this.showSeen(SEEN_WORDS.star, beside);
+        break;
       case 'hop':
         sound.jump();
         break;
@@ -458,8 +463,9 @@ class HatChase extends BodyGame {
         this.showSeen(SEEN_WORDS.apples, beside);
         break;
       case 'tumble':
+        // Not a move that was seen and counted, so no tick and no chime: only the word, where the others come up.
         sound.tumble();
-        this.showSeen(SEEN_WORDS.bump, beside);
+        this.callout(this.settings.language === 'ka' ? SEEN_WORDS.bump[1] : SEEN_WORDS.bump[0], { kind: 'is-seen', ...beside });
         break;
       case 'away':
         sound.away();

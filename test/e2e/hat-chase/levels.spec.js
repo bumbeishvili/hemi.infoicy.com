@@ -356,7 +356,7 @@ test('level 7: bees come out of their hive at head height; bent knees duck them 
   await expectSoon(async () => (await state(page)).hero.mode, { timeout: 10_000, intervals: [20] }).toBe('tumble');
   now = await state(page);
   expect([now.stats.tumbles, now.stats.stars, now.course[index].missed, now.frame]).toEqual([1, before.stats.stars, true, 'sit']);
-  expect(await calloutsSeen(page)).toContain('✓ Bump!');
+  expect(await calloutsSeen(page)).toContain('Bump!');
   await expectSoon(async () => (await state(page)).hero.mode, { timeout: 5000 }).toBe('stand');
   await marchToNext(page);
   expect((await state(page)).hero.x).toBeGreaterThan(before.station.at + before.station.wide);
