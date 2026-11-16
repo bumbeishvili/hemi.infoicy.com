@@ -206,7 +206,9 @@ test('the number can change once the tracker is loaded and looking: it goes on t
   await expect(page.locator('input[name="group-size"][value="4"]')).toBeChecked();
   // And back to one: the others have no gloves, and the tracker reports no more than one child's two hands.
   await page.evaluate(() => window.__game.session.setPlayers(1));
-  expect(await group(page)).toMatchObject({ players: 1, looksFor: 1, guests: [], others: [] });
+  expect(await group(page)).toMatchObject({ players: 1, looksFor: 1, guests: [] });
+  // Their gloves go with the next picture drawn.
+  await expect.poll(async () => (await group(page)).others).toEqual([]);
   await page.waitForTimeout(1500);
   const found = await page.evaluate(() => new Promise((resolve) => {
     const { camera } = window.__game;
