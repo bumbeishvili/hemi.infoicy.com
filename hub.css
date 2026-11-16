@@ -906,3 +906,37 @@ body.hub {
 .art-swamp-mud { fill: #7b5230; stroke: #5c3b1f; stroke-width: 5; paint-order: stroke; }
 .art-swamp-fleck { stroke-width: 3; }
 .art-swamp-shine { fill: #946a40; }
+
+/* Hat Chase: Giraffe marching on the spot along the path through the hills, a knee up, before a stream with a star
+   over it, and the magpie flying off ahead with the red hat, towards its tree. The colours are the game's own: see
+   its view.js. */
+.game-art-hat { background: linear-gradient(#bfe3f7, #e9f6ee 60%); }
+.art-hat-far { fill: #b9dba9; }
+.art-hat-near { fill: #9ccf86; }
+.art-hat-grass { fill: #7fc461; }
+.art-hat-path { fill: #e8cf9c; }
+.art-hat-earth { fill: #c79a63; }
+.art-hat-water { fill: #7cc4ea; }
+.art-hat-ripple { fill: none; stroke: #5aa9d6; stroke-width: 2.5; stroke-linecap: round; }
+.art-hat-trunk { fill: #7a4f2d; }
+.art-hat-leaves { fill: #3f8f52; }
+.art-hat-nest { fill: #b98b52; stroke: #7a4f2d; stroke-width: 2; }
+.art-hat-trail { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 1 8; }
+.art-hat-bird { fill: #1f2a37; }
+.art-hat-white { fill: #fff; }
+.art-hat-beak { fill: #f2a33a; }
+.art-hat-wing { fill: #2d4b7a; }
+.art-hat-hat { fill: #d83a4a; stroke: var(--ink); stroke-width: 1.5; stroke-linejoin: round; paint-order: stroke; }
+.art-hat-band { fill: #ffd23f; }
+.art-hat-limb-ink { fill: none; stroke: #4a2c10; stroke-width: 11; stroke-linecap: round; stroke-linejoin: round; }
+.art-hat-limb { fill: none; stroke: #f5c451; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+.art-hat-neck-ink { fill: none; stroke: #4a2c10; stroke-width: 14; stroke-linecap: round; }
+.art-hat-neck { fill: none; stroke: #f5c451; stroke-width: 9; stroke-linecap: round; }
+.art-hat-coat { fill: #f5c451; stroke: #4a2c10; stroke-width: 2.5; }
+.art-hat-belly { fill: #fff2d2; }
+.art-hat-muzzle { fill: #ffe6b8; stroke: #4a2c10; stroke-width: 2; }
+.art-hat-horn { fill: none; stroke: #4a2c10; stroke-width: 3; stroke-linecap: round; }
+.art-hat-knob { fill: #4a2c10; }
+.art-hat-mouth { fill: none; stroke: #4a2c10; stroke-width: 1.8; stroke-linecap: round; }
+.art-hat-spot { fill: #c9823f; }
+.art-hat-hoof { fill: #6b4428; }

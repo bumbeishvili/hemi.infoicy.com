@@ -19,6 +19,20 @@ const closePanel = async (page) => {
   await expect(page.locator('#panel')).toBeHidden();
 };
 
+/**
+ * Hat Chase, from the title to the path, with a real person standing still in full view (strikes.webm, held
+ * still). The magpie waits, so nothing is lost while the level is changed.
+ */
+async function reachChasing(page) {
+  await openGame(page, { chaseMagpie: 'waits' }, 'hat-chase');
+  await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
+  await page.evaluate(() => window.__camera.showFootage('strikes', { from: 0.2, playing: false }));
+  await page.locator('#start').click();
+  await waitForScreen(page, 'choose');
+  await page.locator('#chase-start').click();
+  await waitForScreen(page, 'playing');
+}
+
 test('a level chosen in the middle of a hand game starts the game again at that level, once the panel is closed', async ({ page }) => {
   await openGame(page, { levels: { lighthouse: 3 }, storm: 'gentle' }, 'lighthouse');
   await show(page, null, 'open');
@@ -158,6 +172,7 @@ const BODY_GAMES = [
   ['Moto Mountain', (page) => reachRiding(page), 'playing'],
   ['Rooftop Rope', (page) => reachCrossing(page), 'playing'],
   ['Swamp Splash', (page) => reachSplashing(page), 'playing'],
+  ['Hat Chase', (page) => reachChasing(page), 'playing'],
 ];
 for (const [name, reach, playing] of BODY_GAMES) {
   test(`a level chosen in the middle of ${name} starts it again at that level`, async ({ page }) => {
