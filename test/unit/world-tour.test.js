@@ -9,7 +9,7 @@ import { FLAGS as REAL_FLAGS } from '../../games/world-tour/flags.js';
 import { apart, between, Globe } from '../../games/world-tour/globe.js';
 import { inShape } from '../../games/world-tour/shapes.js';
 import { allLines, SAY, thisIs, whereIs } from '../../games/world-tour/words.js';
-import { COUNTRIES, choicesFor, JOURNEYS, MEMORY, NEIGHBOURS, NEW_THINGS, newAt, Painting, TOUR, Tour, tourLevel, WIND } from '../../games/world-tour/tour.js';
+import { COUNTRIES, choicesFor, DECOYS, decoyFor, JOURNEYS, MEMORY, NEIGHBOURS, NEW_THINGS, newAt, Painting, TOUR, Tour, tourLevel, WIND } from '../../games/world-tour/tour.js';
 
 const FRAME = 1 / 60;
 const LEVELS = Array.from({ length: 10 }, (_, index) => index + 1);
@@ -604,6 +604,142 @@ test('the wrong paint held on a part shows the flag again for a moment, and the 
   assert.equal(tour.stats.peeks, 1);
   run(tour, TOUR.peek + 0.2, { seen: true, open: false });
   assert.equal(tour.shown, false);
+});
+
+/* ---------- the finished flag hidden, for a child who's to paint from what they know ---------- */
+
+test('as the game comes the finished flag is there to copy from, and a grown-up can have it never there', () => {
+  for (const level of LEVELS) {
+    assert.equal(tourLevel(level).copy, level >= MEMORY.from ? 'awhile' : 'always', `level ${level}`);
+    assert.equal(tourLevel(level).decoy, false);
+    assert.equal(tourLevel(level, { copy: 'hidden' }).copy, 'never', `level ${level}, hidden`);
+    assert.equal(tourLevel(level, { copy: 'hidden' }).decoy, level >= MEMORY.from, `level ${level}, hidden`);
+  }
+  // Every level still brings something of its own, with the flag hidden: level 7 a pot of paint the flag hasn't got.
+  for (const level of LEVELS.slice(1)) {
+    const things = newAt(level, { copy: 'hidden' });
+    assert.ok(things.length > 0 && things.every((thing) => thing.mark && thing.name && /[\u10d0-\u10ff]/.test(thing.nameKa)), `level ${level}`);
+    if (level !== MEMORY.from) assert.deepEqual(things, newAt(level), `level ${level} is as it was`);
+  }
+  assert.equal(newAt(MEMORY.from, { copy: 'hidden' })[0].id, 'decoy');
+  assert.equal(newAt(MEMORY.from)[0].id, 'memory');
+});
+
+test('with the flag hidden it is never shown: not at the start, and not when the wrong paint is on a part', () => {
+  const tour = makeTour({ copy: 'hidden' });
+  tour.begin();
+  flyTo(tour);
+  assert.equal(tour.shown, false, 'from the first moment');
+  assert.equal(tour.helps, false);
+  dip(tour, 'yellow');
+  // The wrong paint, held on the blue stripe for a good while: nothing lands, nothing is shown, no pot pointed out.
+  run(tour, TOUR.wrong * 6, { ...HAND, brush: { x: 30, y: 20 } });
+  assert.equal(tour.painting.progress, 0);
+  assert.equal(tour.shown, false);
+  assert.equal(tour.stats.peeks, 0);
+  assert.equal(tour.count('peek'), 0);
+  assert.equal(tour.helps, false);
+  // The right paint paints as it always does, and the flag gets finished.
+  paintFlag(tour);
+  assert.equal(tour.state, 'raise');
+  // As the game comes, the same wrong paint is pointed out.
+  const usual = makeTour();
+  usual.begin();
+  flyTo(usual);
+  assert.equal(usual.shown, true);
+  dip(usual, 'yellow');
+  usual.update(FRAME, { ...HAND, brush: { x: 30, y: 20 } });
+  assert.equal(usual.helps, true);
+  assert.deepEqual(usual.hint, { part: 0, paint: 'blue' });
+});
+
+test('a wrong paint held on a part is counted, once for each time it was taken, and the right one never is', () => {
+  const tour = makeTour({ copy: 'hidden' });
+  tour.begin();
+  flyTo(tour);
+  dip(tour, 'blue');
+  sweep(tour, { rows: [10, 25, 40] });
+  assert.equal(tour.painting.done[0], true);
+  assert.equal(tour.stats.mistakes, 0, 'the right paint, all over the part that takes it');
+  // Yellow's stripe is still bare: blue passing over it for a moment is nothing.
+  run(tour, TOUR.wrong * 0.5, { ...HAND, brush: { x: 60, y: 80 } });
+  assert.equal(tour.stats.mistakes, 0);
+  run(tour, TOUR.wrong, { ...HAND, brush: { x: 60, y: 80 } });
+  assert.equal(tour.stats.mistakes, 1);
+  assert.equal(tour.count('mistake'), 1);
+  // Held there longer, it's still the one mistake.
+  run(tour, TOUR.wrong * 5, { ...HAND, brush: { x: 60, y: 80 } });
+  assert.equal(tour.stats.mistakes, 1);
+  // Taken again and tried again, it's another.
+  dip(tour, 'yellow');
+  dip(tour, 'blue');
+  run(tour, TOUR.wrong + 0.1, { ...HAND, brush: { x: 60, y: 80 } });
+  assert.equal(tour.stats.mistakes, 2);
+});
+
+test('level 7 with the flag hidden: a pot of paint the flag has not got, which lands nowhere', () => {
+  const tour = makeTour({ level: 7, hold: 'never', copy: 'hidden' });
+  tour.begin();
+  flyTo(tour);
+  const own = Object.keys(tour.flag.colours);
+  assert.equal(tour.pots.length, own.length + 1);
+  const decoy = tour.pots.find((pot) => !own.includes(pot.paint));
+  assert.ok(decoy, 'one pot is of a paint that isn\'t the flag\'s');
+  assert.ok(!Object.values(tour.flag.colours).includes(decoy.colour), `${decoy.colour} is not one of the flag's colours`);
+  assert.deepEqual(tour.pots.filter((pot) => own.includes(pot.paint)).map((pot) => pot.paint), own, 'the flag\'s own paints are all there, in their order');
+  // It can be taken, as any paint can, and its colour is known for the hand.
+  dip(tour, decoy.paint);
+  assert.equal(tour.paint, decoy.paint);
+  assert.equal(tour.colourOf(decoy.paint), decoy.colour);
+  sweep(tour);
+  assert.equal(tour.painting.progress, 0, 'and lands nowhere, wherever it\'s swept');
+  assert.ok(tour.stats.mistakes >= 1);
+  paintFlag(tour);
+  assert.equal(tour.state, 'raise');
+
+  // Not at level 6, and not with the flag shown.
+  for (const options of [{ level: 6, hold: 'never', copy: 'hidden' }, { level: 7, hold: 'never' }]) {
+    const other = makeTour(options);
+    other.begin();
+    flyTo(other);
+    assert.equal(other.pots.length, Object.keys(other.flag.colours).length, JSON.stringify(options));
+  }
+});
+
+test('the paint a flag has not got is never one it has, or one too like it to tell in a pot, for any flag', () => {
+  for (const [id, flag] of Object.entries(REAL_FLAGS)) {
+    const has = Object.keys(flag.colours);
+    const seen = new Set();
+    for (let n = 0; n < 40; n += 1) {
+      const decoy = decoyFor(flag, () => (n * 0.137 + 0.01) % 1);
+      const name = decoy.paint.replace('not-', '');
+      seen.add(name);
+      assert.equal(decoy.colour, DECOYS[name]);
+      assert.ok(!has.includes(name), `${id}: ${name} is one of its own`);
+      if (['yellow', 'orange'].includes(name)) assert.ok(!has.some((own) => ['yellow', 'gold', 'orange'].includes(own)), `${id}: ${name} is too like one of its own`);
+      assert.ok(!Object.values(flag.colours).includes(decoy.colour), `${id}: ${decoy.colour}`);
+    }
+    // Where there's a choice, it isn't always the same one.
+    if (has.length <= 3) assert.ok(seen.size > 1, `${id}: ${[...seen]}`);
+  }
+  // South Africa's flag has every paint there is but one like its yellow: its odd pot is purple.
+  assert.equal(decoyFor(REAL_FLAGS.ZAF).paint, 'not-purple');
+});
+
+test('where the pot of the paint the flag has not got stands among the others is not always the same', () => {
+  const places = new Set();
+  for (let seed = 1; seed <= 12; seed += 1) {
+    let state = seed * 7919;
+    const random = () => {
+      state = (state * 1103515245 + 12345) % 2147483648;
+      return state / 2147483648;
+    };
+    const tour = makeTour({ level: 7, hold: 'never', copy: 'hidden', random });
+    tour.begin();
+    flyTo(tour);
+    places.add(tour.pots.findIndex((pot) => pot.paint.startsWith('not-')));
+  }
+  assert.ok(places.size > 1, `${[...places]}`);
 });
 
 /* ---------- raising the flag ---------- */

@@ -78,6 +78,20 @@ const NEAR = { most: 55, far: 80 };
 export const WIND = { from: 5, every: [13, 8], warning: [4, 2.6], loose: 0.45 };
 // Painting from memory, from level 7: seconds the finished flag is shown before it's hidden.
 export const MEMORY = { from: 7, shown: [6, 3] };
+// A grown-up can have the finished flag never shown at all, for a child who's to paint each flag from what they
+// know. Then, from the level that would have hidden it, there's a pot of paint the flag doesn't have among the
+// others. These are the paints it can be, by the names the flags give theirs, with the ones too like each other
+// to tell apart in a pot. Purple is in no flag here, so there's always one.
+export const DECOYS = { red: '#d62612', blue: '#0057b7', green: '#009246', yellow: '#ffd700', white: '#ffffff', black: '#000000', orange: '#ff883e', purple: '#7b3fa0' };
+const ALIKE = { yellow: ['gold', 'orange'], orange: ['gold', 'yellow'], gold: ['yellow', 'orange'] };
+
+/** A paint a flag doesn't have, as { paint, colour }: the first of DECOYS, in the order chance gives, that's not in it or like one that is. */
+export function decoyFor(flag, random = Math.random) {
+  const has = Object.keys(flag.colours);
+  const free = Object.keys(DECOYS).filter((name) => name !== 'purple' && !has.includes(name) && !(ALIKE[name] ?? []).some((like) => has.includes(like)));
+  const name = free.length ? free[Math.floor(random() * free.length)] : 'purple';
+  return { paint: `not-${name}`, colour: DECOYS[name] };
+}
 
 // What each level brings that's new, for the title card, the countdown and the finish card.
 export const NEW_THINGS = {
@@ -95,10 +109,20 @@ export const NEW_THINGS = {
 // The wind for a child who paints with one hand, as a grown-up can choose.
 const WIND_ONE_HAND = { name: 'The wind: keep your open hand on the flag', nameKa: 'ქარი: გაშლილი ხელი დროშაზე გეჭიროს' };
 
-/** What's new at a level, as the cards want it. hold is the grown-ups' choice about holding the flag. */
-export function newAt(level, { hold = 'later' } = {}) {
+// What level 7 brings for a child who never has the finished flag to copy from, in place of its being hidden.
+const DECOY_POT = { id: 'decoy', mark: '🎨', name: 'A pot of paint the flag doesn’t have', nameKa: 'საღებავის ქილა, რომელიც დროშას არ აქვს' };
+
+/**
+ * What's new at a level, as the cards want it. hold is the grown-ups' choice about holding the flag, and copy
+ * theirs about the finished flag to copy from: see tourLevel.
+ */
+export function newAt(level, { hold = 'later', copy = 'shown' } = {}) {
   const things = NEW_THINGS[clampLevel(level)] ?? [];
-  return things.map((thing) => (thing.id === 'wind' && hold === 'never' ? { ...thing, ...WIND_ONE_HAND } : thing));
+  return things.map((thing) => {
+    if (thing.id === 'wind' && hold === 'never') return { ...thing, ...WIND_ONE_HAND };
+    if (thing.id === 'memory' && copy === 'hidden') return DECOY_POT;
+    return thing;
+  });
 }
 
 const ramp = (level, from, to) => from + ((to - from) * (clampLevel(level) - 1)) / 9;
@@ -108,9 +132,10 @@ const since = (level, first, [from, to]) => from + ((to - from) * Math.max(0, cl
 /**
  * How a level is played. gentle is the tour where fuel never runs out. hold is whether the other hand has to
  * hold the flag while it's painted: 'later' for from level 5, which is how it comes, 'always', or 'never' for
- * one hand doing it all.
+ * one hand doing it all. copy is the finished flag beside the board, to copy from: 'shown', which is how it
+ * comes, or 'hidden', for a child who's to paint each flag from what they know.
  */
-export function tourLevel(level, { gentle = false, hold = 'later' } = {}) {
+export function tourLevel(level, { gentle = false, hold = 'later', copy = 'shown' } = {}) {
   const at = clampLevel(level);
   return {
     level: at,
@@ -125,6 +150,10 @@ export function tourLevel(level, { gentle = false, hold = 'later' } = {}) {
     wind: at >= WIND.from ? { every: since(at, WIND.from, WIND.every), warning: since(at, WIND.from, WIND.warning) } : null,
     can: at >= 6,
     memory: at >= MEMORY.from ? since(at, MEMORY.from, MEMORY.shown) : null,
+    // The finished flag to copy from: there all the time, there for a while and then hidden, or never there.
+    copy: copy === 'hidden' ? 'never' : at >= MEMORY.from ? 'awhile' : 'always',
+    // With the flag never there, the level that would have hidden it brings a pot of paint the flag hasn't got.
+    decoy: copy === 'hidden' && at >= MEMORY.from,
     cup: at >= 10,
     // The plane flies a little quicker as the levels go up, so the tour isn't longer for having more in it.
     fly: ramp(at, 1, 0.8),
@@ -239,8 +268,8 @@ export class Tour {
    * flags is each country's flag (flags.js) and places where each is, [lon, lat]. gentle and hold are the
    * grown-ups' choices: see tourLevel. onEvent hears what happens, as { type, ... }.
    */
-  constructor({ level = 1, flags, places, gentle = false, hold = 'later', random = Math.random, onEvent = () => {} } = {}) {
-    this.rules = tourLevel(level, { gentle, hold });
+  constructor({ level = 1, flags, places, gentle = false, hold = 'later', copy = 'shown', random = Math.random, onEvent = () => {} } = {}) {
+    this.rules = tourLevel(level, { gentle, hold, copy });
     this.levelNumber = this.rules.level;
     this.flags = flags;
     this.places = places;
@@ -272,10 +301,12 @@ export class Tour {
     this.shown = true; // Whether the finished flag is to be seen beside the one being painted.
     this.shownFor = 0;
     this.peeking = false;
+    this.pots = []; // The pots under the flag, as { paint, colour }, in the order they stand.
+    this.erred = false; // Whether the paint on the hand has been counted as a wrong one already.
     this.raisedTo = 0;
     this.gripped = false;
     this.can = null; // The fuel can on the way: { taken }.
-    this.stats = { stops: 0, wrong: 0, parts: 0, gusts: 0, held: 0, lost: 0, stamps: 0, cans: 0, dips: 0, peeks: 0, seconds: 0, cup: false };
+    this.stats = { stops: 0, wrong: 0, parts: 0, gusts: 0, held: 0, lost: 0, stamps: 0, cans: 0, dips: 0, peeks: 0, mistakes: 0, seconds: 0, cup: false };
   }
 
   get target() {
@@ -416,10 +447,25 @@ export class Tour {
     this.loose = 0;
     this.wrongFor = 0;
     this.gust = this.rules.wind ? { in: this.rules.wind.every, warned: false } : null;
-    this.shown = true;
+    this.shown = this.rules.copy !== 'never';
     this.shownFor = 0;
     this.peeking = false;
+    this.erred = false;
+    // A pot of each of the flag's paints, in the flag's own order, and where the level has one, a pot of a
+    // paint it hasn't got, somewhere among them.
+    this.pots = Object.entries(this.flag.colours).map(([paint, colour]) => ({ paint, colour }));
+    if (this.rules.decoy) this.pots.splice(Math.floor(this.random() * (this.pots.length + 1)), 0, decoyFor(this.flag, this.random));
     this.onEvent({ type: 'easel', country: this.target });
+  }
+
+  /** The colour of a paint, the flag's own or the one it hasn't got. */
+  colourOf(paint) {
+    return this.pots.find((pot) => pot.paint === paint)?.colour ?? this.flag?.colours[paint] ?? null;
+  }
+
+  /** Whether the game points out the pot a part wants: only while the finished flag is there to be copied from. */
+  get helps() {
+    return this.rules.copy === 'always' || (this.rules.copy === 'awhile' && this.shown);
   }
 
   /** The paint a part asks for, by its number. */
@@ -434,7 +480,7 @@ export class Tour {
     this.held = !rules.holding || this.loose < WIND.loose;
     const under = open && brush ? painting.partAt(brush.x, brush.y) : -1;
     // Painting from memory: the finished flag is shown for a while, and then hidden. A peek shows it again.
-    if (rules.memory !== null) {
+    if (rules.copy === 'awhile') {
       this.shownFor += seen ? dt : 0;
       const limit = this.peeking ? TOUR.peek : rules.memory;
       if (this.shown && this.shownFor >= limit) {
@@ -462,9 +508,10 @@ export class Tour {
           this.rollerOn = true;
           this.onEvent({ type: 'roller' });
         }
-      } else if (this.flag.colours[dipping] && this.paint !== dipping) {
+      } else if (this.pots.some((each) => each.paint === dipping) && this.paint !== dipping) {
         this.paint = dipping;
         this.wrongFor = 0;
+        this.erred = false;
         this.stats.dips += 1;
         this.onEvent({ type: 'dip', paint: dipping });
       }
@@ -493,9 +540,16 @@ export class Tour {
       if (waiting && !landing) {
         // The wrong paint for this part: nothing lands, and the pot the part wants is pointed out. To a child
         // painting from memory the finished flag is shown again instead, once the wrong paint has stayed a while.
+        // To one who never has the flag to copy from, nothing is shown: the paint just doesn't land. A wrong
+        // paint that has stayed that long is counted, once for each time it was taken.
         this.hint = { part: under, paint: this.wants(under) };
         this.wrongFor += dt;
-        if (rules.memory !== null && !this.shown && this.wrongFor >= TOUR.wrong) this.peek();
+        if (this.wrongFor >= TOUR.wrong && !this.erred) {
+          this.erred = true;
+          this.stats.mistakes += 1;
+          this.onEvent({ type: 'mistake', paint: this.paint, part: under });
+        }
+        if (rules.copy === 'awhile' && !this.shown && this.wrongFor >= TOUR.wrong) this.peek();
       }
       return;
     }

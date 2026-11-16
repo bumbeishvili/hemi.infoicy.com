@@ -114,6 +114,11 @@ class TourGame {
     return ['later', 'always', 'never'].includes(this.settings.tourHold) ? this.settings.tourHold : 'later';
   }
 
+  /** Whether the finished flag is beside the board to copy from, or hidden, as a grown-up chose. */
+  copyName() {
+    return this.settings.tourCopy === 'hidden' ? 'hidden' : 'shown';
+  }
+
   newTour(level) {
     this.tour = new Tour({
       level,
@@ -121,6 +126,7 @@ class TourGame {
       places: this.places,
       gentle: this.settings.tourFuel === 'gentle',
       hold: this.holdName(),
+      copy: this.copyName(),
       onEvent: (event) => this.onTour(event),
     });
     this.view.setTour(this.tour);
@@ -132,7 +138,7 @@ class TourGame {
   }
 
   newAt(level) {
-    return newAt(level, { hold: this.holdName() });
+    return newAt(level, { hold: this.holdName(), copy: this.copyName() });
   }
 
   setHands() {
@@ -143,7 +149,7 @@ class TourGame {
     // How the tour is played starts with the next journey, and the title shows it now. One that's being flown, or
     // has just ended, stays as it is: in the middle of one, the session starts it again.
     const { screen } = this.session;
-    if (!['playing', 'countdown', 'finish'].includes(screen) && ('tourFuel' in change || 'tourHold' in change)) {
+    if (!['playing', 'countdown', 'finish'].includes(screen) && ('tourFuel' in change || 'tourHold' in change || 'tourCopy' in change)) {
       this.newTour(this.session.levels.current);
       // What a level brings can depend on how the flag is held, so the title card says it again.
       this.session.levelUi?.refresh();
@@ -162,6 +168,8 @@ class TourGame {
     byId('sum-left-stamps').closest('tr').hidden = !rules.stamps;
     byId('sum-left-gusts').closest('tr').hidden = !rules.wind;
     byId('sum-left-cans').closest('tr').hidden = !rules.can;
+    // How many wrong paints were tried is only told where the flag isn't there all the time to copy from.
+    byId('sum-left-mistakes').closest('tr').hidden = rules.copy === 'always';
   }
 
   begin() {
@@ -421,7 +429,7 @@ class TourGame {
         glove: this.gloves.play,
         x: at.x,
         y: at.y,
-        colour: painting && tour.paint ? tour.flag.colours[tour.paint] : null,
+        colour: painting && tour.paint ? tour.colourOf(tour.paint) : null,
         reach: painting && tour.paint ? (tour.rollerOn ? TOUR.roller : TOUR.brush) : 0,
         down: painting && this.brushLevel > 0.1,
       });
@@ -455,7 +463,7 @@ class TourGame {
       if (this.paintFor > DIP_HINT_AFTER) return ask('dipFirst', true);
       // A part with the wrong paint on it is showing which pot it wants: the words say so too. Not to a child
       // who's painting from memory, whose flag is shown again instead.
-      if (this.hintFor > HINT_PROMPT_AFTER && (tour.rules.memory === null || tour.shown)) return ask('dipHint');
+      if (this.hintFor > HINT_PROMPT_AFTER && tour.helps) return ask('dipHint');
       return null;
     }
     if (state === 'raise' && this.raiseFor > RAISE_HINT_AFTER) return this.highFor > 1 ? ask('lowHint') : ask('raiseHint', true);
@@ -478,7 +486,7 @@ class TourGame {
     return {
       hero: stats.stops,
       noun: 'journey',
-      rows: { parts: row(stats.parts), wrong: row(stats.wrong), stamps: row(stats.stamps), gusts: row(stats.held), cans: row(stats.cans) },
+      rows: { parts: row(stats.parts), wrong: row(stats.wrong), mistakes: row(stats.mistakes), stamps: row(stats.stamps), gusts: row(stats.held), cans: row(stats.cans) },
       // A journey that ran out of fuel comes round again at the same level.
       won: this.tour.state === 'won',
     };
@@ -513,6 +521,7 @@ new GameSession({
     extraRows: [
       { id: 'parts', label: 'Parts painted' },
       { id: 'wrong', label: 'Wrong countries' },
+      { id: 'mistakes', label: 'Wrong paints tried' },
       { id: 'stamps', label: 'Stamps' },
       { id: 'gusts', label: 'Gusts held off' },
       { id: 'cans', label: 'Fuel cans caught' },
@@ -577,14 +586,19 @@ new GameSession({
         ${choice('tourHold', 'never', 'Never: one hand does it all')}
       </fieldset>
       <fieldset class="choice">
+        <legend>The finished flag beside the board, to copy from</legend>
+        ${choice('tourCopy', 'shown', 'Shown, and from level 7 only for a few seconds')}
+        ${choice('tourCopy', 'hidden', 'Hidden: each flag is painted from what the child knows. No pot is pointed out, and from level 7 there’s a pot of paint the flag doesn’t have')}
+      </fieldset>
+      <fieldset class="choice">
         <legend>Reach help (a smaller movement goes further across the screen)</legend>
         ${choice('tourReach', 'none', 'None')}
         ${choice('tourReach', 'little', 'A little')}
         ${choice('tourReach', 'lots', 'A lot')}
       </fieldset>`,
   },
-  defaults: { tourFuel: 'counted', tourHold: 'later', tourReach: 'little' },
-  choices: { tourFuel: String, tourHold: String, tourReach: String },
+  defaults: { tourFuel: 'counted', tourHold: 'later', tourCopy: 'shown', tourReach: 'little' },
+  choices: { tourFuel: String, tourHold: String, tourCopy: String, tourReach: String },
   // This goes on to a journey that's being flown at once. The rest, and the level, start it again: see core/settings.js.
   atOnce: ['tourReach'],
   // The spot where the flag is held is on the other hand's side, so changing hands starts the journey again.

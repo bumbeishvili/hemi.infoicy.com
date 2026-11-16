@@ -282,8 +282,8 @@ export class TourView {
     const room = (w - wide) / 2 - frame - (away > 0 ? Math.max(w * 0.02, film) : w * 0.02);
     const middle = w / 2 - (holding ? away * Math.max(0, Math.min(w * SHIFT, room)) : 0);
     this.board = { x: middle - wide / 2, y: h * BOARD.top, wide, high, unit };
-    const paints = Object.keys(flag.colours);
-    const pots = paints.map((paint) => ({ paint, colour: flag.colours[paint] }));
+    // The pots are the rules': a pot of each of the flag's paints, and at some levels one it hasn't got.
+    const pots = tour.pots.map((pot) => ({ ...pot }));
     if (tour.rules.roller) pots.push({ paint: 'roller' });
     const gap = Math.min(h * POTS.gap, (w * 0.9) / pots.length);
     this.pots = pots.map((pot, index) => ({ ...pot, x: middle + (index - (pots.length - 1) / 2) * gap, y: this.board.y + high + h * POTS.below, r: h * POTS.radius }));
@@ -953,6 +953,8 @@ export class TourView {
     ctx.strokeRect(board.x, board.y, board.wide, board.high);
 
     this.drawCopy(tour);
+    // The pot that's pointed out, if one is, is kept for the tests to read.
+    this.pointed = null;
     for (const pot of this.pots) this.drawPot(pot, tour);
     if (tour.rules.holding) this.drawHold(tour);
     if (tour.rules.wind) this.drawWind(tour);
@@ -1005,7 +1007,9 @@ export class TourView {
   drawPot(pot, tour) {
     const { ctx } = this;
     const { x, r } = pot;
-    const wanted = tour.hint?.paint === pot.paint;
+    // The pot a part wants is only pointed out while the finished flag is there to copy from.
+    const wanted = tour.helps && tour.hint?.paint === pot.paint;
+    if (wanted) this.pointed = pot.paint;
     const on = pot.paint === 'roller' ? tour.rollerOn : tour.paint === pot.paint;
     // The pot a part is asking for bobs, slowly.
     const y = pot.y - (wanted && !this.reducedMotion ? Math.abs(Math.sin(this.time * 3)) * r * 0.22 : 0);
