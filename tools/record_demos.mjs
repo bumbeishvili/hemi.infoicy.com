@@ -1184,6 +1184,37 @@ const FILMS = {
       return { state, flown, cans, wrong: stats.wrong, parts: stats.parts, dips: stats.dips, seconds: Math.round(stats.seconds) };
     }),
   },
+  'swamp-splash': {
+    // Level 1, with the rain cloud on its way as the game comes, and nothing else on the swamp.
+    settings: { levels: { 'swamp-splash': 1 } },
+    // The child's picture, with all of them in it, feet too, and the coach's film of a jump, which only shows
+    // until the first one, out of the way.
+    css: '.camera-frame { --camera-small: 24vw !important; } .coach { display: none !important; }',
+    async ready(page) {
+      // A real person standing still in full view, which is what the body check wants.
+      await footage(page, 'strikes', { from: 0.2, playing: false });
+      await page.locator('#start').click();
+      await page.locator('#swamp-start').click();
+      await screenIs(page, 'playing');
+      // Past the "Go!".
+      await wait(page, 900);
+    },
+    async play(page) {
+      // The swamp, the meter and the rain cloud, with the person still standing and a jump asked for.
+      await wait(page, 1300);
+      // A real person jumping in front of the camera: three burpees, over and over, each ending in a real jump,
+      // read by the real tracker. Each jump lands with a splash and its mud spreads on the window, and four or
+      // five of them get it muddy enough, with nothing added.
+      await footage(page, 'jumps', { from: 0, playing: true });
+      await page.waitForFunction(() => window.__game.swamp.state !== 'play', null, { timeout: 40_000 });
+      // The window muddy enough: the rain cloud goes, and the character cheers, before the card comes.
+      await wait(page, 1800);
+    },
+    report: (page) => page.evaluate(() => {
+      const { stats, coverage, state } = window.__game.swamp;
+      return { state, coverage: Math.round(coverage * 100), jumps: stats.jumps, big: stats.big, highest: Math.round(window.__game.game.highest * 100) };
+    }),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {
