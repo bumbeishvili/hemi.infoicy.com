@@ -1,0 +1,58 @@
+/* Swamp Splash's own display. What the body games share is in core/body/style.css. */
+
+/* ---------- which pieces each screen shows ---------- */
+.swamp-top { display: none; }
+
+body[data-screen='countdown'] .swamp-top,
+body[data-screen='playing'] .swamp-top,
+body[data-screen='finishing'] .swamp-top { display: flex; }
+
+body[data-screen='playing'] .coach.is-visible { display: flex; }
+
+/* ---------- how muddy the window is, along the top ---------- */
+.swamp-top {
+  position: fixed;
+  z-index: 3;
+  top: 12px;
+  left: 12px;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.swamp-top .chip { min-width: clamp(70px, 8vw, 110px); padding: 4px 12px 8px; }
+.swamp-top .chip[hidden] { display: none; }
+.swamp-top .chip-mud { min-width: clamp(170px, 22vw, 300px); }
+
+/* The bar that fills with mud, and the mark on it where the window is muddy enough. */
+.mud-meter {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 14px;
+  margin-top: 4px;
+  background: #e8dccb;
+  border-radius: 999px;
+}
+
+.mud-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #7b5230;
+  border-radius: 999px;
+  transition: width 0.4s ease-out;
+}
+
+.mud-target {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 4px;
+  margin-left: -2px;
+  background: var(--ink);
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mud-fill { transition: none; }
+}

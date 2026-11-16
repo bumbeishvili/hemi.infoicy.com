@@ -1,0 +1,13 @@
+[
+  {"id": "swamp-choose", "text": "Who’s jumping in the swamp today?", "speak": "Who's jumping in the swamp today?", "ka": "ვინ ხტება დღეს ჭაობში?"},
+  {"id": "swamp-mission", "text": "Jump in the swamp! Cover the window in mud before the rain comes!", "ka": "ჭაობში ჩახტი! ფანჯარა ტალახით დაფარე, სანამ წვიმა მოვა!"},
+  {"id": "swamp-jump", "text": "Jump!", "ka": "ახტი!"},
+  {"id": "swamp-higher", "text": "Jump as high as you can!", "ka": "რაც შეგიძლია მაღლა ახტი!"},
+  {"id": "swamp-lift", "text": "Lift your knee up high!", "ka": "მუხლი მაღლა ასწიე!"},
+  {"id": "swamp-knees", "text": "Bend your knees, then jump!", "ka": "ჯერ მუხლები მოხარე, მერე ახტი!"},
+  {"id": "swamp-bubble", "text": "Now! Land on the bubble!", "ka": "ახლა! ბუშტზე დახტი!"},
+  {"id": "swamp-heron", "text": "Jump, and scare the heron away!", "ka": "ახტი და ყანჩა დააფრთხე!"},
+  {"id": "swamp-star", "text": "Do a star jump!", "ka": "ვარსკვლავა ნახტომი გააკეთე!"},
+  {"id": "swamp-rain", "text": "The rain got there first! Try again!", "ka": "წვიმამ დაგასწრო! კიდევ სცადე!"},
+  {"id": "swamp-won", "text": "What a muddy window!", "ka": "რა ტალახიანი ფანჯარაა!"}
+]
