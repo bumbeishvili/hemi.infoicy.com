@@ -160,6 +160,11 @@ class SwampSplash extends BodyGame {
     }
   }
 
+  /** The highest jump or lift of the game, as a share of leg length: of the one jumper, or of any of several. */
+  get highest() {
+    return Math.max(0, ...this.jumpers.map((jumper) => jumper.highest));
+  }
+
   /** One of those jumping, as this game keeps them: see jumpers. */
   jumperOf(index = 0) {
     this.jumpers[index] ??= this.newJumper(this.players[index]);
@@ -504,7 +509,7 @@ class SwampSplash extends BodyGame {
     const how = this.lifting ? 'lifted a foot' : 'jumped';
     const big = stats.big ? `, ${plural(stats.big, 'of them a big one', 'of them big ones')}` : '';
     // How high the highest was, as the camera measured it, for a grown-up to follow from one day to the next.
-    const high = Math.round(Math.max(0, ...this.jumpers.map(({ highest }) => highest)) * 100);
+    const high = Math.round(this.highest * 100);
     const most = high > 0 ? ` The highest ${this.lifting ? 'foot was' : 'jump took their hips'} ${high}% of their leg length ${this.lifting ? 'off the floor' : 'up'}.` : '';
     // With several playing, each one's share of the jumps, by their character's name.
     const cast = this.cast;

@@ -110,7 +110,24 @@ test('the check waits until everyone playing is in the picture, and says to stan
   await page.waitForTimeout(5000);
   expect((await group(page)).screen).toBe('bodycheck');
   await page.screenshot({ path: 'test-results/screens/swamp-group-check-one-of-two.png' });
-  // The other one comes, and the game starts.
+  // The other one comes and is found, and steps away again before the check is over: it goes on waiting for
+  // them, and goes on saying so. They're taken away the moment both have a place, from inside the page, so the
+  // check has no time to finish first.
+  await showPerson(page, 1, STANDING);
+  await page.evaluate(() => new Promise((resolve) => {
+    const { game } = window.__game;
+    const look = () => {
+      if (!game.people.placed) return requestAnimationFrame(look);
+      window.__camera.showPerson(1, null);
+      return resolve();
+    };
+    look();
+  }));
+  await expect.poll(async () => (await group(page)).seen, { timeout: 15_000 }).toEqual([true, false]);
+  await expect(page.locator('#prompt-text')).toHaveText('Stand side by side, where I can see all of you');
+  await page.waitForTimeout(3000);
+  expect((await group(page)).screen).toBe('bodycheck');
+  // Back they come, and the game starts.
   await showPerson(page, 1, STANDING);
   await waitForScreen(page, 'playing');
   expect((await group(page)).seen).toEqual([true, true]);
@@ -154,6 +171,54 @@ test('as the game comes, one plays, and someone else in the picture is not a pla
   const now = await group(page);
   expect(now).toMatchObject({ players: 1, looksFor: 1, characters: 1, jumps: [0] });
   // The tracker is only asked for one body, so that's all it reports.
+  const found = await page.evaluate(() => new Promise((resolve) => {
+    const { camera } = window.__game.game;
+    const result = camera.onResult;
+    camera.onResult = (data) => {
+      camera.onResult = result;
+      result(data);
+      resolve(data.bodies.length);
+    };
+  }));
+  expect(found).toBe(1);
+});
+
+test('after a game for one, a second player can be added for the next: the tracker that was looking for one looks for two', async ({ page }) => {
+  test.setTimeout(300_000);
+  await choose(page, 1);
+  await showPeople(page, [STANDING, STANDING]);
+  await page.locator('#swamp-start').click();
+  await waitForScreen(page, 'playing');
+  expect(await group(page)).toMatchObject({ players: 1, looksFor: 1 });
+  // That game is won, as jumps would win it.
+  await page.evaluate(() => {
+    const { swamp } = window.__game;
+    for (let jump = 0; jump < 40 && swamp.state === 'play'; jump += 1) swamp.land(2.5);
+  });
+  await waitForScreen(page, 'finish');
+
+  // Back at the chooser, two are playing now.
+  await page.locator('#other-jumper').click();
+  await waitForScreen(page, 'choose');
+  await page.locator('input[name="group-size"][value="2"]').check({ force: true });
+  expect(await group(page)).toMatchObject({ players: 2, looksFor: 2, characters: 2 });
+  await page.locator('#swamp-start').click();
+  // The check finds them both, which it only can if the tracker now reports two bodies.
+  await waitForScreen(page, 'playing');
+  const now = await group(page);
+  expect(now).toMatchObject({ players: 2, seen: [true, true], jumps: [0, 0] });
+  // And back to one again for the game after: the second person is nobody once more.
+  await page.evaluate(() => {
+    const { swamp } = window.__game;
+    for (let jump = 0; jump < 40 && swamp.state === 'play'; jump += 1) swamp.land(2.5, { by: jump % 2 });
+  });
+  await waitForScreen(page, 'finish');
+  await page.locator('#other-jumper').click();
+  await waitForScreen(page, 'choose');
+  await page.locator('input[name="group-size"][value="1"]').check({ force: true });
+  await page.locator('#swamp-start').click();
+  await waitForScreen(page, 'playing');
+  expect(await group(page)).toMatchObject({ players: 1, looksFor: 1, characters: 1 });
   const found = await page.evaluate(() => new Promise((resolve) => {
     const { camera } = window.__game.game;
     const result = camera.onResult;
