@@ -118,7 +118,10 @@ class HatChase extends BodyGame {
     const game = this;
     return {
       view: this.view,
-      marcher: this.marcher,
+      // Each game has a new one, so the one there is now.
+      get marcher() {
+        return game.marcher;
+      },
       get chase() {
         return game.chase;
       },

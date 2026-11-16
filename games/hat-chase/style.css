@@ -47,6 +47,9 @@ body[data-screen='playing'] .coach.is-visible { display: flex; }
   transition: width 0.4s ease-out, background-color 0.6s ease-out;
 }
 
+/* The gentle magpie has no bar: the game hides it, and display: block above mustn't show it again. */
+.magpie-meter[hidden] { display: none; }
+
 .chip-magpie[data-danger='far'] .magpie-fill { background: #e0762f; }
 
 /* How far along the path the character is, with the magpie's tree at the end. */
