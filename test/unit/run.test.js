@@ -1462,6 +1462,24 @@ test('a runner easing off for the pack runs at half the trail\'s speed between o
   assert.ok(Math.abs(eased.speed / alone.speed - PACK.slowest) < 0.02, `${eased.speed} against ${alone.speed}`);
   // The same trail either way: the obstacles are where they were, so the eased runner has longer before each.
   assert.deepEqual(eased.course.map(({ at }) => at), alone.course.map(({ at }) => at));
+  // Each move takes as long eased as it does at the trail's pace, so the runner isn't seen floating over things in
+  // slow motion: here the jump over the first obstacle, made as soon as it counts.
+  const overFirst = (pack) => {
+    const { run } = setup({ obstacles: 6, pace: 'slow', friends: true });
+    run.pack = pack;
+    untilInReach(run);
+    run.jump();
+    const from = run.time;
+    while (run.move && run.state === 'running') {
+      run.noteActivity();
+      run.update(1 / 60);
+    }
+    assert.equal(run.stats.cleared, 1);
+    return run.time - from;
+  };
+  const [easedMove, fullMove] = [overFirst(PACK.slowest), overFirst(1)];
+  assert.ok(fullMove > 0.3, `${fullMove} seconds`);
+  assert.ok(Math.abs(easedMove - fullMove) < 0.05, `${easedMove} seconds eased against ${fullMove}`);
   // And the eased runner still gets to the end, clearing everything.
   eased.pack = PACK.slowest;
   perfectRun(eased);
@@ -1475,6 +1493,23 @@ test('a runner easing off for the pack runs at half the trail\'s speed between o
   assert.ok(back.speed < back.settings.speed * 0.6, `${back.speed}`);
   step(back, 1.5, () => back.noteActivity());
   assert.ok(back.speed > back.settings.speed * 0.9, `${back.speed}`);
+});
+
+test('a runner easing off for the pack, that waits for each move, comes up to an obstacle no faster than it was running', () => {
+  for (const pack of [1, PACK.slowest]) {
+    const { run } = setup({ obstacles: 6, pace: 'slow', friends: true, whenMissed: 'wait' });
+    run.pack = pack;
+    let fastest = 0;
+    for (let i = 0; i < 60 * 30 && !run.waiting; i += 1) {
+      run.noteActivity();
+      run.update(1 / 60);
+      if (run.next && run.gapTo(run.next) < 25) fastest = Math.max(fastest, run.speed);
+    }
+    // It slows to a stop in front of it, as it always has, without speeding up on the way.
+    assert.equal(run.waiting, true);
+    assert.ok(fastest > 0);
+    assert.ok(fastest <= run.settings.speed * pack + 0.01, `${fastest} metres a second, at ${pack} of ${run.settings.speed}`);
+  }
 });
 
 test('Leap Trail comes as a run friends make together, and whoever made it can choose against each other', () => {
