@@ -71,11 +71,58 @@
   footage.loop = true;
   footage.playsInline = true;
 
+  // For several playing in front of one camera: a clip for each of them, side by side.
+  const people = [];
+  async function clipFor(video, name, from, playing) {
+    const source = `/test/fixtures/body/${name}.webm`;
+    if (video.dataset.clip !== source) {
+      const blob = await (await fetch(source)).blob();
+      video.dataset.clip = source;
+      video.src = URL.createObjectURL(blob);
+      await new Promise((resolve, reject) => {
+        video.onloadeddata = resolve;
+        video.onerror = () => reject(new Error(`cannot load ${source}`));
+      });
+    }
+    video.pause();
+    await new Promise((resolve) => {
+      video.onseeked = resolve;
+      video.currentTime = from;
+    });
+    if (playing) await video.play();
+  }
+
   window.__camera = {
     failWith: null,
     streams: 0,
+    /**
+     * Shows several people side by side, each a clip from test/fixtures/body: clips is a list of { name, from,
+     * playing, at }, the first of them on the left of the screen, and null for a place with nobody in it. Each has
+     * an equal share of the picture's width, cut from their clip around where its person stands: at, as a share
+     * of the clip's width, which is the middle unless said.
+     */
+    async showPeople(clips) {
+      footage.pause();
+      scene.footage = false;
+      for (const [index, clip] of clips.entries()) {
+        people[index] ??= Object.assign(document.createElement('video'), { muted: true, loop: true, playsInline: true });
+        if (clip) await clipFor(people[index], clip.name, clip.from ?? 0, clip.playing ?? true);
+        else people[index].pause();
+        people[index].dataset.there = clip ? 'yes' : 'no';
+        people[index].dataset.at = String(clip?.at ?? 0.5);
+      }
+      scene.people = clips.length;
+    },
+    /** One of those people does something else, or steps out of the picture (clip null), and the others carry on. */
+    async showPerson(index, clip) {
+      if (clip) await clipFor(people[index], clip.name, clip.from ?? 0, clip.playing ?? true);
+      else people[index].pause();
+      people[index].dataset.there = clip ? 'yes' : 'no';
+      if (clip?.at !== undefined) people[index].dataset.at = String(clip.at);
+    },
     show(change) {
       scene.footage = false;
+      scene.people = 0;
       Object.assign(scene, DEFAULTS, change);
     },
     /** Shows a clip from test/fixtures/body, from a moment in it, playing or held still. */
@@ -108,6 +155,7 @@
         footage.onseeked = resolve;
         footage.currentTime = from;
       });
+      scene.people = 0;
       scene.footage = true;
       scene.footageHeight = height;
       scene.footageShiftY = shiftY;
@@ -118,6 +166,8 @@
     /** An empty room. */
     showNobody() {
       footage.pause();
+      for (const video of people) video.pause();
+      scene.people = 0;
       scene.footage = false;
       Object.assign(scene, DEFAULTS, { left: null, right: null });
     },
@@ -159,6 +209,22 @@
       ctx.filter = 'none';
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
       ctx.filter = `brightness(${scene.brightness}) blur(${scene.blur}px)`;
+      if (scene.people) {
+        // Webcams send the unmirrored picture, as does this footage, so undo the flip above: the first person,
+        // on the left of the screen, is on the right of this picture.
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = '#808080';
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        const share = WIDTH / scene.people;
+        for (let index = 0; index < scene.people; index += 1) {
+          const video = people[index];
+          if (video.dataset.there !== 'yes' || !video.videoWidth) continue;
+          const wide = video.videoWidth / scene.people;
+          const from = Math.min(video.videoWidth - wide, Math.max(0, Number(video.dataset.at) * video.videoWidth - wide / 2));
+          ctx.drawImage(video, from, 0, wide, video.videoHeight, WIDTH - (index + 1) * share, 0, share, HEIGHT);
+        }
+        return;
+      }
       if (scene.footage) {
         // Webcams send the unmirrored picture, as does this footage, so undo the flip above.
         ctx.setTransform(1, 0, 0, 1, 0, 0);

@@ -163,7 +163,9 @@ function angleAt(a, joint, b) {
  * Whether the picture shows all of the child, and if not, what to tell them. The camera has to
  * see the whole body, because the legs and feet are half of the game.
  */
-export function viewProblem(body, aspect = 16 / 9, { upperBodyOnly = false, armsOut = false } = {}) {
+const GROUP_EDGE = 0.07; // How near the side of the picture one of several players may stand, as a share of its width.
+
+export function viewProblem(body, aspect = 16 / 9, { upperBodyOnly = false, armsOut = false, group = false } = {}) {
   if (!body) return 'no-body';
   const points = readPoints(body, aspect);
   if (upperBodyOnly) return upperBodyProblem(points, aspect, armsOut);
@@ -177,8 +179,11 @@ export function viewProblem(body, aspect = 16 / 9, { upperBodyOnly = false, arms
   if (feetY > 1 - EDGE * 2 || nose.y < 0.03) return 'step-back';
   if (!seen) return feetY > 0.9 || points[P.left.knee].y > 0.9 ? 'step-back' : 'show-all';
   if (feetY - nose.y < 0.36) return 'come-closer';
-  if (hips.x < aspect * 0.24) return 'move-right';
-  if (hips.x > aspect * 0.76) return 'move-left';
+  // One child stands in the middle. Several stand side by side, right across the picture, so each only has to
+  // be clear of its edges.
+  const side = group ? GROUP_EDGE : 0.24;
+  if (hips.x < aspect * side) return 'move-right';
+  if (hips.x > aspect * (1 - side)) return 'move-left';
   return null;
 }
 

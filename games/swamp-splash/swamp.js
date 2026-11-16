@@ -94,7 +94,8 @@ export class Swamp {
     this.mud = new Uint8Array(CELLS); // 0 is clean, 1 is muddy, 2 is golden mud.
     this.muddy = 0;
     this.time = 0; // Seconds played with the child in the picture, which is what the rain cloud goes by.
-    this.bent = Infinity; // How long ago the knees were bent.
+    // How long ago each jumper's knees were bent. There's one jumper, unless several play in front of one camera.
+    this.bents = [Infinity];
     this.row = 0; // Big jumps in a row.
     this.golden = false; // Whether the next splat is golden.
     this.shower = this.rules.shower ? { in: this.rules.shower, at: null } : null;
@@ -124,9 +125,17 @@ export class Swamp {
     if (this.state === 'ready') this.state = 'play';
   }
 
-  /** The child has bent their knees: a jump soon after is a super splash, from the level that brings it. */
-  squat() {
-    if (this.state === 'play' && this.rules.squat) this.bent = 0;
+  /** How long ago the knees were bent, of the one jumper, or the first of several. */
+  get bent() {
+    return this.bents[0];
+  }
+
+  /**
+   * A child has bent their knees: a jump of theirs soon after is a super splash, from the level that brings it.
+   * by is which of the jumpers it was, when several play in front of one camera.
+   */
+  squat(by = 0) {
+    if (this.state === 'play' && this.rules.squat) this.bents[by] = 0;
   }
 
   /** The squares within reach of a place, in squares, with a ragged edge so that no splat is a neat round. */
@@ -186,7 +195,7 @@ export class Swamp {
    * A jump has landed. size is how big it was: 1 is the smallest that counts, and more is higher. star is
    * whether it was a star jump, arms and legs out.
    */
-  land(size, { star = false } = {}) {
+  land(size, { star = false, by = 0 } = {}) {
     if (this.state !== 'play') return;
     const { rules, stats } = this;
     const big = size >= SPLASH.counts;
@@ -195,12 +204,12 @@ export class Swamp {
     if (big) stats.big += 1;
     let share = splashShare(size);
     // Knees bent first, and a mud bubble landed on, each make it more.
-    const bent = rules.squat && this.bent <= SQUAT.within;
+    const bent = rules.squat && (this.bents[by] ?? Infinity) <= SQUAT.within;
     if (bent) {
       share *= SQUAT.more;
       stats.supers += 1;
     }
-    this.bent = Infinity;
+    this.bents[by] = Infinity;
     const popped = this.bubbleBig;
     if (popped) {
       share *= BUBBLE.more;
@@ -208,7 +217,7 @@ export class Swamp {
       this.bubble = { in: BUBBLE.every, age: null };
       this.onEvent({ type: 'pop' });
     }
-    this.onEvent({ type: 'land', size, big, bent, popped, star });
+    this.onEvent({ type: 'land', size, big, bent, popped, star, by });
 
     // Three big jumps in a row turn the next mud to gold. A small one starts the count again.
     if (rules.gold) {
@@ -260,7 +269,7 @@ export class Swamp {
     if (this.state !== 'play' || !seen) return;
     this.time += dt;
     this.stats.seconds += dt;
-    this.bent += dt;
+    for (const by of Object.keys(this.bents)) this.bents[by] += dt;
     if (this.shower) this.rain(dt);
     if (this.bubble) this.swell(dt);
     if (this.heron) this.fly(dt);

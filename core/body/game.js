@@ -18,6 +18,7 @@ import { appliesAtOnce, loadSettings, saveSettings } from '../settings.js';
 import { MoveDemo } from './demo.js';
 import { ICONS } from './icons.js';
 import { renderPortraits } from './portraits.js';
+import { MOST_PEOPLE, People } from './people.js';
 import { BodyReader, closeUpBoxes, viewProblem } from './reader.js';
 import { ROSTER, byId } from './roster.js';
 
@@ -48,10 +49,22 @@ export const BODY_SAY = {
   moveLeft: 'Move to your left',
   moveRight: 'Move to your right',
   canSeeYou: 'I can see all of you! Get ready!',
+  // Several playing in front of one camera, and not all of them in the picture yet.
+  sideBySide: 'Stand side by side, where I can see all of you',
   comeBack: 'Come back where I can see you',
   seeFeet: 'Step back so I can see your feet',
   waiting: 'Take your time. I’ll wait for you.',
 };
+
+/**
+ * For the chooser of a game that several can play in front of one camera: a row of numbers for how many are
+ * playing. See watchGroupChoice.
+ */
+export const groupChoice = () => `
+      <fieldset class="group-choice">
+        <legend>How many are playing?</legend>
+        ${Array.from({ length: MOST_PEOPLE }, (_, index) => `<label><input type="radio" name="group-size" value="${index + 1}"${index ? '' : ' checked'}> <span>${index + 1}</span></label>`).join('')}
+      </fieldset>`;
 
 const PROBLEM_PROMPTS = {
   'no-body': { key: 'no-body', text: BODY_SAY.showAll, side: null },
@@ -60,7 +73,13 @@ const PROBLEM_PROMPTS = {
   'come-closer': { key: 'come-closer', text: BODY_SAY.comeCloser, side: null },
   'move-left': { key: 'move-left', text: BODY_SAY.moveLeft, side: 'left' },
   'move-right': { key: 'move-right', text: BODY_SAY.moveRight, side: 'right' },
+  // Several are playing, and the camera can't see that many yet.
+  'side-by-side': { key: 'side-by-side', text: BODY_SAY.sideBySide, side: null },
 };
+// With several playing, how long one of them can go unseen before their reader is told nobody is there.
+const MISSED_LOOKS_SECONDS = 0.35;
+// Each player's stick figure over the camera's picture has its own colour, in the order they stand.
+const PLAYER_COLOURS = ['#35e07a', '#4db5ff', '#ffb02e', '#d58cff'];
 
 const SKELETON_LINES = [
   [11, 13, 15], [12, 14, 16], [11, 12], [11, 23], [12, 24], [23, 24], [23, 25, 27, 31], [24, 26, 28, 32],
@@ -83,6 +102,10 @@ export class BodyGame {
     this.paused = false;
     this.lastFrameTime = performance.now();
     this.latestBody = null;
+    // Who's playing in front of this camera: one child, unless a game that can be played by several has been told
+    // how many. Each is { index, reader, body }: see setPlayers and core/body/people.js.
+    this.players = [];
+    this.people = new People(1);
     this.aspect = 16 / 9;
     this.checkHeld = 0;
     this.nextHand = 'left';
@@ -129,6 +152,7 @@ export class BodyGame {
       closeUps: (video) => this.takeCloseUp(video),
     });
     this.camera.onResult = (result) => this.onTrackerResult(result);
+    this.setPlayers(1);
     this.camera.onTrackerError = (message) => console.error('Body tracking error:', message);
 
     this.prompt = new PromptBox((text) => this.sound.say(text, { ifQuiet: true }), this.translate);
@@ -232,7 +256,7 @@ export class BodyGame {
       this.sound.setLanguage(settings.language);
       this.prompt.clear();
     }
-    if ('moveSize' in change) this.reader.setSize(settings.moveSize);
+    if ('moveSize' in change) for (const { reader } of this.players) reader.setSize(settings.moveSize);
     this.settingChanged?.(change);
     // In the middle of a game, what doesn't go on to it at once starts it again when the panel is closed.
     if (this.levelUnderway && Object.keys(change).some((name) => !appliesAtOnce(name, this.atOnce))) this.startAgainWanted = true;
@@ -335,6 +359,8 @@ export class BodyGame {
    * of one hand with each frame, taking turns, from the camera's full-size picture.
    */
   async takeCloseUp(video) {
+    // With several playing, nobody's hands are read: there's only time to look closely at one child's.
+    if (this.grouped) return [];
     if (!this.latestBody || !this.closeUpScreens.has(this.screen)) return [];
     const boxes = closeUpBoxes(this.latestBody, this.aspect);
     const box = boxes.find(({ side }) => side === this.nextHand) ?? boxes[0];
@@ -352,10 +378,85 @@ export class BodyGame {
     return [{ side: box.side, box, bitmap }];
   }
 
-  onTrackerResult({ body, hands = [], aspect }) {
+  /* ---------- several people in front of one camera ---------- */
+
+  /** Whether more than one is playing in front of this camera. */
+  get grouped() {
+    return this.players.length > 1;
+  }
+
+  /**
+   * How many are playing in front of this camera: 1, as every game comes, or up to four in a game that can be
+   * played by several. Each has their own reader of moves, and the first is the one a game for one child uses.
+   */
+  setPlayers(count) {
+    const wanted = Math.min(MOST_PEOPLE, Math.max(1, Math.round(Number(count)) || 1));
+    this.players = Array.from({ length: wanted }, (_, index) => this.players[index] ?? { index, reader: index === 0 ? this.reader : new BodyReader({ size: this.settings.moveSize }), body: null });
+    this.people = new People(wanted);
+    this.camera.setPeople(wanted);
+    document.body.dataset.players = String(wanted);
+  }
+
+  /** The characters of everyone playing: the one chosen, and for the others the ones after it in the roster. */
+  get cast() {
+    const first = Math.max(0, ROSTER.indexOf(this.chosen));
+    return this.players.map((_, index) => ROSTER[(first + index) % ROSTER.length]);
+  }
+
+  /**
+   * A game that several can play has a row of numbers on its chooser, groupChoice() below, for how many are
+   * playing. It always starts at one: a grown-up standing in the picture isn't taken for a player unless someone
+   * says so. onChange hears the number each time it's changed.
+   */
+  watchGroupChoice(onChange = () => {}) {
+    for (const input of document.querySelectorAll('input[name="group-size"]')) {
+      input.checked = Number(input.value) === this.players.length;
+      input.addEventListener('change', () => {
+        if (!input.checked) return;
+        this.setPlayers(Number(input.value));
+        onChange(this.players.length);
+      });
+    }
+  }
+
+  /**
+   * The tracker has looked, with several playing: each body goes to the player it belongs to, each player's
+   * moves are read by their own reader, and the game hears of each player in turn.
+   */
+  onGroupResult(bodies, now, aspect) {
+    const mine = this.people.assign(bodies, now);
+    this.latestBody = mine[0];
+    const moves = this.players.map((player, index) => {
+      // The tracker loses one of several people for a look now and then, the more of them the more often. A
+      // player it has only just lost is left as they were, so a jump they're in the middle of isn't cut short.
+      if (!mine[index] && now - player.reader.lastSeenAt < MISSED_LOOKS_SECONDS) return [];
+      player.body = mine[index];
+      return player.reader.update(player.body, now, aspect);
+    });
+    const first = moves.flat()[0];
+    if (first) this.lastSeen = { move: first.move, at: performance.now() };
+    this.drawSkeleton(mine);
+    if (this.paused || this.bodyLost()) return;
+    this.players.forEach((player, index) => this.onPlayerMoves(player, moves[index], now));
+  }
+
+  /**
+   * What one player did, each time the tracker has looked, with several playing. A game that several can play
+   * says what to do with it. Otherwise the first player's moves are the child's.
+   */
+  onPlayerMoves(player, moves, now) {
+    if (player.index === 0) this.onMoves(moves, now);
+  }
+
+  onTrackerResult({ body, bodies, hands = [], aspect }) {
     const now = performance.now() / 1000;
     this.aspect = aspect;
+    if (this.grouped) {
+      this.onGroupResult(bodies ?? (body ? [body] : []), now, aspect);
+      return;
+    }
     this.latestBody = body;
+    this.players[0].body = body;
     for (const reading of hands) this.reader.hands.add(reading, now);
     const moves = this.reader.update(body, now, aspect);
     if (moves.length) this.lastSeen = { move: moves[0].move, at: performance.now() };
@@ -363,12 +464,18 @@ export class BodyGame {
     if (!this.paused && !this.bodyLost()) this.onMoves(moves, now);
   }
 
-  /** Nobody in the picture for a little while, or a tracker that has stopped answering. */
+  /**
+   * Nobody in the picture for a little while, or a tracker that has stopped answering. With several playing,
+   * it's none of them: one who steps out leaves the others playing.
+   */
   bodyLost() {
-    return performance.now() / 1000 - this.reader.lastSeenAt > LOST_BODY_SECONDS;
+    const seenAt = Math.max(...this.players.map(({ reader }) => reader.lastSeenAt));
+    return performance.now() / 1000 - seenAt > LOST_BODY_SECONDS;
   }
 
-  drawSkeleton(body) {
+  /** The stick figure over the camera's picture: the child's, or each player's in their own colour. */
+  drawSkeleton(seen) {
+    const bodies = Array.isArray(seen) ? seen : [seen];
     const canvas = byElementId('skeleton');
     const { clientWidth: width, clientHeight: height } = canvas;
     if (!width || !height) return;
@@ -380,24 +487,26 @@ export class BodyGame {
     const ctx = canvas.getContext('2d');
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    if (!body) return;
-    const at = (index) => [(1 - body.image[index].x) * width, body.image[index].y * height];
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    for (const [colour, lineWidth] of [['rgba(18,48,77,0.6)', 5], ['#35e07a', 3]]) {
-      ctx.strokeStyle = colour;
-      ctx.lineWidth = lineWidth;
-      for (const line of SKELETON_LINES) {
-        ctx.beginPath();
-        line.forEach((index, order) => (order ? ctx.lineTo(...at(index)) : ctx.moveTo(...at(index))));
-        ctx.stroke();
+    bodies.forEach((body, player) => {
+      if (!body) return;
+      const at = (index) => [(1 - body.image[index].x) * width, body.image[index].y * height];
+      for (const [colour, lineWidth] of [['rgba(18,48,77,0.6)', 5], [PLAYER_COLOURS[player % PLAYER_COLOURS.length], 3]]) {
+        ctx.strokeStyle = colour;
+        ctx.lineWidth = lineWidth;
+        for (const line of SKELETON_LINES) {
+          ctx.beginPath();
+          line.forEach((index, order) => (order ? ctx.lineTo(...at(index)) : ctx.moveTo(...at(index))));
+          ctx.stroke();
+        }
       }
-    }
-    ctx.fillStyle = '#ffffff';
-    const [noseX, noseY] = at(0);
-    ctx.beginPath();
-    ctx.arc(noseX, noseY, 5, 0, Math.PI * 2);
-    ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      const [noseX, noseY] = at(0);
+      ctx.beginPath();
+      ctx.arc(noseX, noseY, 5, 0, Math.PI * 2);
+      ctx.fill();
+    });
   }
 
   /* ---------- checking the camera can see the child ---------- */
@@ -405,20 +514,37 @@ export class BodyGame {
   beginBodyCheck(then = 'start') {
     this.afterCheck = then;
     this.checkHeld = 0;
+    // With several playing, who is who is settled afresh: left to right, as they stand now.
+    this.people.forget();
     this.setScreen('bodycheck');
     if (then === 'start' && !this.upperBodyOnly) this.sound.say(BODY_SAY.makeSpace);
     byElementId('check-progress-fill').style.width = '0%';
   }
 
+  /**
+   * What's wrong with the view, if anything. With several playing, it's that not all of them are in the picture
+   * yet, or whatever is wrong for the first of them who isn't standing where the camera sees them well.
+   */
+  checkProblem() {
+    const options = { upperBodyOnly: this.upperBodyOnly, armsOut: this.armsOut };
+    if (!this.grouped) return viewProblem(this.latestBody, this.aspect, options);
+    if (!this.people.placed || this.players.some(({ body }) => !body)) return 'side-by-side';
+    for (const { body } of this.players) {
+      const problem = viewProblem(body, this.aspect, { ...options, group: true });
+      if (problem) return problem;
+    }
+    return null;
+  }
+
   updateBodyCheck(dt, now) {
-    const problem = viewProblem(this.latestBody, this.aspect, { upperBodyOnly: this.upperBodyOnly, armsOut: this.armsOut });
+    const problem = this.checkProblem();
     byElementId('camera-frame').dataset.ready = problem ? 'not-open' : 'open';
     this.checkHeld = problem ? 0 : this.checkHeld + dt;
     byElementId('check-progress-fill').style.width = `${Math.min(100, (this.checkHeld / CHECK_SECONDS) * 100)}%`;
     this.prompt.show(problem ? PROBLEM_PROMPTS[problem] : null, now);
 
     if (this.checkHeld < CHECK_SECONDS) return;
-    this.reader.setStanding(this.latestBody, this.aspect);
+    for (const { reader, body } of this.players) reader.setStanding(body, this.aspect);
     this.prompt.clear();
     this.sound.say(BODY_SAY.canSeeYou);
     this.afterBodyCheck(this.afterCheck);
@@ -527,7 +653,10 @@ export class BodyGame {
 
     if (this.camera.running && performance.now() - this.camera.lastResultAt > TRACKER_STALL_MS) {
       this.latestBody = null;
-      this.reader.update(null, performance.now() / 1000, this.aspect);
+      for (const player of this.players) {
+        player.body = null;
+        player.reader.update(null, performance.now() / 1000, this.aspect);
+      }
     }
 
     if (!this.paused) {

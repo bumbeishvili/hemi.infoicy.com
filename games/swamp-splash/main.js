@@ -3,8 +3,12 @@
 // rain cloud that's coming across the sky gets here and washes it. It's the game about jumping, and jumping
 // higher. This file runs it from start to finish, on top of what the body games share in core/body/game.js. The
 // rules are in swamp.js, and what it looks like is in view.js.
+//
+// Several can play in front of one camera, up to four, when a grown-up says how many on the chooser: each has a
+// character of their own, side by side, each one's jumps are followed on their own, and all the mud lands on the
+// one window. See core/body/people.js for how they're kept apart.
 import { Easing } from '../../core/body/easing.js';
-import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
+import { BODY_SAY, BodyGame, byElementId, groupChoice } from '../../core/body/game.js';
 import { ROSTER } from '../../core/body/roster.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { SwampSound } from './swamp-sound.js';
@@ -79,10 +83,11 @@ class SwampSplash extends BodyGame {
       createSound: (options) => new SwampSound(options),
     });
     this.swamp = null;
-    this.air = null; // A jump that's up: { since, peak, raw, star }.
-    this.footDown = true; // Whether the lifted foot has been down since the last lift.
-    this.highest = 0; // The highest jump or lift of the game, as a share of leg length.
-    this.easing = null;
+    // Whoever is jumping: one child, or each of several in front of one camera. Each is { index, reader, air,
+    // footDown, highest, easing, jumps }: air is a jump that's up, { since, peak, raw, star }, footDown whether
+    // the lifted foot has been down since the last lift, highest the highest jump or lift of the game as a share
+    // of leg length, and jumps how many they've made.
+    this.jumpers = [];
     this.timer = 0;
     this.countLeft = 0;
     this.idleFor = 0;
@@ -122,6 +127,8 @@ class SwampSplash extends BodyGame {
       if (this.camera.running) this.beginBodyCheck(this.screen === 'playing' ? 'resume' : 'start');
       else this.openCameraThen(() => this.beginBodyCheck());
     });
+    // How many are playing in front of this camera: each has a character, standing side by side.
+    this.watchGroupChoice(() => this.view.setWalkers(this.cast));
   }
 
   debug() {
@@ -132,22 +139,35 @@ class SwampSplash extends BodyGame {
         return game.swamp;
       },
       get air() {
-        return game.air;
+        return game.jumpers[0]?.air ?? null;
+      },
+      get jumpers() {
+        return game.jumpers;
       },
     };
   }
 
-  showChosen(spec) {
-    this.view.setWalker(spec);
+  showChosen() {
+    this.view.setWalkers(this.cast);
   }
 
   settingChanged(change) {
     // A new size for the smallest jump that counts starts from that size, and not from where it had come down
     // to for this child: what the easing set is let go, as in the other body games.
     if ('moveSize' in change) {
-      this.reader.personal = { jump: null, squat: null, leg: null, hand: null };
-      this.easing = new Easing(this.reader, 'jump');
+      for (const { reader } of this.players) reader.personal = { jump: null, squat: null, leg: null, hand: null };
+      for (const jumper of this.jumpers) jumper.easing = new Easing(jumper.reader, 'jump');
     }
+  }
+
+  /** One of those jumping, as this game keeps them: see jumpers. */
+  jumperOf(index = 0) {
+    this.jumpers[index] ??= this.newJumper(this.players[index]);
+    return this.jumpers[index];
+  }
+
+  newJumper(player) {
+    return { index: player.index, reader: player.reader, air: null, footDown: true, highest: 0, easing: new Easing(player.reader, 'jump'), jumps: 0 };
   }
 
   /** Whether this child lifts a knee or a foot, in place of jumping. */
@@ -163,9 +183,8 @@ class SwampSplash extends BodyGame {
     return set[this.settings.swampHigh] ?? set.medium;
   }
 
-  /** How far off the floor the child is right now, as a share of leg length: their hips, or the foot they lift. */
-  rise() {
-    const { reader } = this;
+  /** How far off the floor a child is right now, as a share of leg length: their hips, or the foot they lift. */
+  rise({ reader } = this.jumperOf()) {
     return (this.lifting ? reader.footHeight : reader.jumpEffort) ?? 0;
   }
 
@@ -173,14 +192,14 @@ class SwampSplash extends BodyGame {
    * How big the jump is right now: 1 is the smallest that counts, and SPLASH.bigAt is as high as a big jump is
    * set to be. For a child who lifts a foot in place of jumping, it's how high the foot is.
    */
-  height() {
-    const least = this.lifting ? LIFT.up : this.reader.jumpNeeded;
-    return 1 + (Math.max(0, this.rise() - least) / Math.max(0.01, this.high - least)) * (SPLASH.bigAt - 1);
+  height(jumper = this.jumperOf()) {
+    const least = this.lifting ? LIFT.up : jumper.reader.jumpNeeded;
+    return 1 + (Math.max(0, this.rise(jumper) - least) / Math.max(0.01, this.high - least)) * (SPLASH.bigAt - 1);
   }
 
-  /** Whether the child is back on the floor. */
-  down() {
-    return this.lifting ? this.rise() < LIFT.down : !this.reader.inAir;
+  /** Whether a child is back on the floor. */
+  down(jumper = this.jumperOf()) {
+    return this.lifting ? this.rise(jumper) < LIFT.down : !jumper.reader.inAir;
   }
 
   /**
@@ -188,21 +207,31 @@ class SwampSplash extends BodyGame {
    * down that's how big it was. Bent knees are noted too, for the super splash.
    */
   onMoves(moves, now) {
-    const { reader, view } = this;
+    this.readJumper(this.jumperOf(0), moves, now);
+  }
+
+  /** With several playing in front of one camera, each one's jumps are followed on their own. */
+  onPlayerMoves(player, moves, now) {
+    this.readJumper(this.jumperOf(player.index), moves, now);
+  }
+
+  readJumper(jumper, moves, now) {
+    const { view } = this;
+    const { reader } = jumper;
     const crouch = Math.min(1, Math.max(0, (reader.sink ?? 0) / Math.max(0.001, reader.squatNeeded)));
     // The character goes up as the child does, there and then: all the way for a big jump.
     const playing = this.screen === 'playing';
-    view.setBody({ jump: playing ? Math.min(1, this.rise() / this.high) : 0, crouch: playing ? crouch : 0 });
+    view.setBody({ jump: playing ? Math.min(1, this.rise(jumper) / this.high) : 0, crouch: playing ? crouch : 0 }, jumper.index);
     if (!playing || !this.swamp) return;
     const takeOff = (star) => {
-      if (this.air) this.air.star ||= star;
+      if (jumper.air) jumper.air.star ||= star;
       else {
-        this.air = { since: now, peak: star ? STAR_SIZE : 1, raw: 0, star };
+        jumper.air = { since: now, peak: star ? STAR_SIZE : 1, raw: 0, star };
         this.sound.jump();
       }
     };
     for (const { move } of moves) {
-      if (move === 'stomp') this.swamp.squat();
+      if (move === 'stomp') this.swamp.squat(jumper.index);
       // A star, arms and legs out, is a jump whichever way the child jumps: it can be stepped into.
       if (move === 'starBurst') takeOff(true);
       else if (move === 'flying' && !this.lifting) takeOff(false);
@@ -210,35 +239,36 @@ class SwampSplash extends BodyGame {
     // A child who lifts a knee or a foot in place of jumping: the foot coming up is the jump, however slowly
     // it comes, and it has to go down again before the next one.
     if (this.lifting) {
-      if (this.rise() < LIFT.down) this.footDown = true;
-      else if (this.footDown && !this.air && this.rise() >= LIFT.up) {
-        this.footDown = false;
+      if (this.rise(jumper) < LIFT.down) jumper.footDown = true;
+      else if (jumper.footDown && !jumper.air && this.rise(jumper) >= LIFT.up) {
+        jumper.footDown = false;
         takeOff(false);
       }
     }
-    this.followAir(now);
+    this.followAir(jumper, now);
   }
 
   /** A jump that's up is followed to its highest, and lands when the child is down again. */
-  followAir(now) {
-    const { air } = this;
+  followAir(jumper, now) {
+    const { air } = jumper;
     if (!air) return;
-    air.peak = Math.max(air.peak, this.height());
-    air.raw = Math.max(air.raw, this.rise());
+    air.peak = Math.max(air.peak, this.height(jumper));
+    air.raw = Math.max(air.raw, this.rise(jumper));
     const long = now - air.since;
     // A lifted foot is coming down once it's most of the way back from its highest.
-    const back = this.lifting && this.rise() < air.raw * LIFT_BACK;
-    if ((long >= AIR_LEAST && (this.down() || back)) || long >= (this.lifting ? LIFT_MOST : AIR_MOST)) this.touchDown();
+    const back = this.lifting && this.rise(jumper) < air.raw * LIFT_BACK;
+    if ((long >= AIR_LEAST && (this.down(jumper) || back)) || long >= (this.lifting ? LIFT_MOST : AIR_MOST)) this.touchDown(jumper);
   }
 
-  touchDown() {
-    const { air } = this;
-    this.air = null;
+  touchDown(jumper) {
+    const { air } = jumper;
+    jumper.air = null;
     this.idleFor = 0;
-    this.highest = Math.max(this.highest, air.raw);
+    jumper.highest = Math.max(jumper.highest, air.raw);
+    jumper.jumps += 1;
     // What counts as a jump starts again from where it was for this child, who has just made one.
-    this.easing = new Easing(this.reader, 'jump');
-    this.swamp.land(Math.min(SIZE_MOST, Math.max(1, air.peak)), { star: air.star });
+    jumper.easing = new Easing(jumper.reader, 'jump');
+    this.swamp.land(Math.min(SIZE_MOST, Math.max(1, air.peak)), { star: air.star, by: jumper.index });
   }
 
   /** What the panel says the camera can see, so a grown-up can tell why a jump isn't counting. */
@@ -272,10 +302,7 @@ class SwampSplash extends BodyGame {
     });
     view.setSwamp(this.swamp);
     view.setView('play');
-    this.air = null;
-    this.footDown = true;
-    this.highest = 0;
-    this.easing = new Easing(this.reader, 'jump');
+    this.jumpers = this.players.map((player) => this.newJumper(player));
     this.idleFor = 0;
     this.filmFor = null;
     this.did = { knees: false, star: false };
@@ -333,13 +360,15 @@ class SwampSplash extends BodyGame {
     // Nobody in the picture: everything waits, the rain cloud too.
     const lost = this.bodyLost();
     // A jump the camera lost sight of comes down all the same.
-    if (this.air && (lost || performance.now() / 1000 - this.air.since >= (this.lifting ? LIFT_MOST : AIR_MOST))) this.touchDown();
+    for (const jumper of this.jumpers) {
+      if (jumper.air && (lost || performance.now() / 1000 - jumper.air.since >= (this.lifting ? LIFT_MOST : AIR_MOST))) this.touchDown(jumper);
+    }
     swamp.update(dt, { seen: !lost });
     if (swamp.state !== 'play') return;
     this.idleFor = lost ? 0 : this.idleFor + dt;
     // A child who's trying to jump and not getting as high as counts: what counts comes down to meet them,
-    // as in the other body games (core/body/easing.js).
-    if (!lost && !this.air && !this.lifting) this.easing?.update(dt);
+    // as in the other body games (core/body/easing.js). Each of several has their own.
+    if (!lost && !this.lifting) for (const jumper of this.jumpers) if (!jumper.air) jumper.easing?.update(dt);
     this.updateHud();
     this.sound.cloud(swamp.cloud);
 
@@ -430,15 +459,22 @@ class SwampSplash extends BodyGame {
   /** What every ending does: the camera goes off, and nothing more is asked for. */
   wrapUp() {
     this.camera.stop();
-    this.reader.forget();
+    for (const { reader } of this.players) reader.forget();
     this.latestBody = null;
-    this.air = null;
+    this.stillJumpers();
     this.hideFilm();
     this.prompt.clear();
     this.setCount('');
     this.updateHud();
     this.sound.stopSwamp();
-    this.view.setBody({});
+  }
+
+  /** Nobody is in the air any more, and every character stands. */
+  stillJumpers() {
+    for (const jumper of this.jumpers) {
+      jumper.air = null;
+      this.view.setBody({}, jumper.index);
+    }
   }
 
   onWon() {
@@ -468,9 +504,13 @@ class SwampSplash extends BodyGame {
     const how = this.lifting ? 'lifted a foot' : 'jumped';
     const big = stats.big ? `, ${plural(stats.big, 'of them a big one', 'of them big ones')}` : '';
     // How high the highest was, as the camera measured it, for a grown-up to follow from one day to the next.
-    const high = Math.round(this.highest * 100);
+    const high = Math.round(Math.max(0, ...this.jumpers.map(({ highest }) => highest)) * 100);
     const most = high > 0 ? ` The highest ${this.lifting ? 'foot was' : 'jump took their hips'} ${high}% of their leg length ${this.lifting ? 'off the floor' : 'up'}.` : '';
-    byElementId('finish-line').textContent = `${this.chosen.name} ${how} ${plural(stats.jumps, 'time')}${big}.${most}`;
+    // With several playing, each one's share of the jumps, by their character's name.
+    const cast = this.cast;
+    const each = this.grouped ? ` ${this.jumpers.map(({ index, jumps }) => `${cast[index].name} ${jumps}`).join(', ')}.` : '';
+    const who = this.grouped ? 'Together you' : this.chosen.name;
+    byElementId('finish-line').textContent = `${who} ${how} ${plural(stats.jumps, 'time')}${big}.${each}${most}`;
     byElementId('finish-prizes').textContent = this.prizeWords();
     this.fillTallyCards(byElementId('finish-tally'), [
       { name: 'jumps', icon: this.lifting ? 'kneeLift' : 'jump', label: this.lifting ? 'Lifts' : 'Jumps', value: stats.jumps },
@@ -508,15 +548,14 @@ class SwampSplash extends BodyGame {
    * startAgain in core/body/game.js.
    */
   leaveRound() {
-    this.air = null;
+    this.stillJumpers();
     this.hideFilm();
     this.sound.stopSwamp();
-    this.view.setBody({});
   }
 
   jumpAgain() {
     this.confetti.stop();
-    this.reader.forget();
+    for (const { reader } of this.players) reader.forget();
     this.openCameraThen(() => this.beginBodyCheck());
   }
 
@@ -548,6 +587,7 @@ mountBodyShell({
   chooseTitle: 'Who’s jumping in the swamp today?',
   chooseSide: `
       <p class="choose-tip">Jump, and mud flies up onto the window. Jump higher, and more of it does. Get the window muddy enough before the rain cloud gets here.</p>
+      ${groupChoice()}
       <button id="swamp-start" class="big-button" type="button">Let’s jump!</button>`,
   hud: `
   <header id="swamp-top" class="swamp-top">

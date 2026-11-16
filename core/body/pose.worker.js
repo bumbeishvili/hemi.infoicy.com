@@ -4,12 +4,19 @@
 //
 // Hands are far too small to read in a picture of a whole body, so a game can also send a
 // close-up of the area around a wrist, which goes through the hand model.
+//
+// It looks for one person, unless a game says how many are playing in front of this camera: then it looks for
+// that many, and reports all it finds. Which of them is which player is worked out in core/body/people.js.
 import { HandLandmarker, PoseLandmarker } from '../../vendor/mediapipe/vision_bundle.mjs';
 import { prepareToLoad, visionFiles } from '../vision-files.js';
 
 let pose = null;
 let hand = null;
 let lastTimestamp = -1;
+const MOST_PEOPLE = 4;
+let people = 1; // How many bodies to look for.
+let changing = Promise.resolve(); // A change to that, which a frame waits for.
+const peopleFrom = (count) => Math.min(MOST_PEOPLE, Math.max(1, Math.round(Number(count)) || 1));
 
 const nextTimestamp = (wanted) => {
   lastTimestamp = Math.max(wanted, lastTimestamp + 1);
@@ -29,7 +36,7 @@ async function createLandmarkers() {
       pose = await PoseLandmarker.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: poseModel, delegate },
         runningMode: 'VIDEO',
-        numPoses: 1,
+        numPoses: people,
         minPoseDetectionConfidence: 0.5,
         minPosePresenceConfidence: 0.5,
         minTrackingConfidence: 0.5,
@@ -73,6 +80,7 @@ function readHand({ side, bitmap, box }) {
 
 self.onmessage = async ({ data }) => {
   if (data.type === 'init') {
+    people = peopleFrom(data.people);
     try {
       const delegate = await createLandmarkers();
       self.postMessage({ type: 'ready', delegate });
@@ -82,15 +90,30 @@ self.onmessage = async ({ data }) => {
     return;
   }
 
+  // A game has said how many are playing in front of this camera.
+  if (data.type === 'people') {
+    const count = peopleFrom(data.count);
+    if (count === people || !pose) {
+      people = count;
+      return;
+    }
+    people = count;
+    changing = changing.then(() => pose.setOptions({ numPoses: count })).catch((error) => {
+      self.postMessage({ type: 'error', message: String(error?.message ?? error) });
+    });
+    return;
+  }
+
   if (data.type === 'frame') {
     const { bitmap, timestamp, width, height, closeUps = [] } = data;
     try {
+      await changing;
       const found = pose.detectForVideo(bitmap, nextTimestamp(timestamp));
-      const body = found.landmarks[0]
-        ? { image: toPoints(found.landmarks[0]), world: toPoints(found.worldLandmarks[0]) }
-        : null;
+      // Everyone it found, in no particular order, and the first of them for a game with one player.
+      const bodies = found.landmarks.map((landmarks, index) => ({ image: toPoints(landmarks), world: toPoints(found.worldLandmarks[index]) }));
+      const body = bodies[0] ?? null;
       const hands = closeUps.map(readHand);
-      self.postMessage({ type: 'result', body, hands, timestamp, aspect: width / height });
+      self.postMessage({ type: 'result', body, bodies, hands, timestamp, aspect: width / height });
     } catch (error) {
       self.postMessage({ type: 'error', message: String(error?.message ?? error) });
     } finally {

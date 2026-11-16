@@ -5,6 +5,7 @@
   {"id": "move-left", "text": "Move to your left", "ka": "მარცხნივ გადადი"},
   {"id": "move-right", "text": "Move to your right", "ka": "მარჯვნივ გადადი"},
   {"id": "can-see-you", "text": "I can see all of you! Get ready!", "ka": "მთლიანად გხედავ! მოემზადე!"},
+  {"id": "side-by-side", "text": "Stand side by side, where I can see all of you", "ka": "გვერდიგვერდ დადექით, რომ ყველას დაგინახოთ"},
   {"id": "come-back", "text": "Come back where I can see you", "ka": "დაბრუნდი, რომ დაგინახო"},
   {"id": "see-feet", "text": "Step back so I can see your feet", "ka": "უკან დაიხიე, რომ ფეხები დავინახო"},
   {"id": "waiting", "text": "Take your time. I’ll wait for you.", "ka": "ნუ იჩქარებ. დაგელოდები.", "speak": "Take your time. I'll wait for you."},

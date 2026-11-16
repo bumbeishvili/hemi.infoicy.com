@@ -52,6 +52,7 @@ export class TrackingCamera {
     this.busy = false;
     this.lastResultAt = 0;
     this.delegate = null;
+    this.people = 1; // How many people a body tracker is to look for: see setPeople.
     // How far the camera and its tracker have got, each from 0 to 1, for the bar on the loading card
     // (core/loading.js), which hears of each change through onProgress.
     this.progress = { camera: 0, tracker: 0 };
@@ -66,6 +67,16 @@ export class TrackingCamera {
 
   get aspect() {
     return this.video.videoWidth / this.video.videoHeight || 16 / 9;
+  }
+
+  /**
+   * How many people are playing in front of this camera, for a tracker that can look for more than one: the
+   * body tracker. It's told now if it's loaded, and as it loads if it isn't.
+   */
+  setPeople(count) {
+    if (count === this.people) return;
+    this.people = count;
+    if (this.delegate) this.worker.postMessage({ type: 'people', count });
   }
 
   async start() {
@@ -143,7 +154,7 @@ export class TrackingCamera {
           else failToStart(data.message);
         }
       };
-      this.worker.postMessage({ type: 'init' });
+      this.worker.postMessage({ type: 'init', people: this.people });
     });
     return this.trackerReady;
   }
