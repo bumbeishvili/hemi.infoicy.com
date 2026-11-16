@@ -218,7 +218,7 @@ export class Swamp {
         this.golden = true;
       }
     }
-    this.splat(Math.min(0.4, share));
+    this.splat(share);
     // A star jump throws mud to every corner as well.
     if (star && rules.star) {
       stats.starJumps += 1;
@@ -277,6 +277,11 @@ export class Swamp {
   rain(dt) {
     const { shower } = this;
     shower.in -= dt;
+    // It waits for there to be mud to wash: a shower over a clean window would be nothing to see.
+    if (shower.at === null && shower.in <= SHOWER.warning && this.muddy === 0) {
+      shower.in = SHOWER.warning;
+      return;
+    }
     if (shower.at === null && shower.in <= SHOWER.warning) {
       // Over the muddiest strip, so that it always washes something.
       let [best, most] = [0, -1];
@@ -321,10 +326,17 @@ export class Swamp {
     if (heron.coming === null) {
       heron.in -= dt;
       if (heron.in > 0 || this.muddy === 0) return;
-      // To the middle of a muddy part, so that there's something there to wipe.
+      // To a muddy part: of a few muddy squares, the one with the most mud round it, so that there's plenty
+      // there to wipe, and not one square the wind left.
       const muddy = [...this.mud.keys()].filter((cell) => this.mud[cell]);
-      const cell = muddy[Math.floor(this.random() * muddy.length)];
-      heron.at = { x: (cell % GRID.wide) + 0.5, y: Math.floor(cell / GRID.wide) + 0.5 };
+      let [best, most] = [null, -1];
+      for (let n = 0; n < SPLASH.tries; n += 1) {
+        const cell = muddy[Math.floor(this.random() * muddy.length)];
+        const at = { x: (cell % GRID.wide) + 0.5, y: Math.floor(cell / GRID.wide) + 0.5 };
+        const count = this.blob(at.x, at.y, HERON.reach).filter((each) => this.mud[each]).length;
+        if (count > most) [best, most] = [at, count];
+      }
+      heron.at = best;
       heron.coming = HERON.coming;
       this.onEvent({ type: 'heron', x: heron.at.x / GRID.wide, y: heron.at.y / GRID.high, seconds: HERON.coming });
       return;

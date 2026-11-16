@@ -631,6 +631,33 @@ test('a jump while the heron is coming scares it off, and nothing is wiped', () 
   until(swamp, 'heron', 1);
 });
 
+test('the shower waits for there to be mud to wash, and then is seen coming', () => {
+  const swamp = playing({ level: 4, gentle: true });
+  run(swamp, swampLevel(4).shower * 2);
+  assert.equal(swamp.count('shower-coming'), 0, 'nothing is announced over a clean window');
+  assert.equal(swamp.count('shower'), 0);
+  swamp.land(SMALL);
+  const coming = until(swamp, 'shower-coming', 1);
+  assert.ok(coming, 'with mud on the window it comes straight away, having waited');
+  until(swamp, 'shower', SHOWER.warning + 1);
+  assert.ok(swamp.last('clean', 'shower').cells.length > 0, 'and washes something');
+});
+
+test('the heron comes to where there\'s plenty of mud, and not to one square the wind left', () => {
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const swamp = playing({ level: 6, gentle: true, seed });
+    // A big muddy part on the left, by hand, and single muddy squares scattered over the rest.
+    for (let y = 2; y < 16; y += 1) for (let x = 2; x < 12; x += 1) swamp.mud[y * GRID.wide + x] = 1;
+    for (const cell of [20, 60, 125, 190, 250, 315, 380, 445, 510, 570]) swamp.mud[cell] = 1;
+    swamp.muddy = [...swamp.mud].filter(Boolean).length;
+    const heron = until(swamp, 'heron', HERON.every + 2);
+    const [x, y] = [heron.x * GRID.wide, heron.y * GRID.high];
+    assert.ok(x > 1 && x < 13 && y > 1 && y < 17, `seed ${seed}: it's coming to the big muddy part (${x}, ${y})`);
+    const wiped = until(swamp, 'clean', HERON.coming + 2);
+    assert.ok(wiped.cells.length >= 20, `seed ${seed}: and wipes plenty: ${wiped.cells.length} squares`);
+  }
+});
+
 test('the heron doesn\'t come to a clean window, and comes once there\'s mud', () => {
   const swamp = playing({ level: 6, gentle: true });
   run(swamp, HERON.every * 3);
