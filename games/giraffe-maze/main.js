@@ -785,8 +785,9 @@ class MazeGame {
    */
   mazesOut(id) {
     const { run } = this;
-    // The child's own: the mazes behind them, and this one too once they're out of it, or carried out of it.
-    if (id === this.friends.room.you) return run.over ? run.mazes : run.index + (['out', 'carried', 'sliding'].includes(run.phase) ? 1 : 0);
+    // The child's own: the mazes behind them, and this one too once they're out of it, or carried out of it. In the
+    // countdown, before the first maze has begun, that's none.
+    if (id === this.friends.room.you) return run.over ? run.mazes : Math.max(0, run.index) + (['out', 'carried', 'sliding'].includes(run.phase) ? 1 : 0);
     if (this.friends.results.has(id)) return run.mazes;
     const at = this.friendWalkers.get(id)?.at;
     if (!at) return 0;

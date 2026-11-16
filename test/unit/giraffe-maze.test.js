@@ -821,6 +821,26 @@ test('together, a child still in the maze a friend has found the way out of goes
   assert.ok(Math.hypot(mine.position.x - start.x, mine.position.y - start.y) < 0.01);
 });
 
+test('together, a child carried on while leading the way with an open hand stops where it is, and the hand does nothing more there', () => {
+  const [mine] = Object.values(race(['aaaa'], { mazes: 2 }));
+  mine.begin();
+  // Leading the way for a moment, so the character is on the move as a friend finds the way out.
+  let t = 0;
+  for (; t < 1; t += FRAME) mine.update(FRAME, leader(mine, t));
+  assert.deepEqual([mine.phase, mine.moving], ['walking', true]);
+  const at = { ...mine.position };
+  const { walked, fruit } = mine.stats;
+  assert.equal(mine.carriedOut(), true);
+  // The hand goes on leading, open, all through the cheer, as a child's would: the character stays put, and walks
+  // no further, eats nothing and doesn't get out by itself.
+  for (; mine.phase === 'carried'; t += FRAME) {
+    mine.update(FRAME, leader(mine, t));
+    assert.deepEqual(mine.position, at);
+    assert.equal(mine.moving, false);
+  }
+  assert.deepEqual([mine.phase, mine.stats.walked, mine.stats.fruit, mine.stats.out, mine.stats.carried], ['sliding', walked, fruit, 0, 1]);
+});
+
 test('carried out of the last maze, the game is over there, and nothing carries a child who isn\'t walking a maze', () => {
   const [mine] = Object.values(race(['aaaa'], { mazes: 2 }));
   // Before the game has begun there's no maze being walked.
