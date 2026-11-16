@@ -49,7 +49,9 @@ const FRIENDS_SECONDS = { 20: 60, 40: 120, 60: 180 };
 const TEAM_TITLE = 'You popped them together!';
 const TEAM_SUMS_TITLE = 'You did the sums together!';
 const TEAM_LOST_TITLE = 'Time’s up!';
-const teamCard = { title: TEAM_TITLE };
+// Which of them it is is worked out each time the card is filled in, as it can change after the game is over: see
+// teamLost.
+const teamCard = { game: null };
 const POP_WORDS = {
   toggle: 'Play with a friend',
   make: 'Make a game',
@@ -61,7 +63,7 @@ const POP_WORDS = {
   against: 'Against each other',
   howTogether: 'Tell your friend the code. Then you both press <b>Let’s pop!</b>, and pop the balloons together: every pop counts for your team.',
   get teamTitle() {
-    return teamCard.title;
+    return teamCard.game?.teamTitle ?? TEAM_TITLE;
   },
   leave: 'Leave this game',
   privacy: 'Only your name, who you play as, whether you chose together or against each other, where your glove is and what it pops go to your friends. The camera picture stays on this computer.',
@@ -202,6 +204,13 @@ class BalloonGame {
       resultsAfter: document.querySelector('#screen-finish .finish-hero'),
       finishTitle: document.querySelector('#screen-finish h2'),
     });
+    // Together, the finish card is the team's, and it's filled in again whenever a friend's ending arrives.
+    teamCard.game = this;
+    const showResults = this.friends.showResults.bind(this.friends);
+    this.friends.showResults = () => {
+      showResults();
+      this.showTeamCard();
+    };
     const game = this;
     this.debug = {
       balloons: this.field,
@@ -453,8 +462,11 @@ class BalloonGame {
     // Together, the team has so many to pop between them before the time is up, and with the host's game on
     // Gentle there's no clock at all: endless. closing is the moment after the time is up, while the last pops
     // from friends' games come in.
-    this.team = friendly?.team ? { goal: 0, closing: null, won: false } : null;
-    this.timed = friendly ? { seconds, left: seconds, endless: Boolean(this.team && host.gentle) } : null;
+    // racing is which friends have been seen playing this game, to tell one whose game is over from one who
+    // hasn't begun: see friendOver.
+    this.team = friendly?.team ? { goal: 0, closing: null, won: false, racing: new Set() } : null;
+    // endsAt is when the time is up by the clock on the wall, for a team: see begin().
+    this.timed = friendly ? { seconds, left: seconds, endless: Boolean(this.team && host.gentle), endsAt: null } : null;
     this.friendsMaths = host ? host.maths : null;
     // Everyone plays with the host's balloons. The host's game runs them, and the others' follow it.
     this.shared = friendly ? { host: friendly.hosting } : null;
@@ -483,7 +495,6 @@ class BalloonGame {
     this.burns = 0;
     this.setUpMaths();
     if (this.team) this.team.goal = teamGoal(size, { maths: this.mathsOn });
-    teamCard.title = this.mathsOn ? TEAM_SUMS_TITLE : TEAM_TITLE;
     this.friends.titles = this.mathsOn ? { first: 'You got the most right!', other: 'Great sums!' } : { first: 'You popped the most!', other: 'Great popping!' };
     this.showProgress();
     // Prizes only come from level 2, so there's no tally before then.
@@ -494,6 +505,10 @@ class BalloonGame {
   begin() {
     this.goAt = performance.now();
     if (this.deck) this.questionIn = FIRST_QUESTION_AFTER;
+    // A team's time is up at the same moment on every computer: so long after "GO!", by the clock on the wall,
+    // whatever each computer was doing in between, such as a grown-up's panel open on one of them.
+    const { timed } = this;
+    if (this.team && timed && !timed.endless) timed.endsAt = this.goAt + timed.seconds * 1000;
   }
 
   update(dt, snapshot) {
@@ -517,7 +532,8 @@ class BalloonGame {
     if (this.shared?.host) this.friends.sendMove('world', this.worldState(), this.sinceGo);
     else this.showHostsSum();
     this.showFriendsGloves(dt);
-    if (!timed.endless) timed.left = Math.max(0, timed.left - dt);
+    if (timed.endsAt !== null) timed.left = Math.max(0, (timed.endsAt - performance.now()) / 1000);
+    else if (!timed.endless) timed.left = Math.max(0, timed.left - dt);
     this.showProgress();
     if (team) this.updateTeam(dt);
     else if (timed.left === 0) this.session.finish();
@@ -531,7 +547,7 @@ class BalloonGame {
     const { team, timed } = this;
     // Once it has ended on a friend's computer it's over for the team, the way it ended there.
     const you = this.friends.room.you;
-    const theirs = [...this.friends.results].find(([id]) => id !== you)?.[1];
+    const theirs = [...this.friends.results].find(([id]) => id !== you)?.[1] ?? this.friendOver();
     if (theirs ? theirs.won : this.teamTotal >= team.goal) {
       team.won = true;
       this.session.finishLine = DID_IT_TOGETHER;
@@ -543,6 +559,66 @@ class BalloonGame {
       if (team.closing <= 0) this.endLost();
     } else if (timed.left === 0) {
       team.closing = TEAM.grace;
+    }
+  }
+
+  /**
+   * Together: a friend whose game is over, though how it ended never got here, as when this computer's connection
+   * went for a moment just then. The room still says who's playing and who has finished. With time still on the
+   * clock, or no clock, their game can only have ended because the team had enough: that's taken as how they
+   * finished, and returned. With the time nearly up, this computer's own clock decides, as theirs did.
+   */
+  friendOver() {
+    const { team, timed, friends } = this;
+    for (const friend of friends.current?.friends ?? []) {
+      const member = friends.room.members.find((each) => each.id === friend.id);
+      if (!member || friend.gone) continue;
+      if (member.racing) team.racing.add(friend.id);
+      else if (team.racing.has(friend.id) && !friends.results.has(friend.id) && (timed.endless || timed.left > TEAM.grace + 1)) {
+        const result = { ms: Math.round(this.sinceGo), won: true, dropped: this.scores.get(friend.id) ?? 0 };
+        friends.results.set(friend.id, result);
+        return result;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Together: whether the team's game was lost. A game that ended lost here is won after all if it was won on a
+   * friend's computer, as when the team's last pop landed there just as the time was up here: every card says
+   * the same in the end.
+   */
+  get teamLost() {
+    const you = this.friends.room.you;
+    return this.lost && ![...this.friends.results].some(([id, result]) => id !== you && result.won);
+  }
+
+  get teamTitle() {
+    return this.teamLost ? TEAM_LOST_TITLE : this.mathsOn ? TEAM_SUMS_TITLE : TEAM_TITLE;
+  }
+
+  /**
+   * Together: the line on the finish card that says what the team did between them, and its big button. Filled
+   * in again whenever a friend's ending arrives, so a card that said the time was up says it was won after all.
+   */
+  showTeamCard() {
+    const { team } = this;
+    if (!team || !this.friends.current?.team) return;
+    const lost = this.teamLost;
+    // Won, the team had what it takes, even where the last of the scores never got to this computer.
+    const all = lost ? this.teamTotal : Math.max(this.teamTotal, team.goal);
+    const what = this.mathsOn ? 'got' : 'popped';
+    const things = this.mathsOn ? 'right' : 'balloons';
+    const story = byId('finish-story');
+    story.textContent = lost ? `You ${what} ${all} of ${team.goal} ${this.mathsOn ? 'right ' : ''}together.` : `You ${what} ${all} ${things} together!`;
+    story.hidden = false;
+    byId('finish-hero').textContent = String(all);
+    if (this.lost && !lost && !team.wonAfterAll) {
+      // It ended lost here and was won on a friend's computer: the card says so now, with the cheer it didn't have.
+      team.wonAfterAll = true;
+      this.session.hud.confetti.start();
+      const again = document.querySelector('#screen-finish .finish-actions .big-button');
+      if (again) again.textContent = this.session.shell?.againLabel ?? 'Play again';
     }
   }
 
@@ -699,23 +775,20 @@ class BalloonGame {
       .map(([kind, count]) => `${PRIZE_MARKS[kind]} ${count}`)
       .join('   ');
     const { team } = this;
-    // Together, the card is the team's: what everyone popped between them, and whether that was enough.
-    if (team) teamCard.title = this.lost ? TEAM_LOST_TITLE : this.mathsOn ? TEAM_SUMS_TITLE : TEAM_TITLE;
+    // Together, the card is the team's: what everyone popped between them, and whether that was enough. Its title
+    // and its line are filled in with the list of who popped what, now and whenever a friend's ending arrives:
+    // see showTeamCard.
     this.friends.showResults();
     const story = byId('finish-story');
     if (!this.friends.current) {
       document.querySelector('#screen-finish h2').textContent = this.lost ? AWAY_TITLE : FINISH;
       story.textContent = this.lost ? `${this.field.away} balloons floated off into the sky before ${this.field.goal} were popped. You popped ${total}.` : '';
-    } else if (team) {
-      const all = this.teamTotal;
-      const what = this.mathsOn ? 'got' : 'popped';
-      const things = this.mathsOn ? 'right' : 'balloons';
-      story.textContent = this.lost ? `You ${what} ${all} of ${team.goal} ${this.mathsOn ? 'right ' : ''}together.` : `You ${what} ${all} ${things} together!`;
     }
-    story.hidden = team ? false : !this.lost || Boolean(this.friends.current);
+    if (!team) story.hidden = !this.lost || Boolean(this.friends.current);
     // Too many floating away means that level again. A game with friends is on the host's level, so it
     // doesn't move the child's own level on.
-    return { hero: team ? this.teamTotal : total, noun: 'game', rows: { popped, wrong, prizes: caught }, won: !this.lost, countsForLevel: !this.friends.current };
+    const all = team ? (this.lost ? this.teamTotal : Math.max(this.teamTotal, team.goal)) : total;
+    return { hero: all, noun: 'game', rows: { popped, wrong, prizes: caught }, won: !this.lost, countsForLevel: !this.friends.current };
   }
 }
 
