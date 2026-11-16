@@ -662,6 +662,63 @@ test('taking turns, the same leg again is no step, until the other has had its t
   assert.deepEqual([...lift(either, 'left', 0.2, 0), ...lift(either, 'left', 0.2, 0.6)], ['left', 'left']);
 });
 
+/* ---------- marching, on what the real tracker reported ---------- */
+
+// What the real pose tracker reported, 15 times a second, for footage of a person lifting one foot and then the
+// other, and for the same person sliding each foot back along the floor: see each file's "about". They were made
+// for Rooftop Rope, and only hold the nose and the ankles.
+const lifts = JSON.parse(readFileSync(new URL('../fixtures/rooftop-rope-stands.json', import.meta.url)));
+const slides = JSON.parse(readFileSync(new URL('../fixtures/rooftop-rope-staggers.json', import.meta.url)));
+const mean = (list) => list.reduce((sum, value) => sum + value, 0) / list.length;
+
+/** Each foot's height off the floor in each frame, as a share of leg length, as the body reader gives it. */
+function footRises(clip) {
+  const standing = clip.frames.filter(({ t }) => t < 0.8);
+  const floor = { left: mean(standing.map(({ image }) => image[1][1])), right: mean(standing.map(({ image }) => image[2][1])) };
+  // Their hips aren't kept: they're about 0.57 of the way from the floor up to the nose.
+  const leg = 0.57 * ((floor.left + floor.right) / 2 - mean(standing.map(({ image }) => image[0][1])));
+  return clip.frames.map(({ t, image }) => ({ t, rises: { left: (floor.left - image[1][1]) / leg, right: (floor.right - image[2][1]) / leg } }));
+}
+
+/** The steps a line of some height reads in some footage, as 'side@seconds'. */
+function stepsIn(clip, line) {
+  const marcher = new Marcher({ line });
+  const steps = [];
+  for (const { t, rises } of footRises(clip)) {
+    const side = marcher.update(rises, t);
+    if (side) steps.push({ side, t });
+  }
+  return steps;
+}
+
+test('on the real tracker\'s readings of a person lifting each foot, every lift is one step with that leg, however slowly it comes up or long it\'s held', () => {
+  // The right foot goes up slowly from 1 to 9 seconds and the left from 10 to 18, then each is lifted 30
+  // centimetres and held for three and a half seconds, from 20 and from 26.5. Last, the right is lifted 8
+  // centimetres, from 34.
+  for (const line of [LIFT.medium, LIFT.high]) {
+    const steps = stepsIn(lifts, line);
+    assert.deepEqual(steps.map(({ side }) => side), ['right', 'left', 'right', 'left'], `at ${line}`);
+    const [first, second, third, fourth] = steps.map(({ t }) => t);
+    assert.ok(first > 1.5 && first < 4 && second > 10.5 && second < 13, `the slow lifts at ${first} and ${second}`);
+    // The quick lifts are read within half a second of beginning.
+    assert.ok(third >= 20 && third < 20.6 && fourth >= 26.5 && fourth < 27.1, `the quick lifts at ${third} and ${fourth}`);
+  }
+  // A foot only 8 centimetres up is a step for a child whose line is Low, and not otherwise.
+  assert.deepEqual(stepsIn(lifts, LIFT.low).map(({ side }) => side), ['right', 'left', 'right', 'left', 'right']);
+  // Standing still, before any of it, nothing is near any line.
+  for (const { t, rises } of footRises(lifts)) if (t < 0.9) assert.ok(Math.abs(rises.left) < 0.03 && Math.abs(rises.right) < 0.03, `${t}`);
+});
+
+test('on the real tracker\'s readings, a foot slid back along the floor isn\'t a step at Medium or High', () => {
+  // The camera sees a foot that's further off as a little higher in the picture, so one slid 40 centimetres back
+  // reads as about a tenth of a leg length up: under the Medium line, though not under the Low one.
+  const most = Math.max(...footRises(slides).flatMap(({ rises }) => [rises.left, rises.right]));
+  assert.ok(most > 0.08 && most < LIFT.medium, `${most}`);
+  assert.deepEqual(stepsIn(slides, LIFT.medium), []);
+  assert.deepEqual(stepsIn(slides, LIFT.high), []);
+  assert.equal(stepsIn(slides, LIFT.low).length, 2);
+});
+
 /* ---------- what it says ---------- */
 
 test('every line Hat Chase says has a voice file in both languages, and none is left over', () => {

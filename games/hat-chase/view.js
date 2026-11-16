@@ -26,10 +26,17 @@ const PATH = '#e8cf9c';
 const WATER = ['#7cc4ea', '#5aa9d6'];
 const STAR = { fill: '#ffd23f', edge: '#e0a800' };
 
-// Where things are on the screen, as shares of its width and height.
-const PLACE = { hero: 0.3, ground: 0.76, tall: 0.25 };
+// Where things are on the screen, as shares of its width and height. The character is to the left while it
+// walks, with the path ahead of it, beside the title card and the finish card, and in the middle to be chosen.
+const PLACE = { ground: 0.76, tall: 0.25 };
+const HERO_AT = { title: 0.14, choose: 0.5, play: 0.24, finish: 0.12 };
+// Before a game, how far ahead of the character the magpie waits, in metres: clear of each screen's cards.
+const WAITS_AT = { title: 11, choose: 2.6 };
+const PLACE_RATE = 4; // How quickly the character goes over to its place when the screen changes, a second.
 const SEEN_METRES = 17; // How much of the path a screen as wide as it is high and a half shows.
-const HEIGHTS = { leap: 1, big: 1.5, hop: 0.45, stone: 0.6, bounce: 2.4, star: 3.2, magpie: 2.9, high: 1.75, star0: 0.55 };
+// How high things are off the path, in metres. The magpie flies above the coach's film, which is in the bottom
+// right corner whenever something is asked of the child, so it's never hidden behind it.
+const HEIGHTS = { leap: 1, big: 1.5, hop: 0.45, stone: 0.6, bounce: 2.4, star: 3.2, magpie: 4.5, high: 1.75, star0: 0.55 };
 const FOLLOW = 7; // How quickly the view catches up with the character, a second.
 const FADE_SECONDS = 0.35; // Something picked up goes over this long.
 
@@ -41,6 +48,7 @@ export class ChaseView {
     this.time = 0;
     this.art = null; // The character's pictures, if they could be drawn.
     this.view = 'title';
+    this.place = HERO_AT.title; // Where across the screen the character is, which eases over when the screen changes.
     this.chase = null;
     this.clear();
     window.addEventListener('resize', () => this.resize());
@@ -101,7 +109,7 @@ export class ChaseView {
 
   /** Where a place on the path is on the screen, across. */
   across(x) {
-    return this.width * PLACE.hero + (x - this.camera) * this.metre;
+    return this.width * this.place + (x - this.camera) * this.metre;
   }
 
   /** Where the character is on the screen, for the words that come up beside it and for the tests. */
@@ -112,7 +120,7 @@ export class ChaseView {
 
   /** Where the magpie is on the screen, and whether that's in sight. */
   get magpieAt() {
-    const x = this.across(this.chase?.magpie.x ?? MAGPIE.start);
+    const x = this.across(this.chase?.magpie.x ?? WAITS_AT[this.view] ?? MAGPIE.start);
     return { x, y: this.ground - HEIGHTS.magpie * this.metre, seen: x < this.width - 12 };
   }
 
@@ -126,7 +134,7 @@ export class ChaseView {
         this.gone.set(`star-${event.star.index}`, 0);
         break;
       case 'stars':
-        this.effects.push({ kind: 'number', text: `+${event.count}`, x: hero, y: 2.3, age: 0, life: 1.1 });
+        this.effects.push({ kind: 'number', text: `+${event.count}`, x: hero + 1.3, y: 1.1, age: 0, life: 1.1 });
         break;
       case 'apples':
         this.gone.set(`tree-${chase.trees.indexOf(event.tree)}`, 0);
@@ -168,6 +176,10 @@ export class ChaseView {
     // The view goes with the character, catching it up smoothly, so a step doesn't jolt the land.
     this.camera += (wanted - this.camera) * (1 - Math.exp(-dt * FOLLOW));
     if (Math.abs(wanted - this.camera) < 0.001) this.camera = wanted;
+    // And over to its place for this screen, a little at a time, so the land never jumps.
+    const place = HERO_AT[this.view] ?? HERO_AT.play;
+    this.place += (place - this.place) * (1 - Math.exp(-dt * PLACE_RATE));
+    if (Math.abs(place - this.place) < 0.0005) this.place = place;
     for (const [key, age] of this.gone) this.gone.set(key, age + dt);
     for (const effect of this.effects) effect.age += dt;
     this.effects = this.effects.filter((effect) => effect.age < effect.life);
@@ -177,7 +189,7 @@ export class ChaseView {
   /* ---------- drawing ---------- */
 
   render() {
-    const { ctx, ratio, width: w, height: h } = this;
+    const { ctx, ratio } = this;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     this.drawLand();
     const { chase } = this;
@@ -193,9 +205,6 @@ export class ChaseView {
     if (chase) for (const thing of chase.course) this.drawInFront(thing);
     this.drawMagpie();
     this.drawEffects();
-    // The edges of the screen are never left bare, whatever its shape.
-    ctx.fillStyle = 'rgba(18, 48, 77, 0)';
-    ctx.fillRect(0, 0, w, h);
   }
 
   /** The sky, the hills going by, and the ground with the path along it. */
@@ -239,7 +248,7 @@ export class ChaseView {
     ctx.fillStyle = EARTH[0];
     ctx.fillRect(0, ground + h * 0.035, w, h * 0.012);
     // Tufts of grass and small flowers beside the path, each always in its own place.
-    const first = Math.floor(this.camera - (w * PLACE.hero) / metre) - 1;
+    const first = Math.floor(this.camera - (w * this.place) / metre) - 1;
     const last = first + Math.ceil(w / metre) + 2;
     for (let place = first; place <= last; place += 1) {
       const x = this.across(place + chance(place, 5));
@@ -377,12 +386,13 @@ export class ChaseView {
     water.addColorStop(0, WATER[0]);
     water.addColorStop(1, WATER[1]);
     ctx.fillStyle = water;
-    ctx.fillRect(left, ground - h * 0.012, right - left, h * 0.14);
+    // It runs on down to the bottom of the screen, as a stream across the path would.
+    ctx.fillRect(left, ground - h * 0.012, right - left, h - ground + h * 0.012);
     // Slow ripples, which only ever move a little.
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.lineWidth = 2;
     const sway = this.reducedMotion ? 0 : Math.sin(this.time * 0.9) * 4;
-    for (let row = 0; row < 3; row += 1) {
+    for (let row = 0; row < 6; row += 1) {
       const y = ground + h * (0.02 + row * 0.035);
       for (let x = left + 14 + row * 9; x < right - 22; x += 46) {
         ctx.beginPath();
@@ -466,9 +476,12 @@ export class ChaseView {
 
   /** What comes between the character and the child: the branch it ducks under, the hedgehog, the bees. */
   drawInFront(thing) {
-    if (!this.near(thing.at, thing.wide) || thing.state === 'cleared') return;
+    if (!this.near(thing.at, thing.wide)) return;
     const { ctx, ground, metre } = this;
     const { at, wide, kind } = thing;
+    // How far something that comes at the character has come: not at all until the character stops at it, and
+    // then as its time runs down. It stays where it had got to once the move is made.
+    const come = thing.fuse && thing.left !== undefined ? 1 - clamp(thing.left / thing.fuse, 0, 1) : 0;
     if (kind === 'branch') {
       const [left, right] = [this.across(at - 0.2), this.across(at + wide + 0.5)];
       const y = ground - this.heroTall() * 0.72;
@@ -487,22 +500,34 @@ export class ChaseView {
         ctx.fill();
       }
     } else if (kind === 'hedgehog') {
-      // It waits further along, curled up, and rolls nearer as its time runs down.
-      const share = thing.state === 'at' && thing.fuse ? 1 - clamp(thing.left / thing.fuse, 0, 1) : 0;
-      const x = this.across(at + wide - 0.1 - share * (wide + 0.3));
-      this.drawHedgehog(x, ground, metre * 0.42, this.reducedMotion ? 0 : share * 9);
+      // It waits further along, curled up, and rolls nearer as its time runs down. One that rolled into the
+      // character has rolled on by, and one that was jumped stays where it was, behind.
+      if (thing.missed) return;
+      const x = this.across(at + wide - 0.1 - come * (wide + 0.3));
+      this.drawHedgehog(x, ground, metre * 0.42, this.reducedMotion ? 0 : come * 9);
     } else if (kind === 'bees') {
-      // They come out of the hive and over, at head height, as their time runs down.
-      const share = thing.state === 'at' && thing.fuse ? 1 - clamp(thing.left / thing.fuse, 0, 1) : 0;
-      const ducked = thing.state === 'passing';
-      const middle = ducked ? this.across(at - 0.5) : this.across(at + wide - 0.2 - share * (wide + 0.6));
+      // They come out of the hive and over, at head height, as their time runs down, and once they're past
+      // they're gone.
+      if (thing.state === 'cleared') return;
+      // While the character is ducked down, they fly on over it and away behind.
+      const move = this.chase.hero.move;
+      const over = move?.thing === thing ? clamp(move.t / move.seconds, 0, 1) : 0;
+      const middle = this.across(lerp(at + wide - 0.2 - come * (wide + 0.6), at - 3.5, over));
       const y = ground - this.heroTall() * 0.8;
-      ctx.fillStyle = '#3b2f1d';
       for (let bee = 0; bee < 7; bee += 1) {
         const wobble = this.reducedMotion ? 0 : Math.sin(this.time * 5 + bee * 1.7) * metre * 0.08;
+        const [x, up] = [middle + (chance(bee, 21) - 0.5) * metre * 1.1, y + (chance(bee, 22) - 0.5) * metre * 0.6 + wobble];
+        // Each bee: pale wings, a yellow body and a dark stripe.
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.beginPath();
-        ctx.ellipse(middle + (chance(bee, 21) - 0.5) * metre * 0.9, y + (chance(bee, 22) - 0.5) * metre * 0.5 + wobble, metre * 0.07, metre * 0.05, 0, 0, Math.PI * 2);
+        ctx.ellipse(x, up - metre * 0.07, metre * 0.07, metre * 0.045, 0, 0, Math.PI * 2);
         ctx.fill();
+        ctx.fillStyle = '#f2b900';
+        ctx.beginPath();
+        ctx.ellipse(x, up, metre * 0.11, metre * 0.075, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#3b2f1d';
+        ctx.fillRect(x - metre * 0.02, up - metre * 0.07, metre * 0.045, metre * 0.14);
       }
     }
   }

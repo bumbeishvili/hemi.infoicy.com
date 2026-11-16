@@ -368,7 +368,8 @@ class HatChase extends BodyGame {
   onChaseEvent(event) {
     const { sound, view, chase } = this;
     view.on(event);
-    const beside = { x: 0.3, y: 0.34 };
+    // The words that say a move was seen come up ahead of the character, under where the magpie flies.
+    const beside = { x: 0.5, y: 0.52 };
     switch (event.type) {
       case 'jump':
         if (event.thing.kind === 'spring') sound.spring();
@@ -391,7 +392,7 @@ class HatChase extends BodyGame {
       case 'high':
         if (event.thing.high.feather) {
           sound.feather();
-          this.showSeen(SEEN_WORDS.feather, { x: 0.3, y: 0.26 });
+          this.showSeen(SEEN_WORDS.feather, beside);
         }
         break;
       case 'apples':

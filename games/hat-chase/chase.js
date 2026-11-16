@@ -46,10 +46,10 @@ const STAR_EVERY = 2; // A star on the path every so many metres of walking.
 export const KINDS = {
   stream: { needs: 'jump', wide: 1.6, seconds: 0.8, from: 1, stars: 1 },
   branch: { needs: 'squat', wide: 1.2, seconds: 0.9, from: 2, stars: 1 },
-  hedgehog: { needs: 'jump', wide: 1, seconds: 0.8, from: 4, stars: 2, fuse: true },
+  hedgehog: { needs: 'jump', wide: 2.2, seconds: 0.9, from: 4, stars: 2, fuse: true },
   stones: { needs: 'jump', wide: 4.2, seconds: 0.55, from: 5, stars: 3, times: 3 },
   spring: { needs: 'jump', wide: 5, seconds: 1.6, from: 6, stars: 1 },
-  bees: { needs: 'squat', wide: 1.2, seconds: 1.6, from: 7, stars: 2, fuse: true },
+  bees: { needs: 'squat', wide: 2.4, seconds: 1.6, from: 7, stars: 2, fuse: true },
 };
 // How long a hedgehog takes to roll in, or the bees to arrive, once the character has stopped: at the level each
 // first comes, and at level 10.
