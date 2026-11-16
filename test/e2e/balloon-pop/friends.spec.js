@@ -629,3 +629,57 @@ test('on their own straight after a team game, nothing of the team\'s is left: t
   expect(ben.errors).toEqual([]);
   await ben.context.close();
 });
+
+/* ---------- together: what isn't right yet ---------- */
+
+// Each of these fails with the game as it is now, and is marked as expected to fail. Once what it checks is put
+// right it passes, which shows as a failure, and the mark should come off.
+
+// The race server passes a game's ending on only to those connected at that moment, and nothing says it again to
+// someone who comes back. So a friend whose wifi went for a second just as the team won plays on, short of the
+// goal, and when their own clock runs out it ends lost for them.
+test.fail('together, a friend whose connection goes for a moment just as the team wins hears of it when it\'s back, and it ends won for them too', async ({ page, browser }) => {
+  test.setTimeout(300_000);
+  const ben = await anaAndBen(page, browser);
+  await poppedAlready(page, 25);
+  await expect(ben.page.locator('#chip-popped')).toHaveText('25 of 30');
+  // Ben's wifi goes for a moment, and in it Ana pops the last five.
+  await loseConnection(ben.page);
+  await poppedAlready(page, 30);
+  await waitForScreen(page, 'finish');
+  await expect(page.locator('#screen-finish h2')).toHaveText('You popped them together!');
+  // It's back a moment later, well before anyone counts as gone.
+  await connectionBack(ben.page);
+  await expect.poll(() => ben.page.evaluate(() => window.__game.session.screen), { timeout: 15_000 }).toBe('finish');
+  await expect(ben.page.locator('#screen-finish h2')).toHaveText('You popped them together!');
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
+});
+
+// Each computer decides for itself, and tells the others after. When one's time is up, and its moment for late pops
+// has gone, it ends lost. A pop on another computer whose clock is a little behind, landing before it hears that,
+// wins it there. One child sees "Time's up!", and the other is cheered.
+test.fail('together, when one computer\'s time is up just as the team\'s last pop lands on another, both end the same way', async ({ page, browser }) => {
+  test.setTimeout(300_000);
+  const ben = await anaAndBen(page, browser);
+  await poppedAlready(page, 29);
+  await expect(ben.page.locator('#chip-popped')).toHaveText('29 of 30');
+  // What comes to Ben's game is slow just now: a second and a half on the way.
+  await ben.page.evaluate(() => {
+    const { room } = window.__game.game.friends;
+    const hear = room.hear.bind(room);
+    room.hear = (text) => setTimeout(() => hear(text), 1500);
+  });
+  // Ana's time is up, and after its moment for late pops her game is over. Ben's clock still has time, and he
+  // pops the last one before he hears that hers is over.
+  await page.evaluate(() => {
+    window.__game.game.timed.left = 0.01;
+  });
+  await waitForScreen(page, 'finish');
+  await poppedAlready(ben.page, 1);
+  await waitForScreen(ben.page, 'finish');
+  const titles = await Promise.all([page, ben.page].map((each) => each.locator('#screen-finish h2').textContent()));
+  expect(titles[1]).toBe(titles[0]);
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
+});
