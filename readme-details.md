@@ -1585,7 +1585,7 @@ The child jumps in front of the camera, and their character, one of the ten, lan
 - **The rain cloud:** it comes (the default), or gentle, where no rain cloud comes.
 - **How high a big jump is:** the hips going up by 10%, 15% (the default) or 20% of the leg length, or for a child who lifts, the foot coming off the floor by 20%, 30% or 40% of it. That high throws the most mud there is, and less high throws less. This is the one setting of the game's own that goes on at once in the middle of a game, so a therapist can change it while watching the child. The others start the game again, from the check that the child can be seen.
 - **How the child jumps:** really jumping, which can be a star jump (the default), or lifting a knee or a foot, as slowly as they like, for a child who can stand but not jump, as above.
-- **How big a movement has to be,** as in every body game, is the smallest jump that counts.
+- **How big a movement has to be,** as in every body game, is the smallest jump that counts. It goes on to a game that's being played at once, and starts from that size again, whatever the line had come down to for this child.
 
 **Levels** ([games/swamp-splash/swamp.js](games/swamp-splash/swamp.js), `swampLevel` and `NEW_THINGS`). Each level wants a muddier window, from 40% of it at level 1 to 85% at level 10, and the rain cloud comes sooner, from 80 seconds to 60. On top of that, every level from 2 brings something new, which stays for the levels after it:
 

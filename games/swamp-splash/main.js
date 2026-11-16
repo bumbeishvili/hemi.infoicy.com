@@ -136,6 +136,15 @@ class SwampSplash extends BodyGame {
     this.view.setWalker(spec);
   }
 
+  settingChanged(change) {
+    // A new size for the smallest jump that counts starts from that size, and not from where it had come down
+    // to for this child: what the easing set is let go, as in the other body games.
+    if ('moveSize' in change) {
+      this.reader.personal = { jump: null, squat: null, leg: null, hand: null };
+      this.easing = new Easing(this.reader, 'jump');
+    }
+  }
+
   /** Whether this child lifts a knee or a foot, in place of jumping. */
   get lifting() {
     return this.settings.swampJump === 'lift';
