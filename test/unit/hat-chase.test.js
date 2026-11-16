@@ -899,11 +899,16 @@ test('a jump a moment early is not for a thing that wants bent knees', () => {
   const branch = chase.next;
   assert.equal(branch.kind, 'branch');
   walkToShortOf(chase, EARLY_JUMP - 0.1);
+  const stop = chase.stopAt;
   assert.equal(chase.jump(1), true);
   assert.equal(chase.hero.move.kind, 'hop');
+  // It isn't at the branch yet: the branch doesn't start waiting for it until it gets there.
+  assert.equal(chase.station, null);
+  assert.equal(branch.state, 'ahead');
   wait(chase, HOP_SECONDS + 1.5);
   assert.equal(chase.station, branch);
   assert.equal(branch.state, 'at');
+  assert.ok(Math.abs(chase.hero.x - stop) < 1e-6);
 });
 
 test('a bounce off a springboard becomes a star jump when the arms and legs go out a moment after', () => {

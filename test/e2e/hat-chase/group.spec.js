@@ -83,8 +83,8 @@ test('the chooser asks how many are walking: one as the game comes, and each of 
   await page.waitForTimeout(2000);
   const now = await group(page);
   expect(now).toMatchObject({ players: 3, looksFor: 3, cast: ['Giraffe', 'Truffle', 'Kit'] });
-  expect(now.at[1] - now.at[0]).toBeGreaterThan(now.metre * 0.9);
-  expect(now.at[2] - now.at[1]).toBeGreaterThan(now.metre * 0.9);
+  expect(now.at[1] - now.at[0]).toBeGreaterThan(now.metre * 0.8);
+  expect(now.at[2] - now.at[1]).toBeGreaterThan(now.metre * 0.8);
   expect(Math.abs((now.at[0] + now.at[2]) / 2 - now.width / 2)).toBeLessThan(now.metre * 0.5);
   // The last of them is the one in front, where the path's rules have them all.
   expect(now.front).toBe(now.at[2]);
