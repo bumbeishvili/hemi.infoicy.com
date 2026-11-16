@@ -745,3 +745,80 @@ test('Hat Chase comes with the magpie that can get away, and a grown-up can have
     for (const value of values) assert.ok(source.includes(`choice('${name}', '${value}'`), `${name} ${value}`);
   }
 });
+
+/* ---------- several walking together in front of one camera ---------- */
+
+test('with several walking together, each step takes them all on by its share: together they go as far as one child would', () => {
+  const alone = setup().chase;
+  const pair = setup({ walkers: 2 }).chase;
+  assert.equal(alone.walkers, 1);
+  assert.equal(pair.walkers, 2);
+  // One step from one of two is half a step along the path.
+  assert.equal(pair.step('left', 0), true);
+  wait(pair, 1);
+  assert.ok(Math.abs(pair.hero.x - STEP.length / 2) < 1e-6, `at ${pair.hero.x}`);
+  // And a step from each is a whole one, as one child's step is.
+  assert.equal(pair.step('right', 1), true);
+  wait(pair, 1);
+  alone.step('left');
+  wait(alone, 1);
+  assert.ok(Math.abs(pair.hero.x - alone.hero.x) < 1e-6, `${pair.hero.x} and ${alone.hero.x}`);
+  // Four of them, one step each: the same again.
+  const four = setup({ walkers: 4 }).chase;
+  for (const by of [0, 1, 2, 3]) {
+    four.step(by % 2 ? 'right' : 'left', by);
+    wait(four, 0.5);
+  }
+  assert.ok(Math.abs(four.hero.x - STEP.length) < 1e-6, `at ${four.hero.x}`);
+  // Never fewer than one, whatever is asked.
+  assert.equal(new Chase({ walkers: 0 }).walkers, 1);
+});
+
+test('each of them has their own count of steps, and the legs are counted for everyone', () => {
+  const { chase, events } = setup({ walkers: 3 });
+  assert.deepEqual(chase.stats.by, [0, 0, 0]);
+  chase.step('left', 0);
+  wait(chase, 0.3);
+  chase.step('right', 2);
+  wait(chase, 0.3);
+  chase.step('left', 2);
+  wait(chase, 0.3);
+  assert.deepEqual(chase.stats.by, [1, 0, 2]);
+  assert.equal(chase.stats.steps, 3);
+  assert.equal(chase.stats.left, 2);
+  assert.equal(chase.stats.right, 1);
+  // Whose step it was is said, for their character to show it.
+  assert.deepEqual(events.filter(({ type }) => type === 'step').map(({ by }) => by), [0, 2, 2]);
+  // One child's game counts its steps as their own.
+  const alone = setup().chase;
+  alone.step('left');
+  assert.deepEqual(alone.stats.by, [1]);
+});
+
+test('two marching at once are not held back: no more than two whole steps wait, however many take them', () => {
+  const { chase } = setup({ walkers: 2 });
+  // Eight quick half steps with no time going by: four whole steps asked for, and two are kept.
+  let taken = 0;
+  for (let step = 0; step < 8; step += 1) taken += Number(chase.step(step % 2 ? 'right' : 'left', step % 2));
+  assert.equal(taken, 4);
+  assert.ok(Math.abs(chase.hero.walkTo - STEP.waiting * STEP.length) < 1e-6);
+});
+
+test('anyone\'s jump gets everyone past a thing in the way, and a second jump just after is not a second thing', () => {
+  const { chase } = setup({ walkers: 2 });
+  let side = 'left';
+  for (let i = 0; i < 800 && !chase.station; i += 1) {
+    chase.step(side, i % 2);
+    side = side === 'left' ? 'right' : 'left';
+    wait(chase, 0.25);
+  }
+  assert.ok(chase.station, 'they have come to something');
+  const first = chase.station;
+  const needs = first.needs;
+  const act = () => (needs === 'jump' ? chase.jump(1.2) : needs === 'squat' ? chase.squat() : chase.jump(1.2));
+  assert.equal(act(), true);
+  // The other one's, a moment later, while everyone is on their way past: nothing.
+  wait(chase, 0.1);
+  assert.equal(act(), false);
+  assert.equal(chase.stats.cleared + chase.stats.jumps >= 1, true);
+});

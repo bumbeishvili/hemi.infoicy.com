@@ -6,7 +6,7 @@
 // core/body/game.js. The rules are in chase.js, the marching is read in march.js, and what it looks like is in
 // view.js.
 import { Easing } from '../../core/body/easing.js';
-import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
+import { BODY_SAY, BodyGame, byElementId, groupChoice } from '../../core/body/game.js';
 import { ROSTER } from '../../core/body/roster.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { BIG_JUMP, Chase, HELP_AFTER, newAt as newAtLevel } from './chase.js';
@@ -71,9 +71,10 @@ class HatChase extends BodyGame {
       createSound: (options) => new ChaseSound(options),
     });
     this.chase = null;
-    this.marcher = new Marcher();
-    this.air = null; // A jump that's going up: { since, peak }.
-    this.easing = { jump: null, squat: null };
+    // Whoever is walking: one child as the game comes, or several in front of one camera (core/body/people.js).
+    // Each is { index, reader, marcher, air, easing }: their own reader of moves, their own marcher, their own
+    // jump on its way up ({ since, peak }), and what counts as a jump and a bend coming down to meet them.
+    this.walkers = [];
     this.timer = 0;
     this.countLeft = 0;
     this.idleFor = 0;
@@ -86,10 +87,38 @@ class HatChase extends BodyGame {
     return newAtLevel(level);
   }
 
+  /** One of those walking, as this game keeps them: see walkers. */
+  walkerOf(index = 0) {
+    this.walkers[index] ??= this.newWalker(index);
+    return this.walkers[index];
+  }
+
+  newWalker(index) {
+    const reader = this.players[index]?.reader ?? this.reader;
+    return {
+      index,
+      reader,
+      marcher: new Marcher({ line: this.liftLine, turns: this.settings.chaseLegs === 'turns' }),
+      air: null,
+      easing: { jump: new Easing(reader, 'jump'), squat: new Easing(reader, 'squat') },
+    };
+  }
+
+  /** The first walker's marcher and jump: the child's, when one plays. The grown-ups' panel and the tests read them. */
+  get marcher() {
+    return this.walkerOf(0).marcher;
+  }
+
+  get air() {
+    return this.walkerOf(0).air;
+  }
+
   setUp() {
     this.view = new ChaseView(byElementId('game'));
     this.stage = this.view;
     this.view.setView('title');
+    // How many are walking, on the chooser: each has a character, in the order they stand.
+    this.watchGroupChoice(() => this.view.setWalkers(this.cast));
 
     byElementId('start').addEventListener('click', () => {
       this.sound.unlock();
@@ -125,20 +154,24 @@ class HatChase extends BodyGame {
       get chase() {
         return game.chase;
       },
+      // Everyone walking, with several in front of one camera: each one's marcher and jump.
+      get walkers() {
+        return game.walkers;
+      },
     };
   }
 
-  showChosen(spec) {
-    this.view.setWalker(spec);
+  showChosen() {
+    this.view.setWalkers(this.cast);
   }
 
   settingChanged(change) {
     // A new line for the knees starts from that line, and not from where it had come down to for this child.
-    if ('chaseLift' in change) this.marcher.setLine(this.liftLine);
-    if ('chaseLegs' in change) this.marcher.turns = this.settings.chaseLegs === 'turns';
+    if ('chaseLift' in change) for (const { marcher } of this.walkers) marcher.setLine(this.liftLine);
+    if ('chaseLegs' in change) for (const { marcher } of this.walkers) marcher.turns = this.settings.chaseLegs === 'turns';
     // A new size for the smallest jump and bend that count starts from that size too, as in the other body games.
     if ('moveSize' in change) {
-      this.reader.personal = { jump: null, squat: null, leg: null, hand: null };
+      for (const { reader } of this.players) reader.personal = { jump: null, squat: null, leg: null, hand: null };
       this.newEasing();
     }
   }
@@ -153,15 +186,15 @@ class HatChase extends BodyGame {
     return this.settings.chaseJump === 'arms';
   }
 
+  /** What counts as a jump and a bend starts again from the size chosen, for everyone walking. */
   newEasing() {
-    this.easing = { jump: new Easing(this.reader, 'jump'), squat: new Easing(this.reader, 'squat') };
+    for (const walker of this.walkers) walker.easing = { jump: new Easing(walker.reader, 'jump'), squat: new Easing(walker.reader, 'squat') };
   }
 
   /* ---------- the body ---------- */
 
-  /** How big the jump is right now: 1 is the smallest that counts, and BIG_JUMP is a big one. See BIG_RISE. */
-  jumpSize() {
-    const { reader } = this;
+  /** How big a walker's jump is right now: 1 is the smallest that counts, and BIG_JUMP is a big one. See BIG_RISE. */
+  jumpSize({ reader } = this.walkerOf(0)) {
     const least = reader.jumpNeeded;
     const rise = reader.jumpEffort ?? 0;
     return 1 + (Math.max(0, rise - least) / Math.max(0.01, BIG_RISE - least)) * (BIG_JUMP - 1);
@@ -172,38 +205,51 @@ class HatChase extends BodyGame {
    * do what the thing in the way wants. The character shows what the child is doing, there and then.
    */
   onMoves(moves, now) {
-    const { reader, view, chase } = this;
+    this.readWalker(this.walkerOf(0), moves, now);
+  }
+
+  /**
+   * With several walking in front of one camera, each one's moves are read on their own. Everyone's steps take
+   * them all along, each by its share, and anyone's jump, bend or reach is for all of them: see Chase.
+   */
+  onPlayerMoves(player, moves, now) {
+    this.readWalker(this.walkerOf(player.index), moves, now);
+  }
+
+  readWalker(walker, moves, now) {
+    const { view, chase } = this;
+    const { reader } = walker;
     const playing = this.screen === 'playing' && chase?.state === 'play';
     const crouch = clamp((reader.sink ?? 0) / Math.max(0.001, reader.squatNeeded), 0, 1);
-    view.setBody({ crouch: playing ? crouch : 0, reach: playing ? reader.skyShare ?? 0 : 0 });
+    view.setBody({ crouch: playing ? crouch : 0, reach: playing ? reader.skyShare ?? 0 : 0 }, walker.index);
     if (!playing) return;
 
-    const side = this.marcher.update(reader.footRises, now, { inAir: reader.inAir || Boolean(this.air) });
-    if (side && chase.step(side)) {
+    const side = walker.marcher.update(reader.footRises, now, { inAir: reader.inAir || Boolean(walker.air) });
+    if (side && chase.step(side, walker.index)) {
       this.idleFor = 0;
       this.sound.step(side);
     }
     for (const { move } of moves) {
-      if (move === 'flying') this.takeOff(now, false);
+      if (move === 'flying') this.takeOff(walker, now, false);
       // A star, arms and legs out, is a jump whichever way the child jumps: it can be stepped into.
-      else if (move === 'starBurst') this.takeOff(now, true);
+      else if (move === 'starBurst') this.takeOff(walker, now, true);
       else if (move === 'stomp') this.bend();
-      else if (move === 'skyCharge') this.armsUp(now);
+      else if (move === 'skyCharge') this.armsUp(walker, now);
     }
     // A jump is followed a little way up, to see how high it goes: a big one reaches what's above a stream.
-    if (this.air) {
-      this.air.peak = Math.max(this.air.peak, this.jumpSize());
-      if (chase.grow(this.air.peak)) this.newEasing();
-      if (now - this.air.since >= AIR_SECONDS || !reader.inAir) this.air = null;
+    if (walker.air) {
+      walker.air.peak = Math.max(walker.air.peak, this.jumpSize(walker));
+      if (chase.grow(walker.air.peak)) this.newEasing();
+      if (now - walker.air.since >= AIR_SECONDS || !reader.inAir) walker.air = null;
     }
   }
 
-  takeOff(now, star) {
+  takeOff(walker, now, star) {
     const { chase } = this;
-    const size = star ? Math.max(1.2, this.jumpSize()) : this.jumpSize();
+    const size = star ? Math.max(1.2, this.jumpSize(walker)) : this.jumpSize(walker);
     const wanted = chase.station?.needs === 'jump';
     if (!chase.jump(size, { star })) return;
-    this.air = { since: now, peak: size };
+    walker.air = { since: now, peak: size };
     this.idleFor = 0;
     if (wanted) this.newEasing();
   }
@@ -217,7 +263,7 @@ class HatChase extends BodyGame {
    * Both arms up high: the apples come down, or, for a child who can't jump, it's the jump. Theirs is always a big
    * one, as there's no telling a higher reach from a lower: the star over a stream is theirs to catch too.
    */
-  armsUp(now) {
+  armsUp(walker, now) {
     const { chase } = this;
     if (!this.armsJump || chase.station?.needs !== 'jump') {
       chase.reach();
@@ -233,7 +279,8 @@ class HatChase extends BodyGame {
     const now = performance.now();
     if (now - (this.panelAt ?? 0) < 200) return;
     this.panelAt = now;
-    const { reader, marcher } = this;
+    // With several walking, it's the first of them the panel tells of.
+    const { reader, marcher } = this.walkerOf(0);
     const percent = (share) => `${Math.round(share * 1000) / 10}%`;
     const rises = reader.footRises ?? { left: 0, right: 0 };
     byElementId('live-reading').textContent = `The camera sees the left foot ${percent(rises.left)} of the child’s leg length off the floor, and the right foot ${percent(rises.right)}. A step is a foot ${percent(marcher.line.left)} up on the left and ${percent(marcher.line.right)} on the right, with the other foot down. A jump needs the hips to rise ${percent(reader.jumpNeeded)}, and bent knees need them to sink ${percent(reader.squatNeeded)}.`;
@@ -254,13 +301,13 @@ class HatChase extends BodyGame {
       level: this.startLevel(),
       things: LENGTHS.includes(settings.chaseLength) ? settings.chaseLength : 12,
       gentle: settings.chaseMagpie === 'waits',
+      walkers: this.players.length,
       onEvent: (event) => this.onChaseEvent(event),
     });
     view.setChase(this.chase);
     view.setView('play');
-    this.marcher = new Marcher({ line: this.liftLine, turns: settings.chaseLegs === 'turns' });
-    this.air = null;
-    this.newEasing();
+    // Each game has new marchers, with nothing of the last game's in them.
+    this.walkers = this.players.map(({ index }) => this.newWalker(index));
     this.idleFor = 0;
     this.filmFor = null;
     this.lastNumbers = {};
@@ -330,7 +377,7 @@ class HatChase extends BodyGame {
     const { station } = chase;
     // A child who's trying and not getting as high, or as low, as counts: what counts comes down to meet them,
     // as in the other body games (core/body/easing.js).
-    if (!lost && station && !chase.busy) this.easing[station.needs]?.update(dt);
+    if (!lost && station && !chase.busy) for (const { easing } of this.walkers) easing[station.needs]?.update(dt);
     this.updateHud();
 
     // What's asked for, and the character showing how, whenever something is wanted of the child.
@@ -344,7 +391,7 @@ class HatChase extends BodyGame {
       // After a long wait at something, marching on climbs past it, and that's what's shown.
       film = station.waited >= HELP_AFTER ? ['highKnees', SAY.march] : this.wanted(station);
     } else if (!chase.busy && chase.treeHere) film = ['skyReach', SAY.reach];
-    else if (!chase.busy && this.marcher.same) film = ['highKnees', SAY.turns];
+    else if (!chase.busy && this.walkers.some(({ marcher }) => marcher.same)) film = ['highKnees', SAY.turns];
     else if (!chase.busy && (chase.stats.steps === 0 || this.idleFor > IDLE_SECONDS)) film = ['highKnees', SAY.march];
     if (film) {
       this.showFilm(...film);
@@ -435,15 +482,22 @@ class HatChase extends BodyGame {
   /** What every ending does: the camera goes off, and nothing more is asked for. */
   wrapUp() {
     this.camera.stop();
-    this.reader.forget();
+    for (const { reader } of this.players) reader.forget();
     this.latestBody = null;
-    this.air = null;
+    this.stillBodies();
     this.hideFilm();
     this.prompt.clear();
     this.setCount('');
     this.updateHud();
     this.sound.stopHills();
-    this.view.setBody({});
+  }
+
+  /** Nobody is in the air, bending or reaching any more: each character stands as it is. */
+  stillBodies() {
+    for (const walker of this.walkers) {
+      walker.air = null;
+      this.view.setBody({}, walker.index);
+    }
   }
 
   onWon() {
@@ -470,7 +524,11 @@ class HatChase extends BodyGame {
     byElementId('finish-stars').textContent = String(stats.stars);
     const things = chase.course.length;
     const got = lost ? `, and got past ${stats.cleared + stats.helped} of the ${things} things in the way` : `, and got past all ${things} things in the way`;
-    byElementId('finish-line').textContent = `${this.chosen.name} took ${plural(stats.steps, 'step')}, ${stats.left} with the left leg and ${stats.right} with the right${got}.`;
+    // With several walking, how many steps they took between them, and each one's share by their character's name.
+    const cast = this.cast;
+    byElementId('finish-line').textContent = this.grouped
+      ? `Together you took ${plural(stats.steps, 'step')}: ${stats.by.map((steps, index) => `${cast[index].name} ${steps}`).join(', ')}. You got past ${lost ? `${stats.cleared + stats.helped} of the` : 'all'} ${things} things in the way.`
+      : `${this.chosen.name} took ${plural(stats.steps, 'step')}, ${stats.left} with the left leg and ${stats.right} with the right${got}.`;
     byElementId('finish-prizes').textContent = this.prizeWords();
     this.fillTallyCards(byElementId('finish-tally'), [
       { name: 'steps', icon: 'highKnees', label: 'Steps', value: stats.steps },
@@ -513,15 +571,14 @@ class HatChase extends BodyGame {
    * startAgain in core/body/game.js.
    */
   leaveRound() {
-    this.air = null;
+    this.stillBodies();
     this.hideFilm();
     this.sound.stopHills();
-    this.view.setBody({});
   }
 
   goAgain() {
     this.confetti.stop();
-    this.reader.forget();
+    for (const { reader } of this.players) reader.forget();
     this.openCameraThen(() => this.beginBodyCheck());
   }
 
@@ -554,6 +611,7 @@ mountBodyShell({
   chooseTitle: 'Who’s going after the hat today?',
   chooseSide: `
       <p class="choose-tip">March on the spot, and your walker walks: a step for each knee you lift. It stops at whatever is in the way, and shows you what to do. Don’t let the magpie get out of sight!</p>
+      ${groupChoice()}
       <button id="chase-start" class="big-button" type="button">Let’s go!</button>`,
   hud: `
   <header id="chase-top" class="chase-top">

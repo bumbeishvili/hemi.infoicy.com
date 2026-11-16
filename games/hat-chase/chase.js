@@ -175,9 +175,12 @@ const easeInOut = (share) => share * share * (3 - 2 * share);
 export class Chase {
   /**
    * level is 1 to 10, things how many things are in the way, gentle the magpie that waits, and onEvent is told
-   * what happens: see main.js.
+   * what happens: see main.js. walkers is how many are walking together in front of one camera: each one's step
+   * takes them all on by their share of a step, so together they go as fast as they march between them, and no
+   * faster than one child marching would. Anyone's jump, bend or reach is everyone's.
    */
-  constructor({ level = 1, things = 12, gentle = false, random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ level = 1, things = 12, gentle = false, walkers = 1, random = Math.random, onEvent = () => {} } = {}) {
+    this.walkers = Math.max(1, Math.round(walkers) || 1);
     this.levelNumber = clampLevel(level);
     this.rules = chaseLevel(level, { gentle });
     this.onEvent = onEvent;
@@ -191,6 +194,8 @@ export class Chase {
     this.magpie = { x: MAGPIE.start, warned: false };
     this.nextStar = 0;
     this.stats = emptyStats();
+    // How many steps each of them has taken, in the order they stand.
+    this.stats.by = Array.from({ length: this.walkers }, () => 0);
   }
 
   emit(type, more = {}) {
@@ -242,14 +247,14 @@ export class Chase {
 
   /* ---------- what the child does ---------- */
 
-  /** A knee lifted: one step along the path. side is which leg it was. */
-  step(side = 'left') {
+  /** A knee lifted: one step along the path. side is which leg it was, and by which of them, with several walking. */
+  step(side = 'left', by = 0) {
     if (this.state !== 'play' || this.busy) return false;
     const { hero, stats, station } = this;
     if (station) {
       // Standing at something for a long time, marching on climbs past it: nobody is stuck at a move they can't do.
       if (station.waited < HELP_AFTER) return false;
-      this.countStep(side);
+      this.countStep(side, by);
       this.startMove('clamber', station, CLAMBER_SECONDS);
       stats.helped += 1;
       this.emit('helped', { thing: station });
@@ -257,19 +262,20 @@ export class Chase {
     }
     const most = Math.min(this.stopAt, hero.x + STEP.waiting * STEP.length);
     const already = Math.max(hero.walkTo, hero.x);
-    const wanted = Math.min(most, already + STEP.length);
+    const wanted = Math.min(most, already + STEP.length / this.walkers);
     // A step that would take it no further is let go: it's at something, or two steps are waiting already.
     if (wanted <= already + 1e-6) return false;
     hero.walkTo = wanted;
     hero.mode = 'walk';
-    this.countStep(side);
-    this.emit('step', { side });
+    this.countStep(side, by);
+    this.emit('step', { side, by });
     return true;
   }
 
-  countStep(side) {
+  countStep(side, by = 0) {
     this.stats.steps += 1;
     this.stats[side === 'right' ? 'right' : 'left'] += 1;
+    if (by in this.stats.by) this.stats.by[by] += 1;
     this.hero.side = side;
   }
 

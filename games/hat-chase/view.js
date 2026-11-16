@@ -38,6 +38,13 @@ const SEEN_METRES = 17; // How much of the path a screen as wide as it is high a
 // right corner whenever something is asked of the child, so it's never hidden behind it.
 const HEIGHTS = { leap: 1, big: 1.5, hop: 0.45, stone: 0.6, bounce: 2.4, star: 3.2, magpie: 4.5, high: 1.75, star0: 0.55 };
 const FOLLOW = 7; // How quickly the view catches up with the character, a second.
+// With several walking together in front of one camera, each has a character of their own, one behind the other
+// on the path: this far apart while they walk, and closer beside a card, in metres. They're in the order they
+// stand in front of the camera, left to right, so the last of them is the one in front, and the one in front is
+// where the path's rules have them all.
+const BEHIND = { play: 1.5, rest: 1.15 };
+const EDGE_ROOM = 0.9; // The last of them is at least this far in from the left of the screen, in metres.
+const STEP_SHOWS = 0.5; // How long a character shows a step of its own walker's, in seconds.
 const FADE_SECONDS = 0.35; // Something picked up goes over this long.
 
 export class ChaseView {
@@ -46,9 +53,10 @@ export class ChaseView {
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.time = 0;
-    this.art = null; // The character's pictures, if they could be drawn.
+    this.arts = [null]; // Each character's pictures, if they could be drawn: one, or one for each of several.
     this.view = 'title';
     this.place = HERO_AT.title; // Where across the screen the character is, which eases over when the screen changes.
+    this.gap = BEHIND.rest; // How far behind one another several are, which eases over too.
     this.chase = null;
     this.clear();
     window.addEventListener('resize', () => this.resize());
@@ -58,8 +66,8 @@ export class ChaseView {
   /** Nothing left over from the last game. */
   clear() {
     this.camera = 0;
-    this.crouch = 0;
-    this.reach = 0;
+    this.bodies = []; // What each walker's body is doing, as the camera sees it: { crouch, reach }.
+    this.stepped = []; // How long ago each walker last took a step, and how many they've taken: { ago, count }.
     this.walked = 0;
     this.effects = []; // Stars popping, apples falling, numbers going up, dust: { kind, x, y, age, life, ... }.
     this.gone = new Map(); // What's been picked up, by its key, and how long ago: it fades.
@@ -80,14 +88,26 @@ export class ChaseView {
 
   /** The character who walks: one of the roster (core/body/roster.js). */
   setWalker(spec) {
-    try {
-      const tallest = Math.max(window.innerHeight, window.screen?.height || 0);
-      this.art = renderHiker(spec, Math.round(tallest * PLACE.tall * this.ratio));
-    } catch (error) {
-      // Without its picture the game still works: a plain shape walks in its place.
-      console.warn('Could not draw the character:', error);
-      this.art = null;
-    }
+    this.setWalkers([spec]);
+  }
+
+  /** Everyone who walks, with several in front of one camera: left to right as they stand, the last one in front. */
+  setWalkers(specs) {
+    const tallest = Math.max(window.innerHeight, window.screen?.height || 0);
+    this.arts = specs.map((spec) => {
+      try {
+        return renderHiker(spec, Math.round(tallest * PLACE.tall * this.ratio));
+      } catch (error) {
+        // Without its picture the game still works: a plain shape walks in its place.
+        console.warn('Could not draw the character:', error);
+        return null;
+      }
+    });
+  }
+
+  /** The first character's pictures: the only one's, when one child plays. */
+  get art() {
+    return this.arts[0] ?? null;
   }
 
   /** 'title', 'choose', 'play', 'finish' or 'lost': where the game is, for where the character stands, and how. */
@@ -101,10 +121,38 @@ export class ChaseView {
     this.clear();
   }
 
-  /** How far the child's knees are bent and how high their arms are, each from 0 to 1, as the camera sees them now. */
-  setBody({ crouch = 0, reach = 0 } = {}) {
-    this.crouch = clamp(crouch, 0, 1);
-    this.reach = clamp(reach, 0, 1);
+  /**
+   * How far a walker's knees are bent and how high their arms are, each from 0 to 1, as the camera sees them now.
+   * index is which of them, with several walking.
+   */
+  setBody({ crouch = 0, reach = 0 } = {}, index = 0) {
+    this.bodies[index] = { crouch: clamp(crouch, 0, 1), reach: clamp(reach, 0, 1) };
+  }
+
+  /** The first walker's, as the tests read them. */
+  get crouch() {
+    return this.bodies[0]?.crouch ?? 0;
+  }
+
+  get reach() {
+    return this.bodies[0]?.reach ?? 0;
+  }
+
+  /** Where each character is on the screen, across, in the order they stand. For the tests, and for drawing. */
+  get walkersAt() {
+    const hero = this.chase?.hero;
+    const front = this.arts.length - 1;
+    return this.arts.map((_, index) => this.across((hero?.x ?? 0) - (front - index) * this.gap));
+  }
+
+  /** Where the one in front stands for this screen, as a share of its width, so the last of several is in sight. */
+  placeFor(view) {
+    const others = this.arts.length - 1;
+    const gap = (view === 'play' ? BEHIND.play : BEHIND.rest) * this.metre;
+    const place = HERO_AT[view] ?? HERO_AT.play;
+    // To be chosen, they stand in the middle together.
+    if (view === 'choose') return place + (others * gap) / 2 / this.width;
+    return Math.max(place, (EDGE_ROOM * this.metre + others * gap) / this.width);
   }
 
   /** Where a place on the path is on the screen, across. */
@@ -130,6 +178,10 @@ export class ChaseView {
     if (!chase) return;
     const hero = chase.hero.x;
     switch (event.type) {
+      case 'step':
+        // Whose step it was: their character shows it.
+        this.stepped[event.by ?? 0] = { ago: 0, count: (this.stepped[event.by ?? 0]?.count ?? 0) + 1 };
+        break;
       case 'star':
         this.gone.set(`star-${event.star.index}`, 0);
         break;
@@ -177,9 +229,13 @@ export class ChaseView {
     this.camera += (wanted - this.camera) * (1 - Math.exp(-dt * FOLLOW));
     if (Math.abs(wanted - this.camera) < 0.001) this.camera = wanted;
     // And over to its place for this screen, a little at a time, so the land never jumps.
-    const place = HERO_AT[this.view] ?? HERO_AT.play;
+    const place = this.placeFor(this.view);
     this.place += (place - this.place) * (1 - Math.exp(-dt * PLACE_RATE));
     if (Math.abs(place - this.place) < 0.0005) this.place = place;
+    const gap = this.view === 'play' ? BEHIND.play : BEHIND.rest;
+    this.gap += (gap - this.gap) * (1 - Math.exp(-dt * PLACE_RATE));
+    if (Math.abs(gap - this.gap) < 0.0005) this.gap = gap;
+    for (const step of this.stepped) if (step) step.ago += dt;
     for (const [key, age] of this.gone) this.gone.set(key, age + dt);
     for (const effect of this.effects) effect.age += dt;
     this.effects = this.effects.filter((effect) => effect.age < effect.life);
@@ -587,8 +643,11 @@ export class ChaseView {
     return this.height * PLACE.tall;
   }
 
-  /** Which picture of the character shows, from what it's doing and what the child is doing. */
-  heroFrame() {
+  /**
+   * Which picture of a character shows, from what it's doing and what its walker is doing. index is which of
+   * them, with several walking: they get past things together, and each steps as its own walker steps.
+   */
+  heroFrame(index = 0) {
     const hero = this.chase?.hero;
     if (this.cheering > 0 || this.view === 'finish') return 'cheer';
     if (!hero) return 'stand';
@@ -599,34 +658,43 @@ export class ChaseView {
       if (kind === 'clamber') return Math.floor(hero.move.t * 3) % 2 ? 'stepA' : 'stepB';
       return kind === 'bounce' && star ? 'star' : 'hop';
     }
-    if (hero.mode === 'walk') return Math.floor(hero.x) % 2 ? 'stepA' : 'stepB';
+    const body = this.bodies[index] ?? { crouch: 0, reach: 0 };
+    if (this.arts.length > 1) {
+      // One of several: a step of their own walker's shows for a moment, whether or not everyone is moving, so
+      // each can see which character is theirs, and that their marching counts.
+      const step = this.stepped[index];
+      if (step && step.ago < STEP_SHOWS) return step.count % 2 ? 'stepA' : 'stepB';
+    } else if (hero.mode === 'walk') return Math.floor(hero.x) % 2 ? 'stepA' : 'stepB';
     // Standing, the character shows what the child is doing: arms up, or knees bent.
-    if (this.reach > 0.6) return 'reach';
-    if (this.crouch > 0.7) return 'duck';
+    if (body.reach > 0.6) return 'reach';
+    if (body.crouch > 0.7) return 'duck';
     return 'stand';
   }
 
+  /** Everyone who walks, from the back of the line to the front, so the one in front is drawn over the others. */
   drawHero() {
+    this.walkersAt.forEach((x, index) => this.drawWalker(index, x));
+  }
+
+  drawWalker(index, x) {
     const { ctx, ground, metre } = this;
-    const hero = this.chase?.hero;
-    const x = this.across(hero?.x ?? 0);
     const y = ground - this.lift() * metre;
     // Its shadow stays on the path while it's in the air.
     ctx.fillStyle = 'rgba(18, 48, 77, 0.16)';
     ctx.beginPath();
     ctx.ellipse(x, ground + 3, metre * 0.5, metre * 0.11, 0, 0, Math.PI * 2);
     ctx.fill();
-    const { art } = this;
+    const art = this.arts[index];
     if (!art) {
       ctx.fillStyle = '#f2a33a';
       ctx.fillRect(x - metre * 0.3, y - this.heroTall(), metre * 0.6, this.heroTall());
       return;
     }
-    const frame = art.frames[this.heroFrame()];
+    const frame = art.frames[this.heroFrame(index)];
     const scale = this.heroTall() / art.tall;
     ctx.drawImage(frame, x - art.foot.x * scale, y - art.foot.y * scale, art.width * scale, art.height * scale);
-    // The hat, coming down onto its head once the game is won.
-    if (this.hat) {
+    // The hat, coming down onto the head of the one in front once the game is won.
+    if (this.hat && index === this.arts.length - 1) {
       const share = clamp(this.hat.age / 1.1, 0, 1);
       const top = y - art.foot.y * scale + art.height * scale * 0.08;
       this.drawHat(x, lerp(top - metre * 3, top, share * share), metre * 0.5);
