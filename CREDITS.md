@@ -88,6 +88,8 @@ Rooftop Rope has no sounds of its own either, only voices: it plays Cannon Bay's
 
 Giraffe's World Tour has no sounds of its own either, only voices: it plays Sky Wings' `propeller.ogg`, The Lighthouse Keeper's `wipe.ogg`, Cannon Bay's `wind.ogg`, `canvas.ogg` and `creak.ogg`, Robot Rescue's `goo-pop.ogg`, `boing.ogg` and `unlock.ogg`, Spider Catcher's `home.ogg`, Mighty Moves' `sparkle.ogg` and `cheer.ogg`, and Tank Patrol's `splutter.ogg`, with the shared sounds in `core/audio/sfx/`. Its globe, plane, paint pots, flagpole and the rest are original designs, made from simple shapes in the game's own code, and its Giraffe is Giraffe's Garden's. Its map and its flags are below.
 
+Swamp Splash has no sounds of its own either, only voices: it plays Spider Catcher's `birds.ogg`, Leap Trail's `music.ogg` and `jump.ogg`, Cannon Bay's `wind.ogg` and `splash.ogg`, Robot Rescue's `goo-splat.ogg` and `boing.ogg`, Balloon Pop's `pop.ogg`, The Lighthouse Keeper's `wipe.ogg`, and Mighty Moves' `whoosh-1.ogg`, `sparkle.ogg`, `bell.ogg` and `cheer.ogg`, with the shared sounds in `core/audio/sfx/`. Its swamp, frogs, heron, mud bubbles, clouds and the mud on the window are original designs, made from simple shapes in the game's own code, and its jumpers are the ten characters of `core/body/roster.js`, drawn flat from their 3D models as Giraffe's Garden draws Giraffe.
+
 The ten pictures in Giraffe's Paint Box are drawn by the game itself from simple shapes, and are original designs made for it. Its hidden friends are the computer's own emoji.
 
 The engine loop's CC-BY licence requires this credit to stay with the game: **"Car Engine Loop 96kHz, 4s" by qubodup, CC-BY 3.0, resampled and level adjusted.**

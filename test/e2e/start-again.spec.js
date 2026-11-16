@@ -11,6 +11,7 @@ import { reachFlight } from './sky-wings/helpers.js';
 import { reachPlay as reachLifting } from './mighty-lift/helpers.js';
 import { reachPlay as reachRiding } from './moto-mountain/helpers.js';
 import { reachPlay as reachCrossing } from './rooftop-rope/helpers.js';
+import { reachPlay as reachSplashing } from './swamp-splash/helpers.js';
 
 const screen = (page) => page.evaluate(() => window.__game.screen);
 const closePanel = async (page) => {
@@ -156,6 +157,7 @@ const BODY_GAMES = [
   ['Mighty Lift', (page) => reachLifting(page), 'playing'],
   ['Moto Mountain', (page) => reachRiding(page), 'playing'],
   ['Rooftop Rope', (page) => reachCrossing(page), 'playing'],
+  ['Swamp Splash', (page) => reachSplashing(page), 'playing'],
 ];
 for (const [name, reach, playing] of BODY_GAMES) {
   test(`a level chosen in the middle of ${name} starts it again at that level`, async ({ page }) => {

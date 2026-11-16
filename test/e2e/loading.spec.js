@@ -18,6 +18,7 @@ const BODY_START = {
   'moto-mountain': '#moto-start',
   'rooftop-rope': '#rope-start',
   'sky-wings': '#fly-start',
+  'swamp-splash': '#swamp-start',
 };
 
 /** A game's page, with the pretend camera and the tests' settings, and nothing waited for. */
@@ -43,8 +44,8 @@ const sheetBar = (page) => page.evaluate(() => {
   return { track: parseFloat(track.width), fill: parseFloat(fill.width), moving: fill.animationName };
 }).catch(() => null);
 
-test('there are 26 games, and each has a test of its bar here', () => {
-  expect(GAMES.length).toBe(26);
+test('there are 27 games, and each has a test of its bar here', () => {
+  expect(GAMES.length).toBe(27);
   for (const game of Object.keys(BODY_START)) expect(GAMES).toContain(game);
 });
 

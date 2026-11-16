@@ -867,3 +867,42 @@ body.hub {
 .art-tour-neck { fill: none; stroke: #f5c451; stroke-width: 5.5; stroke-linecap: round; }
 .art-tour-head { fill: #f5c451; stroke: #4a2c10; stroke-width: 2.5; }
 .art-tour-horn { fill: none; stroke: #4a2c10; stroke-width: 2.5; stroke-linecap: round; }
+
+/* Swamp Splash: Giraffe jumping up out of the swamp, with the mud flying from where it landed, mud on the window
+   the game is seen through, a frog on its lily pad, and the rain cloud coming across the top. The colours are the
+   game's own: see its view.js. A blob of mud or a cloud is round shapes run together, as in the game: its edge is
+   drawn first and its colour over it (paint-order), so only the outside of the edge shows. */
+.game-art-swamp { background: linear-gradient(#e3f1ea, #d3e8c4 53%); }
+.art-swamp-far { fill: #a9c79a; }
+.art-swamp-near { fill: #7fae7a; }
+.art-swamp-water { fill: #9aa862; }
+.art-swamp-deep { fill: #84944a; }
+.art-swamp-patch { fill: rgb(123 82 48 / 0.55); }
+.art-swamp-reed { fill: none; stroke: #4f8a4a; stroke-width: 3; stroke-linecap: round; }
+.art-swamp-reed-top { fill: none; stroke: #6b4a2b; stroke-width: 6; stroke-linecap: round; }
+.art-swamp-pad { fill: #70bd6a; stroke: #3d8347; stroke-width: 2; stroke-linejoin: round; }
+.art-swamp-frog { fill: #3fa34d; stroke: var(--ink); stroke-width: 2; }
+.art-swamp-white { fill: #fff; }
+.art-swamp-pupil { fill: var(--ink); }
+.art-swamp-smile { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linecap: round; }
+.art-swamp-way { fill: none; stroke: rgb(18 48 77 / 0.3); stroke-width: 2.5; stroke-dasharray: 5 5; }
+.art-swamp-end { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linecap: round; }
+.art-swamp-cloud { fill: #b8c4d2; stroke: var(--ink); stroke-width: 5; paint-order: stroke; }
+.art-swamp-limb-ink { fill: none; stroke: #4a2c10; stroke-width: 11; stroke-linecap: round; }
+.art-swamp-limb { fill: none; stroke: #f5c451; stroke-width: 6; stroke-linecap: round; }
+.art-swamp-neck-ink { fill: none; stroke: #4a2c10; stroke-width: 14; stroke-linecap: round; }
+.art-swamp-neck { fill: none; stroke: #f5c451; stroke-width: 9; stroke-linecap: round; }
+.art-swamp-coat { fill: #f5c451; stroke: #4a2c10; stroke-width: 2.5; }
+.art-swamp-belly { fill: #fff2d2; }
+.art-swamp-muzzle { fill: #ffe6b8; stroke: #4a2c10; stroke-width: 2; }
+.art-swamp-horn { fill: none; stroke: #4a2c10; stroke-width: 3; stroke-linecap: round; }
+.art-swamp-knob { fill: #4a2c10; }
+.art-swamp-mouth { fill: none; stroke: #4a2c10; stroke-width: 1.8; stroke-linecap: round; }
+.art-swamp-spot { fill: #c9823f; }
+.art-swamp-hoof { fill: #6b4428; }
+.art-swamp-ripple { fill: none; stroke: rgb(255 255 255 / 0.4); stroke-width: 2; }
+.art-swamp-spray { fill: none; stroke: #7b5230; stroke-width: 5; stroke-linecap: round; }
+.art-swamp-splash { fill: #7b5230; stroke: #5c3b1f; stroke-width: 2; stroke-linejoin: round; }
+.art-swamp-mud { fill: #7b5230; stroke: #5c3b1f; stroke-width: 5; paint-order: stroke; }
+.art-swamp-fleck { stroke-width: 3; }
+.art-swamp-shine { fill: #946a40; }
