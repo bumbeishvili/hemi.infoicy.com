@@ -2,8 +2,13 @@
 // makes the host's mazes from the host's seed, everyone sees everyone else's character walking in the maze they're
 // in, each has all the fruit in their own mazes, and whoever gets out of the last maze first comes first. Here
 // they're separate browsers, talking through the race server on this computer (tools/race-server.mjs).
-import { expect, openGame, shot, show, test, waitForScreen } from '../helpers.js';
+//
+// These are the tests of the race, against each other, which a grown-up now has to choose: as the game comes,
+// friends look for the way out together, and that's in together.spec.js.
+import { expect, openGame as openAnyGame, shot, show, test, waitForScreen } from '../helpers.js';
 import { allPlaying, expectSoon, FIST, GAME, joinGame, judge, leadHand, makeGame, OPEN, secondPlayer, state, stopHand, watchBrightness } from './helpers.js';
+
+const openGame = (page, settings = {}, ...rest) => openAnyGame(page, { mazeFriends: 'against', ...settings }, ...rest);
 
 /** How it is on one child's screen. */
 const view = (page) => page.evaluate(() => {

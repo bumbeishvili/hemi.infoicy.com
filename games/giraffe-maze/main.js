@@ -1,7 +1,8 @@
 // Giraffe's Maze: Giraffe's friends are lost in a garden maze, and the child leads him to each one with an open hand.
 // The character walks along the paths towards the open hand, and waits while the hand is closed or can't be seen.
-// Each friend found follows along behind, into the next maze. With friends on their own computers it's a race out of
-// the same mazes instead, the first out of the last one winning. The rules are in rules.js and play.js, the maze is
+// Each friend found follows along behind, into the next maze. With friends on their own computers it's the way out
+// of the same mazes instead: together, as it comes, whoever finds it takes everyone on to the next maze, and
+// against each other it's a race, the first out of the last one winning. The rules are in rules.js and play.js, the maze is
 // drawn by view.js, and the characters' pictures come from walkers.js.
 import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
@@ -9,7 +10,7 @@ import { Track } from '../../core/friends.js';
 import { FriendsPanel, time } from '../../core/friends-ui.js';
 import { Glove } from '../../core/glove.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
-import { Sound } from '../../core/sound.js';
+import { DID_IT_TOGETHER, Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { FOLLOW_SPACING, MazeRun } from './play.js';
 import {
@@ -59,8 +60,13 @@ const MAZE_WORDS = {
   codeLabel: 'A friend’s game code',
   codeName: 'Game code',
   how: 'Tell your friends the code. Then you all press <b>Into the maze!</b> It’s a race: the first one out of the last maze wins.',
+  // Together or against each other, as whoever made the game chooses: see teams in core/friends-ui.js.
+  together: 'Together',
+  against: 'Against each other',
+  howTogether: 'Tell your friends the code. Then you all press <b>Into the maze!</b> Look for the way out together: whoever finds it takes everyone on to the next maze.',
+  teamTitle: 'You found the way out together!',
   leave: 'Leave this game',
-  privacy: 'Only your name, who you play as, where your character and glove are in the maze and your time go to your friends. The camera picture stays on this computer.',
+  privacy: 'Only your name, who you play as, whether you chose together or against each other, where your character and glove are in the maze, your time and your fruit go to your friends. The camera picture stays on this computer.',
   alone: 'Play on your own',
   full: 'That game already has 4 players.',
   lost: 'Can’t reach the game. Check the internet, then try again.',
@@ -101,8 +107,10 @@ class MazeGame {
     this.seedWord = newSeedWord();
     this.friendWalkers = new Map();
     this.mode = 'solo';
+    this.team = false; // With friends, together: see prepare().
+    this.carriedBy = ''; // Together, the friend who found the way out of the maze just left.
     this.resetCounts();
-    byId('finish-hero')?.closest('.finish-hero')?.insertAdjacentHTML('afterend', '<p id="finish-found" class="finish-found"></p><p id="finish-prizes" class="finish-prizes"></p>');
+    byId('finish-hero')?.closest('.finish-hero')?.insertAdjacentHTML('afterend', '<p id="finish-team" class="finish-team" hidden></p><p id="finish-found" class="finish-found"></p><p id="finish-prizes" class="finish-prizes"></p>');
     this.friends = new FriendsPanel({
       game: 'giraffe-maze',
       linkKey: 'maze',
@@ -112,14 +120,26 @@ class MazeGame {
       portraits: () => session.portraits,
       onMove: (id, message) => this.fromFriend(id, message),
       onGone: (friend) => this.friendGone(friend),
-      // A race: whoever got out of the last maze first comes first, by their time, as in High Five Racers.
-      resultText: ({ ms }) => time(ms),
+      // A race: whoever got out of the last maze first comes first, by their time, as in High Five Racers. Together,
+      // nobody is placed, and each one's line is the fruit they ate on the way.
+      resultText: ({ ms, dropped }) => (this.team ? `${dropped} fruit` : time(ms)),
       titles: { first: 'You were first out!', other: 'You made it out!' },
+      // With friends, together or against each other: the grown-ups' choice, which the friends box can change too.
+      teams: {
+        get: () => (session.settings.mazeFriends === 'against' ? 'against' : 'together'),
+        set: (choice) => this.chooseTeams(choice),
+      },
       startAfter: byId('start'),
       waitingBefore: byId('screen-finish'),
       resultsAfter: document.querySelector('#screen-finish .finish-hero'),
       finishTitle: document.querySelector('#screen-finish h2'),
     });
+    // Together, the finish card's line about the fruit fills in whenever the list of who did what does.
+    const showResults = this.friends.showResults.bind(this.friends);
+    this.friends.showResults = () => {
+      showResults();
+      this.showTeamFruit();
+    };
     this.run = this.soloRun(session.level);
     this.artFor([this.myCharacter().id, ...this.run.cast.flat()]);
     this.view.setLayout(this.run.layout);
@@ -217,7 +237,15 @@ class MazeGame {
       this.view.setLayout(this.run.layout);
       this.showFound();
     }
-    if (('fighter' in change || 'mazeSize' in change || 'mazes' in change) && this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
+    if (('fighter' in change || 'mazeSize' in change || 'mazes' in change || 'mazeFriends' in change) && this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
+    if ('mazeFriends' in change) this.friends.showTeams();
+  }
+
+  /** Together or against each other, chosen in the friends box: kept with the grown-ups' settings, and shown there. */
+  chooseTeams(choice) {
+    this.session.changeSettings({ mazeFriends: choice });
+    const input = document.querySelector(`input[name="mazeFriends"][value="${choice}"]`);
+    if (input) input.checked = true;
   }
 
   /** How long since "GO!", by the clock on the wall, for friends' games. */
@@ -239,7 +267,11 @@ class MazeGame {
     document.body.toggleAttribute('data-friends-race', Boolean(friendly));
     this.friendWalkers = new Map();
     this.outMs = null; // In a race, how long after "GO!" the child got out of the last maze.
-    this.session.finishLine = friendly ? RACE_FINISH : FINISH;
+    // Together, everyone looks for the way out of each maze, and whoever finds it takes the others on: see followTeam.
+    this.team = Boolean(friendly?.team);
+    this.carriedBy = '';
+    document.body.toggleAttribute('data-friends-team', this.team);
+    this.session.finishLine = this.team ? DID_IT_TOGETHER : friendly ? RACE_FINISH : FINISH;
     if (friendly) {
       // A race: everyone makes the same mazes from the host's seed, at the host's size, level and number of mazes,
       // with nobody lost in them, and the first out of the last one wins. Each has all the fruit in their own.
@@ -349,6 +381,15 @@ class MazeGame {
         if (!last) this.praise();
         this.showRace();
       },
+      // Together, a friend found the way out of this maze: a cheer here too, and on the last one the team's time.
+      onCarried: (index, last) => {
+        if (last) this.outMs = this.sinceGo;
+        sound().play('found', { gain: 0.55 });
+        sound().play('cheer', { gain: 0.16 });
+        const way = this.run.layout.maze.centre(this.run.layout.goal);
+        view().sparkle(way.x + 0.5, way.y);
+        this.showRace();
+      },
       onSlide: () => {
         sound().play('whoosh', { gain: 0.25, rate: 0.9 });
       },
@@ -394,6 +435,7 @@ class MazeGame {
     if (this.mode === 'friends') {
       this.friends.sendMove('walker', this.walkerState(input), this.sinceGo);
       this.updateFriends(dt);
+      if (this.team) this.followTeam();
       this.showRace();
     }
     this.view.update(dt);
@@ -534,6 +576,32 @@ class MazeGame {
     this.showRace();
   }
 
+  /** Together: the mazes everyone got out of and the fruit they ate on the way, on the finish card. */
+  showTeamFruit() {
+    const line = byId('finish-team');
+    if (!line) return;
+    const together = Boolean(this.team && this.friends.current);
+    line.hidden = !together;
+    if (!together) return;
+    const you = this.friends.room.you;
+    let fruit = this.run.stats.fruit;
+    for (const [id, result] of this.friends.results) if (id !== you) fruit += result.dropped;
+    const { mazes } = this.run;
+    line.textContent = `Together you got out of ${mazes} ${mazes === 1 ? 'maze' : 'mazes'} and ate ${fruit} fruit.`;
+  }
+
+  /**
+   * Together: once a friend is out of the maze this child is still walking, this child's character goes on to the
+   * next with them. Who it was is said on the screen while it does.
+   */
+  followTeam() {
+    const { run } = this;
+    if (run.phase !== 'walking') return;
+    const finder = this.friends.current?.friends.find((friend) => !friend.gone && this.mazesOut(friend.id) > run.index);
+    if (!finder || !run.carriedOut()) return;
+    this.carriedBy = finder.spec.name;
+  }
+
   /**
    * Each friend's character and glove where they are, a moment ago, if they're in the same maze as this child. One
    * walking out of it fades away as it goes, and is gone once it's out.
@@ -612,7 +680,8 @@ class MazeGame {
       });
     } else {
       const at = run.position;
-      const justFound = run.phase === 'found' && run.followers.some(({ lost }) => run.time - (lost.foundAt ?? -Infinity) < FOUND_SECONDS);
+      // It cheers a friend just found, and, together with friends, the way out one of them has just found.
+      const justFound = run.phase === 'carried' || (run.phase === 'found' && run.followers.some(({ lost }) => run.time - (lost.foundAt ?? -Infinity) < FOUND_SECONDS));
       // In a race, walking out of the maze, the character fades away as it goes.
       const left = showing(at.x, run.layout.cols);
       if (left > 0.01) {
@@ -620,7 +689,7 @@ class MazeGame {
           x: at.x,
           y: at.y,
           art: this.art[me],
-          facing: run.phase === 'found' ? 2 : run.walker.facing,
+          facing: run.phase === 'found' || run.phase === 'carried' ? 2 : run.walker.facing,
           moving: run.moving,
           walked: run.stats.walked,
           cheer: justFound,
@@ -716,7 +785,8 @@ class MazeGame {
    */
   mazesOut(id) {
     const { run } = this;
-    if (id === this.friends.room.you) return run.stats.out;
+    // The child's own: the mazes behind them, and this one too once they're out of it, or carried out of it.
+    if (id === this.friends.room.you) return run.over ? run.mazes : run.index + (['out', 'carried', 'sliding'].includes(run.phase) ? 1 : 0);
     if (this.friends.results.has(id)) return run.mazes;
     const at = this.friendWalkers.get(id)?.at;
     if (!at) return 0;
@@ -736,20 +806,25 @@ class MazeGame {
     const you = this.friends.room.you;
     const { mazes } = this.run;
     const finishedAt = (id) => this.friends.results.get(id)?.ms ?? (id === you ? this.outMs : null) ?? Infinity;
-    const everyone = [{ id: you, name: 'You', who: this.myCharacter().id }, ...current.friends.filter((friend) => !friend.gone).map((friend) => ({ id: friend.id, name: friend.spec.name, who: friend.spec.id }))]
-      .map((each) => ({ ...each, out: this.mazesOut(each.id), at: finishedAt(each.id) }))
-      .sort((a, b) => b.out - a.out || (a.at === b.at ? 0 : a.at < b.at ? -1 : 1));
+    // Against each other, everyone, whoever is furthest on first. Together they go on as one, so it's one line.
+    const everyone = this.team
+      ? [{ id: 'team', name: 'Together', who: '', out: this.mazesOut(you), at: Infinity }]
+      : [{ id: you, name: 'You', who: this.myCharacter().id }, ...current.friends.filter((friend) => !friend.gone).map((friend) => ({ id: friend.id, name: friend.spec.name, who: friend.spec.id }))]
+        .map((each) => ({ ...each, out: this.mazesOut(each.id), at: finishedAt(each.id) }))
+        .sort((a, b) => b.out - a.out || (a.at === b.at ? 0 : a.at < b.at ? -1 : 1));
     const key = everyone.map(({ id, out }) => `${id}:${out}`).join(',');
     if (list.dataset.key === key) return;
     list.dataset.key = key;
     list.replaceChildren(...everyone.map((each) => {
       const row = document.createElement('li');
       row.classList.toggle('is-you', each.id === you);
+      row.classList.toggle('is-team', each.id === 'team');
       row.classList.toggle('is-out', each.out >= mazes);
       row.dataset.out = String(each.out);
       const face = document.createElement('img');
       face.alt = '';
       face.src = portraits[each.who] ?? '';
+      face.hidden = !each.who;
       const name = document.createElement('span');
       name.className = 'maze-race-name';
       name.textContent = each.name;
@@ -788,6 +863,8 @@ class MazeGame {
   prompt(snapshot, dt) {
     const { session, run } = this;
     const needed = session.handsPrompt(snapshot, dt);
+    // Together, a friend has found the way out: who it was, on the screen and not said aloud.
+    if (run.phase === 'carried') return { key: `carried-${run.index}`, text: `${this.carriedBy || 'A friend'} found the way out!`, side: null, silent: true };
     if (run.phase !== 'walking') return needed && !needed.key.startsWith('closed') ? needed : null;
     // In the gentle maze the hand can rest whenever it likes: the character just waits. After a while, it's said that's
     // fine. With the sun going down that isn't said, as the sun doesn't wait for a closed hand.
@@ -918,7 +995,12 @@ new GameSession({
         ${choice('mazeWays', 'find', 'The character finds its own way to the open hand')}
       </fieldset>
       <fieldset class="choice">
-        <legend>Friends to find in a game (with friends, how many mazes to race out of)</legend>
+        <legend>With friends</legend>
+        ${choice('mazeFriends', 'together', 'Together: everyone looks for the way out, and whoever finds it takes the others on to the next maze')}
+        ${choice('mazeFriends', 'against', 'Against each other: a race, and the first out of the last maze wins')}
+      </fieldset>
+      <fieldset class="choice">
+        <legend>Friends to find in a game (with friends, how many mazes to get out of)</legend>
         ${choice('mazes', '2', '2')}
         ${choice('mazes', '3', '3')}
         ${choice('mazes', '5', '5')}
@@ -928,8 +1010,8 @@ new GameSession({
         ${characterChoices}
       </fieldset>`,
   },
-  defaults: { mazeSize: 'hard', mazeSun: 'sets', mazeReach: 'little', mazeWays: 'lead', mazes: 3, fighter: ROSTER[0].id },
-  choices: { mazeSize: String, mazeSun: String, mazeReach: String, mazeWays: String, mazes: Number, fighter: String },
+  defaults: { mazeSize: 'hard', mazeSun: 'sets', mazeReach: 'little', mazeWays: 'lead', mazes: 3, mazeFriends: 'together', fighter: ROSTER[0].id },
+  choices: { mazeSize: String, mazeSun: String, mazeReach: String, mazeWays: String, mazes: Number, mazeFriends: String, fighter: String },
   // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
   atOnce: ['mazeReach'],
   tagline: (side) => `Friends are lost in the maze! Lead the way to them with your open ${side} hand.`,

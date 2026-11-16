@@ -99,6 +99,9 @@ body[data-prizes='on'] .chip-prizes { display: grid !important; }
   font-weight: 700;
 }
 .maze-race li.is-you { background: var(--sun); }
+/* Together, friends go on as one: a single line for all of them, with no face on it. */
+.maze-race li.is-team { background: var(--sun); padding-left: 12px; }
+.maze-race img[hidden] { display: none; }
 .maze-race img { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-soft); }
 .maze-race-name { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .maze-race-dots { display: flex; gap: 3px; margin-left: 2px; }
@@ -169,6 +172,9 @@ body[data-screen='playing']:has(.story.is-visible) .prompt { left: 50%; max-widt
 
 /* ---------- the finish card ---------- */
 .finish-card .hero-mark { color: inherit; }
+/* Together with friends: what everyone did between them, under the fruit. */
+.finish-team { margin: 0; text-align: center; font-weight: 600; }
+.finish-team[hidden] { display: none; }
 .finish-found { display: flex; justify-content: center; gap: 8px; margin: 0; }
 .finish-found:empty { display: none; }
 .finish-found img { width: clamp(40px, 4.6vw, 58px); height: clamp(40px, 4.6vw, 58px); border-radius: 50%; background: var(--surface-soft); }

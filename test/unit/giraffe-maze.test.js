@@ -789,3 +789,67 @@ test('the grown-ups\' settings: the sun going down and the big maze come first, 
   assert.match(source, /defaults: \{ mazeSize: 'hard', mazeSun: 'sets', /);
   assert.match(source, /choice\('mazeSun', 'gentle', 'Gentle: /);
 });
+
+/* ---------- friends, together ---------- */
+
+/** A child resting in the maze for this long. */
+const rest = (run, seconds) => {
+  for (let time = 0; time < seconds; time += FRAME) run.update(FRAME, RESTING);
+};
+
+test('together, a child still in the maze a friend has found the way out of goes on to the next with them', () => {
+  const [mine] = Object.values(race(['aaaa'], { mazes: 3 }));
+  mine.begin();
+  rest(mine, 1);
+  const before = { ...mine.position };
+  assert.equal(mine.carriedOut(), true);
+  assert.equal(mine.phase, 'carried');
+  assert.deepEqual(mine.log.at(-1), ['onCarried', 0, false]);
+  assert.equal(mine.stats.carried, 1);
+  // It stands where it was for the moment a way out found takes, not walking, and isn't out by its own doing.
+  rest(mine, FOUND_SECONDS - 0.2);
+  assert.equal(mine.phase, 'carried');
+  assert.deepEqual(mine.position, before);
+  assert.equal(mine.moving, false);
+  assert.equal(mine.stats.out, 0);
+  // Then the next maze comes in, and it's at the way into it, walking again.
+  rest(mine, 0.3);
+  assert.equal(mine.phase, 'sliding');
+  rest(mine, SLIDE_SECONDS + 0.1);
+  assert.deepEqual([mine.phase, mine.index], ['walking', 1]);
+  const start = mine.layout.maze.centre(mine.layout.start);
+  assert.ok(Math.hypot(mine.position.x - start.x, mine.position.y - start.y) < 0.01);
+});
+
+test('carried out of the last maze, the game is over there, and nothing carries a child who isn\'t walking a maze', () => {
+  const [mine] = Object.values(race(['aaaa'], { mazes: 2 }));
+  // Before the game has begun there's no maze being walked.
+  assert.equal(mine.carriedOut(), false);
+  mine.begin();
+  assert.equal(mine.carriedOut(), true);
+  // Already on its way to the next maze, a second friend getting out changes nothing.
+  assert.equal(mine.carriedOut(), false);
+  rest(mine, FOUND_SECONDS + 0.1);
+  assert.equal(mine.carriedOut(), false);
+  rest(mine, SLIDE_SECONDS + 0.1);
+  assert.deepEqual([mine.phase, mine.index], ['walking', 1]);
+  assert.equal(mine.carriedOut(), true);
+  assert.deepEqual(mine.log.at(-1), ['onCarried', 1, true]);
+  rest(mine, FOUND_SECONDS + 0.1);
+  assert.equal(mine.over, true);
+  assert.equal(mine.log.filter(([name]) => name === 'onOver').length, 1);
+  assert.equal(mine.carriedOut(), false);
+  assert.equal(mine.stats.carried, 2);
+  // On their own, with a friend to find in the maze, nobody is carried anywhere.
+  const solo = new MazeRun({ seed: 'MAZEGO', size: 'medium', level: 1, cast: [['kit']], sun: 'gentle', random: seededRandom(9) });
+  solo.begin();
+  assert.equal(solo.carriedOut(), false);
+  assert.equal(solo.phase, 'walking');
+});
+
+test('Giraffe\'s Maze comes as a game friends play together, and whoever made it can choose a race', () => {
+  const source = readFileSync(new URL('../../games/giraffe-maze/main.js', import.meta.url), 'utf8');
+  assert.match(source, /defaults: \{[^}]*mazeFriends: 'together'/);
+  assert.match(source, /choices: \{[^}]*mazeFriends: String/);
+  for (const value of ['together', 'against']) assert.ok(source.includes(`choice('mazeFriends', '${value}'`), value);
+});

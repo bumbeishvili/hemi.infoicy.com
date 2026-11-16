@@ -2,9 +2,10 @@
 // hand, what it picks up, what's in the way, and the friends it finds. No screen in this file: main.js gives it
 // where the glove is each frame, and draws what it says, so it can be tested on its own with a pretend child.
 //
-// With friends it's a race. Everyone's game makes the same mazes from the host's seed, with nobody lost in them,
-// and each child leads their character to the way out on the right of each maze, one maze after another, at their
-// own pace: whoever gets out of the last maze first has won.
+// With friends, everyone's game makes the same mazes from the host's seed, with nobody lost in them, and each child
+// leads their character to the way out on the right of each maze, one maze after another. Against each other it's a
+// race, each at their own pace: whoever gets out of the last maze first has won. Together, on the same side, the
+// first to find the way out of a maze takes everyone on to the next: see carriedOut.
 //
 // On their own, the sun goes down over each maze, and setting before the friend is found ends the game: see SUN in
 // rules.js. With sun: 'gentle' there's no sun, and nothing can be lost, as it always was, and a sheep or a bush gets
@@ -43,7 +44,7 @@ export class MazeRun {
     this.nextLayout = null;
     this.phase = 'ready';
     this.phaseTime = 0;
-    this.stats = { fruit: 0, found: 0, out: 0, walked: 0, prizes: { butterfly: 0, gem: 0, crown: 0 }, keys: 0, gates: 0, sheep: 0, bushes: 0 };
+    this.stats = { fruit: 0, found: 0, out: 0, carried: 0, walked: 0, prizes: { butterfly: 0, gem: 0, crown: 0 }, keys: 0, gates: 0, sheep: 0, bushes: 0 };
     this.trail = new Trail();
     this.followers = [];
     this.butterflies = [];
@@ -155,7 +156,7 @@ export class MazeRun {
     this.updateFollowers();
     this.updateButterflies(dt, input);
     this.updateBird(dt);
-    if ((this.phase === 'found' || this.phase === 'out') && this.phaseTime >= FOUND_SECONDS) {
+    if ((this.phase === 'found' || this.phase === 'out' || this.phase === 'carried') && this.phaseTime >= FOUND_SECONDS) {
       if (this.index < this.mazes - 1) {
         this.phase = 'sliding';
         this.phaseTime = 0;
@@ -233,6 +234,23 @@ export class MazeRun {
     this.phaseTime = 0;
     this.power = null;
     this.events.onOut(this.index, this.index === this.mazes - 1);
+  }
+
+  /**
+   * Playing together with friends: one of them has found the way out of this maze, and everyone goes on to the
+   * next with them. The character stops where it is for the moment a way out found takes, and then it's the next
+   * maze, or the end of the game after the last. True if that's what happened: only while this maze is being walked.
+   */
+  carriedOut() {
+    if (!this.race || this.phase !== 'walking') return false;
+    this.phase = 'carried';
+    this.phaseTime = 0;
+    this.power = null;
+    this.stuckFor = 0;
+    this.moving = false;
+    this.stats.carried += 1;
+    this.events.onCarried(this.index, this.index === this.mazes - 1);
+    return true;
   }
 
   /** Out of a maze, it walks to the middle of the last cell, and on out through the way out. */
