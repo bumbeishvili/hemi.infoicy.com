@@ -1,0 +1,14 @@
+[
+  {"id": "chase-choose", "text": "Who’s going after the hat today?", "speak": "Who's going after the hat today?", "ka": "ვინ გაეკიდება დღეს ქუდს?"},
+  {"id": "chase-mission", "text": "The magpie took the hat! March after it!", "ka": "კაჭკაჭმა ქუდი წაიღო! ადგილზე იარე და დაეწიე!"},
+  {"id": "chase-march", "text": "March on the spot to walk!", "ka": "ადგილზე იარე, მუხლები მაღლა!"},
+  {"id": "chase-jump", "text": "Jump!", "ka": "ახტი!"},
+  {"id": "chase-arms", "text": "Arms up high to jump!", "ka": "ასახტომად ხელები მაღლა ასწიე!"},
+  {"id": "chase-duck", "text": "Bend your knees!", "ka": "მუხლები მოხარე!"},
+  {"id": "chase-reach", "text": "Reach up high!", "ka": "ხელები მაღლა ასწიე!"},
+  {"id": "chase-star", "text": "Do a star jump!", "ka": "ვარსკვლავა ნახტომი გააკეთე!"},
+  {"id": "chase-turns", "text": "Now the other leg!", "ka": "ახლა მეორე ფეხი!"},
+  {"id": "chase-away", "text": "The magpie is getting away! March!", "ka": "კაჭკაჭი გარბის! იარე, იარე!"},
+  {"id": "chase-lost", "text": "The magpie got away! Try again!", "ka": "კაჭკაჭი გაფრინდა! კიდევ სცადე!"},
+  {"id": "chase-won", "text": "You got the hat back!", "ka": "ქუდი დაიბრუნე!"}
+]

@@ -300,16 +300,36 @@ export class Chase {
     } else {
       this.startMove('leap', station, station.seconds, { big });
       // Over a stream, a big jump reaches what's up above it.
-      if (station.high && big && !station.high.taken) {
-        station.high.taken = true;
-        if (station.high.feather) {
-          stats.feathers += 1;
-          this.addStars(FEATHER.worth, 'feather');
-        } else this.addStars(HIGH_STAR, 'high');
-      }
+      if (big) this.takeHigh(station);
     }
     this.emit('jump', { thing: station, size, big, star });
     return true;
+  }
+
+  /**
+   * A jump that's still going up has turned out to be a big one, as the camera only sees how high a jump is once
+   * it's well off the floor: over a stream, it reaches what's up above it after all. size is how big it is by now.
+   */
+  grow(size) {
+    const { move } = this.hero;
+    if (this.state !== 'play' || !move || move.kind !== 'leap' || move.big || size < BIG_JUMP) return false;
+    // Coming down again, it's too late to go any higher.
+    if (move.t > move.seconds * 0.6) return false;
+    move.big = true;
+    this.stats.big += 1;
+    this.takeHigh(move.thing);
+    return true;
+  }
+
+  /** What's up above a stream is caught: a star, or from level 8 a golden feather. */
+  takeHigh(thing) {
+    if (!thing.high || thing.high.taken) return;
+    thing.high.taken = true;
+    if (thing.high.feather) {
+      this.stats.feathers += 1;
+      this.addStars(FEATHER.worth, 'feather');
+    } else this.addStars(HIGH_STAR, 'high');
+    this.emit('high', { thing });
   }
 
   /** Knees bent: under a branch, or down out of the way of the bees. Anywhere else it's only seen. */

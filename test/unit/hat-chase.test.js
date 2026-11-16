@@ -238,6 +238,39 @@ test('a big jump over a stream catches what is above it: a star, or from level 8
   assert.ok(found, 'a stream at level 8');
 });
 
+test('a jump that turns out to be a big one while it\'s still going up reaches what is above the stream after all', () => {
+  const { chase, events } = setup({ level: 1 });
+  const stream = marchToNext(chase);
+  const before = chase.stats.stars;
+  // The camera sees a jump as it leaves the floor, and only then how high it goes.
+  chase.jump(1);
+  wait(chase, stream.seconds * 0.3);
+  assert.equal(chase.grow(BIG_JUMP - 0.1), false);
+  assert.equal(stream.high.taken, false);
+  assert.equal(chase.grow(BIG_JUMP + 0.2), true);
+  assert.equal(stream.high.taken, true);
+  assert.equal(chase.hero.move.big, true);
+  assert.deepEqual([chase.stats.jumps, chase.stats.big], [1, 1]);
+  assert.ok(events.some(({ type, thing }) => type === 'high' && thing === stream));
+  // Once is all: it doesn't count again.
+  assert.equal(chase.grow(3), false);
+  wait(chase, 1);
+  assert.equal(chase.stats.stars, before + KINDS.stream.stars + 1);
+
+  // Coming down, it's too late to go higher.
+  const late = setup({ level: 1 }).chase;
+  const second = marchToNext(late);
+  late.jump(1);
+  wait(late, second.seconds * 0.7);
+  assert.equal(late.grow(3), false);
+  assert.equal(second.high.taken, false);
+  // And a hop on the spot, or nothing in the air at all, grows into nothing.
+  const still = setup({ level: 1 }).chase;
+  assert.equal(still.grow(3), false);
+  still.jump(1);
+  assert.equal(still.grow(3), false);
+});
+
 test('bent knees go under a branch, and a jump there is only a hop on the spot', () => {
   const { chase } = setup({ level: 2 });
   let branch = null;
@@ -627,4 +660,31 @@ test('taking turns, the same leg again is no step, until the other has had its t
   // As the game comes, either leg counts every time.
   const either = new Marcher({ line: LIFT.medium });
   assert.deepEqual([...lift(either, 'left', 0.2, 0), ...lift(either, 'left', 0.2, 0.6)], ['left', 'left']);
+});
+
+/* ---------- what it says ---------- */
+
+test('every line Hat Chase says has a voice file in both languages, and none is left over', () => {
+  const folder = new URL('../../games/hat-chase/audio/voice/', import.meta.url);
+  const lines = JSON.parse(readFileSync(new URL('lines.json', folder), 'utf8'));
+  const source = readFileSync(new URL('../../games/hat-chase/main.js', import.meta.url), 'utf8');
+  const [, block] = source.match(/const SAY = \{([\s\S]*?)\n\};/);
+  const said = [...block.matchAll(/: '([^']+)'/g)].map(([, text]) => text);
+  assert.ok(said.length >= 10, `only found ${said.length} lines`);
+  assert.deepEqual(said.filter((text) => !lines.some((line) => line.text === text)), []);
+  assert.deepEqual(lines.map(({ text }) => text).filter((text) => !said.includes(text)), []);
+  for (const { id, ka } of lines) {
+    assert.match(ka, /[Ⴀ-ჿ]/, id);
+    for (const language of ['en', 'ka']) assert.ok(existsSync(new URL(`${language}/${id}.ogg`, folder)), `${language}/${id}.ogg`);
+  }
+  // The folder is one the voice tools know about.
+  assert.ok(readFileSync(new URL('../../tools/voice_common.py', import.meta.url), 'utf8').includes('"hat-chase"'));
+});
+
+test('Hat Chase comes with the magpie that can get away, and a grown-up can have the one that waits', () => {
+  const source = readFileSync(new URL('../../games/hat-chase/main.js', import.meta.url), 'utf8');
+  assert.match(source, /const DEFAULTS = \{[^}]*chaseMagpie: 'flies'/);
+  for (const [name, values] of Object.entries({ chaseMagpie: ['flies', 'waits'], chaseLift: ['low', 'medium', 'high'], chaseLegs: ['either', 'turns'], chaseJump: ['jump', 'arms'], chaseLength: ['8', '12', '18'] })) {
+    for (const value of values) assert.ok(source.includes(`choice('${name}', '${value}'`), `${name} ${value}`);
+  }
 });
