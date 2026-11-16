@@ -5,9 +5,11 @@
   {"id": "swamp-higher", "text": "Jump as high as you can!", "ka": "რაც შეგიძლია მაღლა ახტი!"},
   {"id": "swamp-lift", "text": "Lift your knee up high!", "ka": "მუხლი მაღლა ასწიე!"},
   {"id": "swamp-knees", "text": "Bend your knees, then jump!", "ka": "ჯერ მუხლები მოხარე, მერე ახტი!"},
+  {"id": "swamp-knees-lift", "text": "Bend your knees, then lift!", "ka": "ჯერ მუხლები მოხარე, მერე ფეხი ასწიე!"},
   {"id": "swamp-bubble", "text": "Now! Land on the bubble!", "ka": "ახლა! ბუშტზე დახტი!"},
   {"id": "swamp-heron", "text": "Jump, and scare the heron away!", "ka": "ახტი და ყანჩა დააფრთხე!"},
   {"id": "swamp-star", "text": "Do a star jump!", "ka": "ვარსკვლავა ნახტომი გააკეთე!"},
+  {"id": "swamp-star-step", "text": "Arms up and feet apart, like a star!", "ka": "ხელები მაღლა, ფეხები განზე, როგორც ვარსკვლავი!"},
   {"id": "swamp-rain", "text": "The rain got there first! Try again!", "ka": "წვიმამ დაგასწრო! კიდევ სცადე!"},
   {"id": "swamp-won", "text": "What a muddy window!", "ka": "რა ტალახიანი ფანჯარაა!"}
 ]

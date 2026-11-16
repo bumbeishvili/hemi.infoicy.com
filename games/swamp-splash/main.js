@@ -3,6 +3,7 @@
 // rain cloud that's coming across the sky gets here and washes it. It's the game about jumping, and jumping
 // higher. This file runs it from start to finish, on top of what the body games share in core/body/game.js. The
 // rules are in swamp.js, and what it looks like is in view.js.
+import { Easing } from '../../core/body/easing.js';
 import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
 import { ROSTER } from '../../core/body/roster.js';
 import { mountBodyShell } from '../../core/body/shell.js';
@@ -18,11 +19,14 @@ const AIR_MOST = 1.6; // A jump that hasn't come down by now, as far as the came
 const AIR_LEAST = 0.12;
 const SIZE_MOST = 2.8; // No jump counts for more than this, however high.
 const STAR_SIZE = 1.5; // A star jump is never less than this, even one stepped into.
-// How high a big jump is, as a share of the child's height that their hips go up: the grown-ups' choice. A jump
-// that only just counts is size 1, and one this high is SPLASH.bigAt, the biggest splash there is. A child who
-// lifts a foot in place of jumping is measured by how high the foot goes, in the same way.
-const HIGH = { low: 0.1, medium: 0.15, high: 0.2 };
-const LIFT_DOWN = 0.05; // A lifted foot is down again below this share of the child's height.
+// How high a big jump is: how far the child's hips go up, as a share of their leg length (the camera measures
+// against how high their hips are off the floor, standing). It's the grown-ups' choice. A jump that only just
+// counts is size 1, and one this high is SPLASH.bigAt, the biggest splash there is. A child who lifts a knee or
+// a foot in place of jumping is measured by how high the foot goes, which is further than hips go in a jump.
+const HIGH = { jump: { low: 0.1, medium: 0.15, high: 0.2 }, lift: { low: 0.2, medium: 0.3, high: 0.4 } };
+// A foot is lifted once it's this far off the floor, as a share of leg length, however slowly it came up, and
+// down again below the other. Someone standing still reads up to about 0.06.
+const LIFT = { up: 0.09, down: 0.045 };
 const IDLE_SECONDS = 7; // With no jump for this long, the character shows how.
 const KNEES_AFTER = 2; // From the level that brings it, bent knees are shown after this many jumps.
 
@@ -41,9 +45,11 @@ const SAY = {
   higher: 'Jump as high as you can!',
   lift: 'Lift your knee up high!',
   knees: 'Bend your knees, then jump!',
+  kneesLift: 'Bend your knees, then lift!',
   bubble: 'Now! Land on the bubble!',
   heron: 'Jump, and scare the heron away!',
   star: 'Do a star jump!',
+  starStep: 'Arms up and feet apart, like a star!',
   rain: 'The rain got there first! Try again!',
   won: 'What a muddy window!',
 };
@@ -68,7 +74,10 @@ class SwampSplash extends BodyGame {
       createSound: (options) => new SwampSound(options),
     });
     this.swamp = null;
-    this.air = null; // A jump that's up: { since, peak, star }.
+    this.air = null; // A jump that's up: { since, peak, raw, star }.
+    this.footDown = true; // Whether the lifted foot has been down since the last lift.
+    this.highest = 0; // The highest jump or lift of the game, as a share of leg length.
+    this.easing = null;
     this.timer = 0;
     this.countLeft = 0;
     this.idleFor = 0;
@@ -134,9 +143,16 @@ class SwampSplash extends BodyGame {
 
   /* ---------- the body ---------- */
 
-  /** How high a big jump is for this child, as a share of their height: see HIGH. */
+  /** How high a big jump, or a big lift, is for this child, as a share of their leg length: see HIGH. */
   get high() {
-    return HIGH[this.settings.swampHigh] ?? HIGH.medium;
+    const set = HIGH[this.lifting ? 'lift' : 'jump'];
+    return set[this.settings.swampHigh] ?? set.medium;
+  }
+
+  /** How far off the floor the child is right now, as a share of leg length: their hips, or the foot they lift. */
+  rise() {
+    const { reader } = this;
+    return (this.lifting ? reader.footHeight : reader.jumpEffort) ?? 0;
   }
 
   /**
@@ -144,16 +160,13 @@ class SwampSplash extends BodyGame {
    * set to be. For a child who lifts a foot in place of jumping, it's how high the foot is.
    */
   height() {
-    const { reader } = this;
-    const least = this.lifting ? LIFT_DOWN : reader.jumpNeeded;
-    const now = this.lifting ? reader.footHeight ?? 0 : reader.jumpEffort ?? 0;
-    return 1 + (Math.max(0, now - least) / Math.max(0.01, this.high - least)) * (SPLASH.bigAt - 1);
+    const least = this.lifting ? LIFT.up : this.reader.jumpNeeded;
+    return 1 + (Math.max(0, this.rise() - least) / Math.max(0.01, this.high - least)) * (SPLASH.bigAt - 1);
   }
 
   /** Whether the child is back on the floor. */
   down() {
-    const { reader } = this;
-    return this.lifting ? (reader.footHeight ?? 0) < LIFT_DOWN : !reader.inAir;
+    return this.lifting ? this.rise() < LIFT.down : !this.reader.inAir;
   }
 
   /**
@@ -164,19 +177,29 @@ class SwampSplash extends BodyGame {
     const { reader, view } = this;
     const crouch = Math.min(1, Math.max(0, (reader.sink ?? 0) / Math.max(0.001, reader.squatNeeded)));
     // The character goes up as the child does, there and then: all the way for a big jump.
-    const up = this.lifting ? reader.footHeight ?? 0 : reader.jumpEffort ?? 0;
     const playing = this.screen === 'playing';
-    view.setBody({ jump: playing ? Math.min(1, up / this.high) : 0, crouch: playing ? crouch : 0 });
-    if (this.screen !== 'playing' || !this.swamp) return;
-    for (const { move } of moves) {
-      if (move === 'stomp') this.swamp.squat();
-      const star = move === 'starBurst';
-      const up = this.lifting ? move === 'kick' || move === 'knee' : move === 'flying' || star;
-      if (!up) continue;
+    view.setBody({ jump: playing ? Math.min(1, this.rise() / this.high) : 0, crouch: playing ? crouch : 0 });
+    if (!playing || !this.swamp) return;
+    const takeOff = (star) => {
       if (this.air) this.air.star ||= star;
       else {
-        this.air = { since: now, peak: star ? STAR_SIZE : 1, star };
+        this.air = { since: now, peak: star ? STAR_SIZE : 1, raw: 0, star };
         this.sound.jump();
+      }
+    };
+    for (const { move } of moves) {
+      if (move === 'stomp') this.swamp.squat();
+      // A star, arms and legs out, is a jump whichever way the child jumps: it can be stepped into.
+      if (move === 'starBurst') takeOff(true);
+      else if (move === 'flying' && !this.lifting) takeOff(false);
+    }
+    // A child who lifts a knee or a foot in place of jumping: the foot coming up is the jump, however slowly
+    // it comes, and it has to go down again before the next one.
+    if (this.lifting) {
+      if (this.rise() < LIFT.down) this.footDown = true;
+      else if (this.footDown && !this.air && this.rise() >= LIFT.up) {
+        this.footDown = false;
+        takeOff(false);
       }
     }
     this.followAir(now);
@@ -187,6 +210,7 @@ class SwampSplash extends BodyGame {
     const { air } = this;
     if (!air) return;
     air.peak = Math.max(air.peak, this.height());
+    air.raw = Math.max(air.raw, this.rise());
     const long = now - air.since;
     if ((long >= AIR_LEAST && this.down()) || long >= AIR_MOST) this.touchDown();
   }
@@ -195,6 +219,9 @@ class SwampSplash extends BodyGame {
     const { air } = this;
     this.air = null;
     this.idleFor = 0;
+    this.highest = Math.max(this.highest, air.raw);
+    // What counts as a jump starts again from where it was for this child, who has just made one.
+    this.easing = new Easing(this.reader, 'jump');
     this.swamp.land(Math.min(SIZE_MOST, Math.max(1, air.peak)), { star: air.star });
   }
 
@@ -206,8 +233,8 @@ class SwampSplash extends BodyGame {
     const { reader } = this;
     const percent = (share) => `${Math.round(share * 1000) / 10}%`;
     const reading = this.lifting
-      ? `The camera sees the higher foot ${percent(reader.footHeight ?? 0)} of the child’s height off the floor. A foot ${percent(this.high)} up is the biggest splash.`
-      : `The camera sees the child ${percent(reader.jumpEffort ?? 0)} of their height off the floor. A jump of ${percent(reader.jumpNeeded)} is the smallest that counts, and one of ${percent(this.high)} is the biggest splash.`;
+      ? `The camera sees the higher foot ${percent(this.rise())} of the child’s leg length off the floor. A foot ${percent(LIFT.up)} up is a lift, and one ${percent(this.high)} up is the biggest splash.`
+      : `The camera sees the child’s hips ${percent(this.rise())} of their leg length higher than a moment ago. A jump of ${percent(reader.jumpNeeded)} is the smallest that counts, and one of ${percent(this.high)} is the biggest splash.`;
     byElementId('live-reading').textContent = reading;
   }
 
@@ -230,6 +257,9 @@ class SwampSplash extends BodyGame {
     view.setSwamp(this.swamp);
     view.setView('play');
     this.air = null;
+    this.footDown = true;
+    this.highest = 0;
+    this.easing = new Easing(this.reader, 'jump');
     this.idleFor = 0;
     this.filmFor = null;
     this.did = { knees: false, star: false };
@@ -291,6 +321,9 @@ class SwampSplash extends BodyGame {
     swamp.update(dt, { seen: !lost });
     if (swamp.state !== 'play') return;
     this.idleFor = lost ? 0 : this.idleFor + dt;
+    // A child who's trying to jump and not getting as high as counts: what counts comes down to meet them,
+    // as in the other body games (core/body/easing.js).
+    if (!lost && !this.air && !this.lifting) this.easing?.update(dt);
     this.updateHud();
     this.sound.cloud(swamp.cloud);
 
@@ -302,8 +335,8 @@ class SwampSplash extends BodyGame {
     if (lost) prompt = { key: 'come-back', text: BODY_SAY.comeBack, side: null };
     else if (swamp.heron && swamp.heron.coming !== null) prompt = ask('heron');
     else if (swamp.bubbleBig) prompt = ask('bubble');
-    else if (rules.star && !this.did.star && stats.jumps >= 1 && !this.lifting) film = ['starJump', SAY.star];
-    else if (rules.squat && !this.did.knees && stats.jumps >= KNEES_AFTER && !this.lifting) film = ['squat', SAY.knees];
+    else if (rules.star && !this.did.star && stats.jumps >= 1) film = ['starJump', this.lifting ? SAY.starStep : SAY.star];
+    else if (rules.squat && !this.did.knees && stats.jumps >= KNEES_AFTER) film = ['squat', this.lifting ? SAY.kneesLift : SAY.knees];
     else if (stats.jumps === 0 || this.idleFor > IDLE_SECONDS) film = this.lifting ? ['kneeLift', SAY.lift] : ['jump', stats.jumps === 0 ? SAY.jump : SAY.higher];
     if (film) {
       this.showFilm(...film);
@@ -416,10 +449,11 @@ class SwampSplash extends BodyGame {
     const lost = swamp.state === 'lost';
     const percent = Math.round((lost ? rules.target : swamp.coverage) * 100);
     byElementId('finish-muddy').textContent = lost ? `${percent}% was the mark` : `${percent}% muddy`;
-    const biggest = Math.round(stats.biggest * 10) / 10;
     const how = this.lifting ? 'lifted a foot' : 'jumped';
     const big = stats.big ? `, ${plural(stats.big, 'of them a big one', 'of them big ones')}` : '';
-    const most = stats.jumps ? ` The biggest was ${biggest} times the smallest that counts.` : '';
+    // How high the highest was, as the camera measured it, for a grown-up to follow from one day to the next.
+    const high = Math.round(this.highest * 100);
+    const most = high > 0 ? ` The highest ${this.lifting ? 'foot was' : 'jump took their hips'} ${high}% of their leg length ${this.lifting ? 'off the floor' : 'up'}.` : '';
     byElementId('finish-line').textContent = `${this.chosen.name} ${how} ${plural(stats.jumps, 'time')}${big}.${most}`;
     byElementId('finish-prizes').textContent = this.prizeWords();
     this.fillTallyCards(byElementId('finish-tally'), [
@@ -530,15 +564,15 @@ mountBodyShell({
       ${choice('swampRain', 'gentle', 'Gentle: no rain cloud. Take all the time you need')}
     </fieldset>
     <fieldset class="choice">
-      <legend>How high a big jump is: the child’s hips going up by this share of their height, or their foot if they lift one. A jump this high is the biggest splash, and smaller ones are less</legend>
-      ${choice('swampHigh', 'low', `Low: ${Math.round(HIGH.low * 100)}%`)}
-      ${choice('swampHigh', 'medium', `Medium: ${Math.round(HIGH.medium * 100)}%`)}
-      ${choice('swampHigh', 'high', `High: ${Math.round(HIGH.high * 100)}%`)}
+      <legend>How high a big jump is: the child’s hips going up by this share of their leg length, or their foot coming off the floor by the second number if they lift a knee or a foot. That high is the biggest splash, and less high is less mud</legend>
+      ${choice('swampHigh', 'low', `Low: ${Math.round(HIGH.jump.low * 100)}%, or a foot ${Math.round(HIGH.lift.low * 100)}%`)}
+      ${choice('swampHigh', 'medium', `Medium: ${Math.round(HIGH.jump.medium * 100)}%, or a foot ${Math.round(HIGH.lift.medium * 100)}%`)}
+      ${choice('swampHigh', 'high', `High: ${Math.round(HIGH.jump.high * 100)}%, or a foot ${Math.round(HIGH.lift.high * 100)}%`)}
     </fieldset>
     <fieldset class="choice">
       <legend>How the child jumps</legend>
       ${choice('swampJump', 'jump', 'Really jumping, or a star jump: the higher, the bigger the splash')}
-      ${choice('swampJump', 'lift', 'Lifting a knee or a foot, for a child who can stand but not jump: the higher, the bigger the splash')}
+      ${choice('swampJump', 'lift', 'Lifting a knee or a foot, as slowly as they like, for a child who can stand but not jump: the higher the foot, the bigger the splash')}
     </fieldset>`,
 });
 
