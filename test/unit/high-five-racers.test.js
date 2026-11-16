@@ -1,11 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   CAR_WIDTH,
   CHEST_REACH,
   CHEVRON_SPACING,
   closestAcross,
   COINS,
+  CONVOY,
+  convoyPace,
   FASTEST_SPEED,
   FistAndOpen,
   GATE_SPOTS,
@@ -621,4 +624,67 @@ test('racing to win at level 10 takes real skill: the hand wide open and the hig
   assert.equal(raceInNumbers({ level: 10, drive: 0.8, slaps: 0.8 }).won, false, 'only just open, even with high fives');
   assert.equal(raceInNumbers({ level: 10, drive: 1 }).won, false, 'wide open, but missing the high fives');
   assert.equal(raceInNumbers({ level: 10, drive: 1, slaps: 0.9 }).won, true, 'wide open and high fiving');
+});
+
+/* ---------- friends, together: one convoy ---------- */
+
+test('in a convoy, a car beside its friends goes at its own speed, and so does a car with no friends left', () => {
+  assert.equal(convoyPace(300, [300]), 1);
+  assert.equal(convoyPace(300, [300 - CONVOY.ahead]), 1);
+  assert.equal(convoyPace(300, [300 + CONVOY.behind]), 1);
+  assert.equal(convoyPace(300, [280, 320, 310]), 1);
+  assert.equal(convoyPace(300, []), 1);
+  // A friend whose place hasn't come yet doesn't count.
+  assert.equal(convoyPace(300, [NaN, undefined]), 1);
+});
+
+test('the car far in front of the last of its friends eases off, evenly, down to half its speed and no further', () => {
+  const lastAt = 100;
+  const at = (ahead) => convoyPace(lastAt + ahead, [lastAt, lastAt + 20]);
+  assert.equal(at(CONVOY.ahead), 1);
+  assert.ok(at(CONVOY.ahead + 1) < 1);
+  assert.ok(Math.abs(at(CONVOY.ahead + CONVOY.slack / 2) - (1 + CONVOY.slowest) / 2) < 1e-9);
+  assert.equal(at(CONVOY.ahead + CONVOY.slack), CONVOY.slowest);
+  assert.equal(at(CONVOY.ahead + CONVOY.slack + 5000), CONVOY.slowest);
+  // Further in front, never faster.
+  let before = 1;
+  for (let ahead = 0; ahead <= 200; ahead += 5) {
+    assert.ok(at(ahead) <= before, `${ahead} metres in front`);
+    before = at(ahead);
+  }
+  // It's the last of them that's waited for, not the nearest.
+  assert.equal(convoyPace(400, [395, 250]), CONVOY.slowest);
+  // Nobody is ever stopped by it: half speed is the least.
+  assert.equal(CONVOY.slowest, 0.5);
+});
+
+test('the car far behind the first of its friends gets a tow, a fifth faster, and not before', () => {
+  assert.equal(convoyPace(100, [100 + CONVOY.behind + 1]), CONVOY.tow);
+  assert.equal(convoyPace(100, [100 + CONVOY.behind]), 1);
+  assert.equal(convoyPace(100, [120, 400]), CONVOY.tow);
+  assert.equal(CONVOY.tow, 1.2);
+  // Even with turbo, a towed car's speed is one the server passes on to friends: see cleanCar in server/race-room.js.
+  assert.ok(FASTEST_SPEED * CONVOY.tow < 100);
+  // A car in the middle, far in front of one and far behind another, waits for the one behind.
+  assert.equal(convoyPace(300, [100, 500]), CONVOY.slowest);
+  // Two cars easing and towing come back together: the one in front at half speed and the one behind at 1.2
+  // close a gap of 150 metres within a lap's driving, at the speed a hand held just open gives.
+  let [front, back] = [150, 0];
+  const speed = TOP_SPEED * 0.8;
+  for (let second = 0; second < 40; second += 1) {
+    const [a, b] = [convoyPace(front, [back]), convoyPace(back, [front])];
+    front += speed * a;
+    back += speed * b;
+  }
+  assert.ok(front - back <= CONVOY.ahead, `${Math.round(front - back)} metres apart after 40 seconds`);
+  assert.ok(front - back >= 0);
+});
+
+test('High Five Racers comes as a race friends drive together, and whoever made it can choose a race', () => {
+  const source = readFileSync(new URL('../../games/high-five-racers/main.js', import.meta.url), 'utf8');
+  assert.match(source, /defaults: \{[^}]*raceFriends: 'together'/);
+  assert.match(source, /choices: \{[^}]*raceFriends: String/);
+  for (const value of ['together', 'against']) assert.ok(source.includes(`name="raceFriends" value="${value}"`), value);
+  // The convoy's little words are there in both languages.
+  for (const word of ['easeOff', 'tow']) assert.equal(source.split(`    ${word}: '`).length - 1, 2, word);
 });

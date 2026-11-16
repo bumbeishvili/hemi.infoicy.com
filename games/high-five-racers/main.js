@@ -4,6 +4,7 @@
 import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { GameSession, SPOKEN as SPOKEN_EVERYWHERE } from '../../core/session.js';
+import { DID_IT_TOGETHER } from '../../core/sound.js';
 import { CarSound } from './car-sound.js';
 import { drawPowerIcon } from './extras.js';
 import { FriendsRace } from './friends-race.js';
@@ -46,6 +47,9 @@ const WORDS = {
     otherHand: 'Other hand: fist, then open!',
     highTen: 'High ten!',
     newTag: 'New!',
+    // Racing together, as one convoy: why the car has eased off, or is going faster than it was.
+    easeOff: 'Waiting for your friends!',
+    tow: 'Catching up!',
   },
   ka: {
     five: 'ყოჩაღ!',
@@ -58,10 +62,13 @@ const WORDS = {
     otherHand: 'მეორე ხელი: მუშტი, მერე გაშალე!',
     highTen: 'ორმაგი ხუთი!',
     newTag: 'ახალი!',
+    easeOff: 'მეგობრებს ველოდებით!',
+    tow: 'ვეწევით!',
   },
 };
 
 const byId = (id) => document.getElementById(id);
+const CONVOY_TOAST_SPACING_SECONDS = 6; // At least this long between two of the convoy's little words.
 const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 // Where a new thing's label goes, kept clear of the edges of the screen, in pixels. The bottom keeps it above the
 // meters. One that isn't over anything, like the sunset's, goes this far under where the little words come up.
@@ -169,10 +176,10 @@ class RaceGame {
       onLanded: () => sound.landed(),
       onCrowd: () => sound.crowd(),
       onFinish: () => {
-        this.friends.crossed(this.sinceGo);
+        this.friends.crossed(this.sinceGo, this.race.info.stars);
         // Racing to win, one of the others may have got there first. The voice says something kind either way.
         const lost = Boolean(this.race.lostTo);
-        session.finishLine = lost ? LOST_LINE : WON_LINE;
+        session.finishLine = this.team ? DID_IT_TOGETHER : lost ? LOST_LINE : WON_LINE;
         session.finish();
         if (lost) this.showLost();
       },
@@ -205,7 +212,11 @@ class RaceGame {
     this.finishStory.className = 'finish-story';
     this.finishStory.hidden = true;
     document.querySelector('#screen-finish .finish-hero')?.before(this.finishStory);
-    // Racing friends on their own computers, if a grown-up makes or joins a race.
+    // Racing friends on their own computers, if a grown-up makes or joins a race. Together, as one convoy, each
+    // friend's stars are kept here as their game says them, to add up with the child's own.
+    this.team = false;
+    this.mateStars = new Map();
+    this.sentStars = null;
     this.friends = new FriendsRace(this);
     // Otherwise it would play again whenever the race's screen comes back.
     this.toastBox.addEventListener('animationend', () => this.toastBox.classList.remove('is-showing'));
@@ -419,6 +430,7 @@ class RaceGame {
     byId('chip-place').textContent = ordinal(place);
     byId('chip-lap').textContent = `${lap} of ${laps}`;
     byId('chip-stars').textContent = String(stars);
+    if (this.team) this.showTeamStars();
     byId('chip-fives').textContent = String(fives);
     const coinsText = String(race.coinTotal);
     if (this.coinsValue.textContent !== coinsText) this.coinsValue.textContent = coinsText;
@@ -458,7 +470,58 @@ class RaceGame {
       this.race.setDrivers(this.cast.driver, this.cast.rivals);
       this.buildOrder();
     }
-    if (('fighter' in change || 'laps' in change) && this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
+    if (('fighter' in change || 'laps' in change || 'raceFriends' in change) && this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
+    if ('raceFriends' in change) this.friends.showTeams();
+  }
+
+  /** Together or against each other, chosen in the friends box: kept with the grown-ups' settings, and shown there. */
+  chooseTeams(choice) {
+    this.session.changeSettings({ raceFriends: choice });
+    const input = document.querySelector(`input[name="raceFriends"][value="${choice}"]`);
+    if (input) input.checked = true;
+  }
+
+  /**
+   * Racing together: little words say why the car has eased off, far in front of the others, or picked up, far
+   * behind them, as it begins, so a child isn't left wondering. Not again for a few seconds.
+   */
+  showConvoy() {
+    const { convoy } = this.race;
+    const state = convoy < 1 ? 'easeOff' : convoy > 1 ? 'tow' : null;
+    if (state === this.convoyState) return;
+    this.convoyState = state;
+    const { playSeconds } = this.session;
+    if (!state || playSeconds - this.lastConvoyToast < CONVOY_TOAST_SPACING_SECONDS) return;
+    this.lastConvoyToast = playSeconds;
+    this.toast(this.words[state]);
+  }
+
+  /** Racing together: a friend's stars so far, as their game says. They only ever go up. */
+  friendStars(id, stars) {
+    if (!this.mateStars.has(id)) return;
+    this.mateStars.set(id, Math.max(this.mateStars.get(id), stars));
+    this.showTeamStars();
+  }
+
+  /** Racing together: the stars of everyone in the convoy, with those of a friend who has finished or gone. */
+  get teamStars() {
+    const { results } = this.friends;
+    let total = this.race.info.stars;
+    // A friend's last count may not have arrived, but how they finished always does: whichever is more.
+    for (const [id, stars] of this.mateStars) total += Math.max(stars, results.get(id)?.dropped ?? 0);
+    return total;
+  }
+
+  /** Racing together: what the stars add up to, at the top as they race and under the title of the finish card. */
+  showTeamStars() {
+    const friendly = this.friends.current;
+    if (!friendly) return;
+    const total = this.teamStars;
+    const text = String(total);
+    const chip = byId('chip-team');
+    if (chip.textContent !== text) chip.textContent = text;
+    this.finishStory.hidden = !friendly.team;
+    if (friendly.team) this.finishStory.textContent = `Together you caught ${total} ${total === 1 ? 'star' : 'stars'}.`;
   }
 
   /** With friends, the start waits on the grid until they're ready too. */
@@ -466,7 +529,7 @@ class RaceGame {
     return this.friends.holdStart(go);
   }
 
-  /** A friend has gone in the middle of a race, and their car with them. */
+  /** A friend has gone in the middle of a race, and their car with them. Their stars stay with the convoy. */
   friendGone(key) {
     this.race.dropFriend(key);
     this.buildOrder();
@@ -485,7 +548,17 @@ class RaceGame {
     // Racing friends, everyone races on the host's course, which doesn't move anyone's own level on.
     const friendly = this.friends.current;
     document.body.toggleAttribute('data-friends-race', Boolean(friendly));
-    this.race.setFriends(friendly?.friends ?? null, friendly?.mySlot ?? 0);
+    // Together, they're one convoy, and their stars add up: see convoyPace in rules.js.
+    this.team = Boolean(friendly?.team);
+    document.body.toggleAttribute('data-friends-team', this.team);
+    this.mateStars = new Map((friendly?.friends ?? []).map((friend) => [friend.id, 0]));
+    this.sentStars = null;
+    this.convoyState = null;
+    this.lastConvoyToast = -Infinity;
+    byId('chip-team-box').hidden = !this.team;
+    byId('chip-place-box').hidden = this.team;
+    this.finishStory.hidden = true;
+    this.race.setFriends(friendly?.friends ?? null, friendly?.mySlot ?? 0, this.team);
     this.friends.carsReady(this.race);
     this.race.setLevel(friendly?.level ?? level);
     // Coins are counted from level 2, where they come in.
@@ -541,6 +614,12 @@ class RaceGame {
     const { speed, turboOn, boosting } = race.info;
     session.sound.engine(speed, snapshot.drive > 0, turboOn || boosting ? 1 : 0);
     this.friends.sendCar(race.carState, this.sinceGo);
+    // Racing together, friends hear each star, for the convoy's count.
+    if (this.team && race.info.stars !== this.sentStars) {
+      this.sentStars = race.info.stars;
+      this.friends.sendScore(this.sentStars, this.sinceGo);
+    }
+    if (this.team) this.showConvoy();
     this.showProgress();
     this.showFlyFilm(dt);
   }
@@ -651,9 +730,10 @@ new GameSession({
     hudTop: `
       <div class="hud-top">
         <div class="chips">
-          <div class="chip"><span class="chip-label">Place</span><span id="chip-place" class="chip-value">4th</span></div>
+          <div id="chip-place-box" class="chip"><span class="chip-label">Place</span><span id="chip-place" class="chip-value">4th</span></div>
           <div class="chip"><span class="chip-label">Lap</span><span id="chip-lap" class="chip-value">1 of 2</span></div>
           <div class="chip"><span class="chip-label">Stars</span><span id="chip-stars" class="chip-value">0</span></div>
+          <div id="chip-team-box" class="chip" hidden><span class="chip-label">Stars together</span><span id="chip-team" class="chip-value">0</span></div>
           <div class="chip"><span class="chip-label">Fives</span><span id="chip-fives" class="chip-value">0</span></div>
           <div id="chip-coins-box" class="chip chip-coins" hidden><span class="chip-label">Coins</span><span id="chip-coins" class="chip-value">0</span></div>
         </div>
@@ -726,6 +806,11 @@ new GameSession({
         <label><input type="radio" name="rivals" value="gentle"> Gentle: they stay close, wait while the hand rests, and let the child win</label>
       </fieldset>
       <fieldset class="choice">
+        <legend>With friends</legend>
+        <label><input type="radio" name="raceFriends" value="together"> Together: one convoy on the same side, where whoever is far in front eases off, whoever is far behind gets a tow, and the stars add up</label>
+        <label><input type="radio" name="raceFriends" value="against"> Against each other: a race, and the first over the line wins</label>
+      </fieldset>
+      <fieldset class="choice">
         <legend>How far to reach for the big hands</legend>
         <label><input type="radio" name="reach" value="small"> A small reach</label>
         <label><input type="radio" name="reach" value="medium"> A medium reach</label>
@@ -742,8 +827,8 @@ new GameSession({
         ${driverChoices}
       </fieldset>`,
   },
-  defaults: { steering: 'help', laps: 2, reach: 'medium', fighter: ROSTER[0].id, rivals: 'race' },
-  choices: { steering: String, laps: Number, reach: String, fighter: String, rivals: String },
+  defaults: { steering: 'help', laps: 2, reach: 'medium', fighter: ROSTER[0].id, rivals: 'race', raceFriends: 'together' },
+  choices: { steering: String, laps: Number, reach: String, fighter: String, rivals: String, raceFriends: String },
   // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
   atOnce: ['steering', 'reach'],
   tagline: (side) => `Open your ${side} hand to make your car go!`,

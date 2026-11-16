@@ -21,7 +21,7 @@ import { canvasTexture, clamp, damp, mod, softCircleTexture } from './kit.js';
 import { CarTrack } from './friends.js';
 import { Ramps, StarField } from './pickups.js';
 import {
-  CAR_LENGTH, CAR_WIDTH, CHEST_REACH, COINS, FASTEST_SPEED, FistAndOpen, gateOutcome, HIGH_TEN_BEFORE_LINE, LEAST_REACH, newAt, POWER, PowerUps,
+  CAR_LENGTH, CAR_WIDTH, CHEST_REACH, COINS, convoyPace, FASTEST_SPEED, FistAndOpen, gateOutcome, HIGH_TEN_BEFORE_LINE, LEAST_REACH, newAt, POWER, PowerUps,
   ownPace, racePlan, REACH, ReachEasing, RIVAL_TURBO, rivalSpeed, SLAP, TOP_SPEED, touching, TRACTOR, tractorRun, TurboMeter, wantedSpeed,
 } from './rules.js';
 import { LANE_LIMIT, START_BEHIND_LINE, Track } from './track.js';
@@ -167,6 +167,7 @@ export class Race {
     this.racers = [null]; // In order, with null for the player. See order.
     // Friends racing from their own computers, who take the place of the others: see setFriends.
     this.friends = null;
+    this.team = false;
     this.friendCars = new Map();
     this.gridSlot = 0;
     this.gridSize = 1;
@@ -293,7 +294,9 @@ export class Race {
    * Friends racing on their own computers, as [{ key, spec, slot }], or null to race the others again. slot is
    * each one's place on the grid, and mySlot the child's. Their cars go wherever their own games say.
    */
-  setFriends(friends, mySlot = 0) {
+  setFriends(friends, mySlot = 0, team = false) {
+    // Whether the friends are on the same side, in one convoy: see convoy.
+    this.team = Boolean(friends && team);
     this.friends = friends?.map(({ key, spec, slot }) => {
       let friend = this.friendCars.get(key);
       if (!friend) {
@@ -311,6 +314,14 @@ export class Race {
     this.gridSlot = mySlot;
     this.gridSize = (friends?.length ?? 0) + 1;
     this.setLevel(this.level);
+  }
+
+  /**
+   * Racing together, how much of its own speed the child's car goes at, to stay in one convoy with the friends
+   * still here: see convoyPace in rules.js. On its own, or racing them, it's all of it.
+   */
+  get convoy() {
+    return this.team && this.friends ? convoyPace(this.distance, this.friends.map((friend) => friend.distance)) : 1;
   }
 
   makeFriend(spec, slot) {
@@ -573,7 +584,7 @@ export class Race {
     }
     this.boostLeft = handOpen ? Math.max(0, this.boostLeft - dt) : 0;
 
-    const targetSpeed = wantedSpeed(drive, this.turbo.bonus, this.boostLeft);
+    const targetSpeed = wantedSpeed(drive, this.turbo.bonus, this.boostLeft) * this.convoy;
     if (targetSpeed > this.speed) {
       this.speed = Math.min(targetSpeed, this.speed + ACCELERATION * dt);
     } else {

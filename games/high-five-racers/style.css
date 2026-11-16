@@ -60,6 +60,8 @@ body:not([data-screen='playing']) .five-film { display: none; }
 }
 
 .order-row.is-you .order-number { color: var(--ink); }
+/* Racing together nobody is placed: the faces still show who's in front on the road, without the numbers. */
+body[data-friends-team] .order-number { visibility: hidden; }
 
 /* ---------- the turbo meter ---------- */
 .turbo {

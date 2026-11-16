@@ -1,8 +1,13 @@
 // Racing friends: two children, each on their own computer with their own camera, race each other. Here
 // they're two separate browsers, talking through the race server on this computer (tools/race-server.mjs),
 // which has the same rules as the one on Cloudflare.
-import { expect, openGame, screenName, show, test, waitForScreen } from './helpers.js';
+//
+// These are the tests of the race, against each other, which a grown-up now has to choose: as the game comes,
+// friends drive together as one convoy, and that's in together.spec.js.
+import { expect, openGame as openAnyGame, screenName, show, test, waitForScreen } from './helpers.js';
 import { CODE_LETTERS } from '../../../server/race-room.js';
+
+const openGame = (page, settings = {}, ...rest) => openAnyGame(page, { raceFriends: 'against', ...settings }, ...rest);
 
 const raceOf = (page) => page.evaluate(() => {
   const { race, session } = window.__game;

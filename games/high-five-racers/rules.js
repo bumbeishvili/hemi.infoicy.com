@@ -205,6 +205,24 @@ export function rivalSpeed({ gap, wish, playerSpeed, resting, rushing, comingBac
   return Math.max(0, playerSpeed + clamp((wish - gap) * 0.35, -FALLS_BACK_AT_MOST, pace.gains));
 }
 
+// Friends racing together, on the same side, stay in one convoy, as in Moto Mountain. A car more than ahead
+// metres in front of the last of them eases off, down to slowest of its speed over the next slack metres, and
+// one more than behind metres behind the first gets a tow, that much faster. Nobody is ever stopped by it.
+export const CONVOY = { ahead: 60, slack: 40, slowest: 0.5, behind: 35, tow: 1.2 };
+
+/**
+ * How much of its own speed a car in a convoy goes at. mine is how far it has driven, and others how far each
+ * friend who's still here has, in metres. With no friends left it's a car on its own.
+ */
+export function convoyPace(mine, others) {
+  const far = others.filter(Number.isFinite);
+  if (!far.length) return 1;
+  const ahead = mine - Math.min(...far);
+  if (ahead > CONVOY.ahead) return 1 - (1 - CONVOY.slowest) * clamp((ahead - CONVOY.ahead) / CONVOY.slack, 0, 1);
+  if (Math.max(...far) - mine > CONVOY.behind) return CONVOY.tow;
+  return 1;
+}
+
 // Racing to win, the default: each of the others drives at its own pace, whatever the child does, and the
 // first car over the line wins. pace is the quickest one's speed, as a share of TOP_SPEED, at level 1 and at
 // level 10: at level 1 a child keeping the hand only just open is quicker, with time to spare for rests, and at
