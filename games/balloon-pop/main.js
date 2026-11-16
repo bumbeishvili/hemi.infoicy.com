@@ -181,9 +181,9 @@ class BalloonGame {
           if (this.team && this.teamTotal < this.team.goal) this.endLost();
           else this.session.finish();
         }
-        // Together, what a friend popped before they went still counts for the team.
-        if (this.team) this.team.gone += this.scores.get(friend.id) ?? 0;
-        this.scores.delete(friend.id);
+        // Together, what a friend popped before they went still counts for the team, so their score stays in it. A
+        // friend who was only away a while, and comes back, goes on from that score rather than being counted twice.
+        if (!this.team) this.scores.delete(friend.id);
         this.friendsGloves = this.friendsGloves.filter((each) => each.id !== friend.id);
         this.field.friendsGloves = this.friendsGloves;
         this.showScores();
@@ -330,7 +330,7 @@ class BalloonGame {
   /** Together: what everyone has popped between them, with what friends who've gone popped before they went. */
   get teamTotal() {
     const { results } = this.friends;
-    let total = this.field.total + (this.team?.gone ?? 0);
+    let total = this.field.total;
     // A friend's last score may not have arrived, but how they finished always does: whichever is more.
     for (const [id, score] of this.scores) total += Math.max(score, results.get(id)?.dropped ?? 0);
     return total;
@@ -453,7 +453,7 @@ class BalloonGame {
     // Together, the team has so many to pop between them before the time is up, and with the host's game on
     // Gentle there's no clock at all: endless. closing is the moment after the time is up, while the last pops
     // from friends' games come in.
-    this.team = friendly?.team ? { goal: 0, gone: 0, closing: null, won: false } : null;
+    this.team = friendly?.team ? { goal: 0, closing: null, won: false } : null;
     this.timed = friendly ? { seconds, left: seconds, endless: Boolean(this.team && host.gentle) } : null;
     this.friendsMaths = host ? host.maths : null;
     // Everyone plays with the host's balloons. The host's game runs them, and the others' follow it.

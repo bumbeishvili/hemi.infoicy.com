@@ -231,6 +231,42 @@ const poppedAlready = (page, count) => page.evaluate((n) => {
   window.__game.balloons.popped.right = n;
 }, count);
 
+/** What was said at the end and whether it was cheered: the voice's line, whether it was lost, and the confetti. */
+const howItEnded = (page) => page.evaluate(() => ({ ...window.__game.sound.finished, confetti: window.__game.hud.confetti.running }));
+
+/** Ana makes a game and Ben joins it, each with their name, and both play, hands out of view. Returns Ben's player. */
+async function anaAndBen(page, browser) {
+  await openGame(page, { balloons: 20, maths: 'off', away: 'count' }, GAME);
+  const code = await makeGame(page, 'Ana');
+  const ben = await secondPlayer(browser);
+  await openGame(ben.page, { away: 'count' }, GAME, `#pop=${code}`);
+  await ben.page.locator('#friends-name').fill('Ben');
+  await ben.page.locator('#friends-name').dispatchEvent('change');
+  await expect(page.locator('#friends-here')).toContainText('Ben');
+  await bothPlaying(page, ben.page);
+  return ben;
+}
+
+/**
+ * A child's connection goes, as when the wifi drops, and their game can't get back in until connectionBack: it
+ * keeps trying, and gets nowhere.
+ */
+const loseConnection = (page) => page.evaluate(() => {
+  const { room } = window.__game.game.friends;
+  room.connect = () => {};
+  room.socket.close();
+});
+
+/** The wifi is back: the game gets back in, as the same player. */
+async function connectionBack(page) {
+  await page.evaluate(() => {
+    const { room } = window.__game.game.friends;
+    delete room.connect;
+    room.connect();
+  });
+  await expect.poll(() => page.evaluate(() => window.__game.game.friends.room.status)).toBe('in');
+}
+
 test('together, as the game comes: every pop counts for the team on both screens, and the game is won for both as soon as they have enough between them', async ({ page, browser }) => {
   test.setTimeout(300_000);
   // The clock is on unless a grown-up chose Gentle, which these tests' games otherwise are.
@@ -241,9 +277,10 @@ test('together, as the game comes: every pop counts for the team on both screens
   await expect(page.locator('input[name="friends-team"][value="together"]')).toBeEnabled();
   await expect(page.locator('#friends-how')).toContainText('every pop counts for your team');
 
-  // Ben's own choice is against each other, but it's Ana's game: he's shown hers, and can't change it.
+  // Ben's own choice is against each other, with 40 balloons, but it's Ana's game: he's shown her choice, and can't
+  // change it, and it's her 20 the team's goal goes by.
   const ben = await secondPlayer(browser);
-  await openGame(ben.page, { popFriends: 'against', away: 'count' }, GAME, `#pop=${code}`);
+  await openGame(ben.page, { popFriends: 'against', away: 'count', balloons: 40 }, GAME, `#pop=${code}`);
   await ben.page.locator('#friends-name').fill('Ben');
   await ben.page.locator('#friends-name').dispatchEvent('change');
   await expect(page.locator('#friends-here')).toContainText('Ben');
@@ -290,12 +327,14 @@ test('together, as the game comes: every pop counts for the team on both screens
   for (const each of [page, ben.page]) {
     await expect(each.locator('#screen-finish h2')).toHaveText('You popped them together!');
     await expect(each.locator('#finish-story')).toHaveText('You popped 30 balloons together!');
+    await expect(each.locator('#finish-story')).toBeVisible();
     await expect(each.locator('#finish-hero')).toHaveText('30');
     await expect(each.locator('.friends-results')).toHaveClass(/is-team/);
     await expect(each.locator('.friends-results li')).toHaveCount(2);
     // Nobody is placed: there's no 1st or 2nd on a team.
     await expect(each.locator('.friends-results')).not.toContainText(/1st|2nd/);
     expect(await each.evaluate(() => [window.__game.game.lost, window.__game.session.finishLine])).toEqual([false, 'You did it together!']);
+    expect(await howItEnded(each)).toEqual({ line: 'You did it together!', lost: false, confetti: true });
     await expect(each.locator('#screen-finish .finish-actions .big-button').first()).toHaveText('Play again');
   }
   await expect(page.locator('.friends-results')).toContainText(`${30 - benPopped} popped`);
@@ -325,8 +364,11 @@ test('together, when the time is up before the team has enough it ends for both,
   for (const each of [page, ben.page]) {
     await expect(each.locator('#screen-finish h2')).toHaveText('Time’s up!');
     await expect(each.locator('#finish-story')).toHaveText('You popped 12 of 30 together.');
+    await expect(each.locator('#finish-story')).toBeVisible();
     await expect(each.locator('#screen-finish .finish-actions .big-button').first()).toHaveText('Try again');
     expect(await each.evaluate(() => [window.__game.game.lost, window.__game.session.finishLine])).toEqual([true, 'So close! Try again!']);
+    // Nothing is cheered: no fanfare, no clapping and no confetti.
+    expect(await howItEnded(each)).toEqual({ line: 'So close! Try again!', lost: true, confetti: false });
   }
   expect((await popOf(ben.page)).timed.left).toBeGreaterThan(30);
   await page.screenshot({ path: 'test-results/screens/pop-together-time-up.png' });
@@ -406,6 +448,184 @@ test('whoever made the game can change to against each other in the friends box:
   await timeUp(page, ben.page);
   await expect(page.locator('.friends-results')).not.toHaveClass(/is-team/);
   await expect(page.locator('.friends-results li').nth(0)).toContainText('1st');
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
+});
+
+test('together, a friend who leaves in the middle keeps what they popped in the team\'s total, and the others play on', async ({ page, browser }) => {
+  test.setTimeout(300_000);
+  const ben = await anaAndBen(page, browser);
+  await poppedAlready(ben.page, 5);
+  await expect(page.locator('#chip-popped')).toHaveText('5 of 30');
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
+  // After a few seconds Ana's game takes it that Ben has gone: his name goes from the scores, and his pops stay.
+  await expect(page.locator('#pop-scores')).not.toContainText('Ben', { timeout: 15_000 });
+  await expect(page.locator('#chip-popped')).toHaveText('5 of 30');
+  expect(await page.evaluate(() => window.__game.session.screen)).toBe('playing');
+  // Ana pops the rest on her own, and the team has won.
+  await poppedAlready(page, 25);
+  await waitForScreen(page, 'finish');
+  await expect(page.locator('#screen-finish h2')).toHaveText('You popped them together!');
+  await expect(page.locator('#finish-story')).toHaveText('You popped 30 balloons together!');
+  await expect(page.locator('#finish-hero')).toHaveText('30');
+});
+
+test('together, if whoever made the game leaves in the middle, it\'s over for the others, short of the goal, kindly', async ({ page, browser }) => {
+  test.setTimeout(300_000);
+  // Ben makes the game this time, with the maths challenge, and Ana joins it.
+  const ben = await secondPlayer(browser);
+  await openGame(ben.page, { balloons: 20, maths: 'add', away: 'count' }, GAME);
+  const code = await makeGame(ben.page, 'Ben');
+  await openGame(page, { away: 'count' }, GAME, `#pop=${code}`);
+  await expect(ben.page.locator('#friends-here li')).toHaveCount(2);
+  await bothPlaying(page, ben.page);
+  expect((await popOf(page)).host).toBe(false);
+  await poppedAlready(page, 3);
+  await expect(ben.page.locator('#chip-popped')).toHaveText('3 of 7');
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
+  // There are no more balloons or sums without Ben's game, so a few seconds later Ana's is over, short of 7.
+  await waitForScreen(page, 'finish');
+  await expect(page.locator('#finish-story')).toHaveText('You got 3 of 7 right together.');
+  await expect(page.locator('#finish-story')).toBeVisible();
+  await expect(page.locator('#screen-finish .finish-actions .big-button').first()).toHaveText('Try again');
+  expect(await page.evaluate(() => window.__game.game.lost)).toBe(true);
+  expect(await howItEnded(page)).toEqual({ line: 'So close! Try again!', lost: true, confetti: false });
+  // Most of the minute was still to go.
+  expect((await popOf(page)).timed.left).toBeGreaterThan(30);
+});
+
+test('together, a pop on a friend\'s computer in the moment after the time is up on this one still counts, and wins it for both', async ({ page, browser }) => {
+  test.setTimeout(300_000);
+  const ben = await anaAndBen(page, browser);
+  await poppedAlready(page, 29);
+  await expect(ben.page.locator('#chip-popped')).toHaveText('29 of 30');
+  // Ana's time is up a moment before Ben's: her game waits that moment for the last pops from his.
+  await page.evaluate(() => {
+    window.__game.game.timed.left = 0.01;
+  });
+  await expect.poll(() => page.evaluate(() => window.__game.game.team.closing)).not.toBe(null);
+  await poppedAlready(ben.page, 1);
+  await waitForScreen(page, 'finish');
+  await waitForScreen(ben.page, 'finish');
+  for (const each of [page, ben.page]) {
+    await expect(each.locator('#screen-finish h2')).toHaveText('You popped them together!');
+    await expect(each.locator('#finish-story')).toHaveText('You popped 30 balloons together!');
+    expect(await howItEnded(each)).toEqual({ line: 'You did it together!', lost: false, confetti: true });
+  }
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
+});
+
+test('together, a friend who loses the connection for a while and comes back is counted once: what they popped before stays the team\'s, and what they pop after adds to it', async ({ page, browser }) => {
+  test.setTimeout(300_000);
+  const ben = await anaAndBen(page, browser);
+  await poppedAlready(ben.page, 5);
+  await expect(page.locator('#chip-popped')).toHaveText('5 of 30');
+  // Ben's wifi goes for longer than a moment: Ana's game takes it that he has gone, and keeps what he popped.
+  await loseConnection(ben.page);
+  await expect(page.locator('#pop-scores')).not.toContainText('Ben', { timeout: 15_000 });
+  await expect(page.locator('#chip-popped')).toHaveText('5 of 30');
+  // He's back, as the same player, and pops one more: that's 6 for the team, and not his 5 twice and then one.
+  await connectionBack(ben.page);
+  await poppedAlready(ben.page, 6);
+  await expect(ben.page.locator('#chip-popped')).toHaveText('6 of 30');
+  await expect(page.locator('#chip-popped')).toHaveText('6 of 30');
+  // And the team wins at 30 between them, not before.
+  await poppedAlready(page, 23);
+  await expect(ben.page.locator('#chip-popped')).toHaveText('29 of 30');
+  expect(await page.evaluate(() => window.__game.session.screen)).toBe('playing');
+  await poppedAlready(page, 24);
+  await waitForScreen(page, 'finish');
+  await waitForScreen(ben.page, 'finish');
+  await expect(page.locator('#finish-story')).toHaveText('You popped 30 balloons together!');
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
+});
+
+test('together, playing again after a team game starts afresh, and a change to against each other in the middle of one waits for the next', async ({ page, browser }) => {
+  test.setTimeout(300_000);
+  const ben = await anaAndBen(page, browser);
+  // The first game: the time is up with 4 of 30.
+  await poppedAlready(page, 4);
+  await expect(ben.page.locator('#chip-popped')).toHaveText('4 of 30');
+  await timeUp(page, ben.page);
+  await expect(ben.page.locator('#screen-finish h2')).toHaveText('Time’s up!');
+
+  // Both try again: a new game, from nothing, which the last one's ending doesn't end.
+  for (const each of [page, ben.page]) await each.locator('#play-again').click();
+  await waitForScreen(page, 'playing');
+  await waitForScreen(ben.page, 'playing');
+  for (const each of [page, ben.page]) {
+    await expect(each.locator('#chip-popped')).toHaveText('0 of 30');
+    expect(await each.evaluate(() => {
+      const { game } = window.__game;
+      return { lost: game.lost, closing: game.team.closing, total: game.teamTotal, results: game.friends.results.size, line: game.session.finishLine };
+    })).toEqual({ lost: false, closing: null, total: 0, results: 0, line: 'You popped them all!' });
+    expect((await popOf(each)).timed.left).toBeGreaterThan(50);
+  }
+
+  // In the middle of it, a grown-up at Ana's chooses against each other. It's for the next game: this one goes on as it was.
+  await page.locator('#open-panel').click();
+  await page.locator('input[name="popFriends"][value="against"]').check();
+  await page.locator('#close-panel').click();
+  await expect.poll(() => ben.page.evaluate(() => window.__game.game.friends.room.team)).toBe(false);
+  for (const each of [page, ben.page]) {
+    expect(await each.evaluate(() => window.__game.session.screen)).toBe('playing');
+    await expect(each.locator('#chip-popped-label')).toHaveText('Popped together');
+  }
+  // This time they get there, and it's won for both, and cheered.
+  await poppedAlready(page, 30);
+  await waitForScreen(page, 'finish');
+  await waitForScreen(ben.page, 'finish');
+  for (const each of [page, ben.page]) {
+    await expect(each.locator('#screen-finish h2')).toHaveText('You popped them together!');
+    await expect(each.locator('#finish-story')).toHaveText('You popped 30 balloons together!');
+    await expect(each.locator('#screen-finish .finish-actions .big-button').first()).toHaveText('Play again');
+    expect(await howItEnded(each)).toEqual({ line: 'You did it together!', lost: false, confetti: true });
+  }
+
+  // The next game is against each other.
+  for (const each of [page, ben.page]) await each.locator('#play-again').click();
+  await waitForScreen(page, 'playing');
+  await waitForScreen(ben.page, 'playing');
+  for (const each of [page, ben.page]) {
+    expect((await popOf(each)).team).toBe(null);
+    await expect(each.locator('#chip-popped-label')).toHaveText('Popped');
+    await expect(each.locator('#chip-popped')).toHaveText('0');
+  }
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
+});
+
+test('on their own straight after a team game, nothing of the team\'s is left: the count, the clock, the scores and the card are their own', async ({ page, browser }) => {
+  test.setTimeout(300_000);
+  const ben = await anaAndBen(page, browser);
+  await poppedAlready(page, 30);
+  await waitForScreen(page, 'finish');
+  await expect(page.locator('#finish-story')).toHaveText('You popped 30 balloons together!');
+
+  // Ana plays again, and then on her own rather than wait for Ben.
+  await page.locator('#play-again').click();
+  await waitForScreen(page, 'waiting');
+  await page.locator('#friends-alone').click();
+  await waitForScreen(page, 'playing');
+  expect([(await popOf(page)).team, (await popOf(page)).timed]).toEqual([null, null]);
+  await expect(page.locator('#chip-popped-label')).toHaveText('Popped');
+  await expect(page.locator('#chip-popped')).toHaveText('0 of 20');
+  await expect(page.locator('#chip-time-box')).toBeHidden();
+  await expect(page.locator('#pop-scores')).toBeHidden();
+  expect(await page.evaluate(() => [document.body.hasAttribute('data-friends-team'), document.body.hasAttribute('data-friends-race')])).toEqual([false, false]);
+
+  // Her own 20, and the card is the usual one: no team, no story, nobody else.
+  await poppedAlready(page, 20);
+  await waitForScreen(page, 'finish');
+  await expect(page.locator('#screen-finish h2')).toHaveText('You popped them all!');
+  await expect(page.locator('#finish-story')).toBeHidden();
+  await expect(page.locator('#finish-hero')).toHaveText('20');
+  await expect(page.locator('.friends-results')).toBeHidden();
+  expect(await howItEnded(page)).toEqual({ line: 'You popped them all!', lost: false, confetti: true });
   expect(ben.errors).toEqual([]);
   await ben.context.close();
 });
