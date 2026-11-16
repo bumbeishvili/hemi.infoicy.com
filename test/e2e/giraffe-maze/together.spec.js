@@ -103,6 +103,24 @@ const loseConnection = (page, ms) => page.evaluate((gap) => {
   }, gap);
 }, ms);
 
+/**
+ * This child's computer is offline for so long: the connection closes, and can't be made again until it's back.
+ */
+const goOffline = (page, ms) => page.evaluate((gap) => {
+  const { room } = window.__game.game.friends;
+  const Real = window.WebSocket;
+  const Offline = function () {
+    throw new Error('offline');
+  };
+  Object.assign(Offline, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 });
+  window.WebSocket = Offline;
+  room.socket?.close();
+  setTimeout(() => {
+    window.WebSocket = Real;
+    room.wake();
+  }, gap);
+}, ms);
+
 /** What each game is, for whether anything of a game before is still there. */
 const kind = (page) => page.evaluate(() => {
   const { game, run, session } = window.__game;
@@ -553,5 +571,33 @@ test('during a game together, whoever made it chooses against each other in the 
   await expect(page.locator('.friends-results')).not.toHaveClass(/is-team/);
   await expect(page.locator('#finish-team')).toBeHidden();
   expect(ben.errors).toEqual([]);
+  await ben.context.close();
+});
+
+test('together, a friend offline for longer than a moment, who had gone, is back in the team: finding the way out, they take the other on', async ({ page, browser }) => {
+  test.setTimeout(300_000);
+  await openGame(page, { mazeReach: 'lots', mazes: 2, mazeSize: 'medium' }, GAME);
+  const code = await makeGame(page, 'Ana');
+  const ben = await secondPlayer(browser);
+  await joinGame(ben.page, code, {}, 'Ben');
+  await allPlaying(page, ben.page);
+  for (const each of [page, ben.page]) await show(each, ...FIST);
+  const gone = (on) => on.evaluate(() => window.__game.game.friends.current.friends.map((friend) => Boolean(friend.gone)));
+  const walkers = (on) => on.evaluate(() => window.__game.game.friendWalkers.size);
+  // Ben's computer is offline for 6 seconds: longer than a friend is waited for, so on Ana's screen he has gone.
+  await goOffline(ben.page, 6000);
+  await expectSoon(() => gone(page), { timeout: 20_000 }).toEqual([true]);
+  expect(await walkers(page)).toBe(0);
+  // And then he's back, in the same game, as the player he was: on her screen too.
+  await expectSoon(() => ben.page.evaluate(() => window.__game.game.friends.room.status), { timeout: 30_000 }).toBe('in');
+  await expectSoon(() => gone(page), { timeout: 20_000 }).toEqual([false]);
+  expect(await walkers(page)).toBe(1);
+  // Ben finds the way out of the first maze. Ana, resting, is taken on with him.
+  await show(ben.page, ...OPEN);
+  await leadHand(ben.page);
+  await expectSoon(async () => (await view(ben.page)).out, { timeout: 150_000 }).toBe(1);
+  await stopHand(ben.page);
+  await expectSoon(async () => (await view(page)).index, { timeout: 20_000 }).toBe(1);
+  expect((await view(page)).carried).toBe(1);
   await ben.context.close();
 });
