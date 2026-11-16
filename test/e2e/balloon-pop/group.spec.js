@@ -191,6 +191,35 @@ test('four play, each with a glove, and each pops', async ({ page }) => {
   }
 });
 
+test('the number can change once the tracker is loaded and looking: it goes on to look for that many people\'s hands', async ({ page }) => {
+  test.setTimeout(240_000);
+  // A game for one is being played, and the tracker is looking for one child's two hands.
+  const xs = [0.875, 0.625, 0.375, 0.125];
+  const four = xs.map((x) => hand('open', x, { scale: 0.8 }));
+  await play(page, 1, four);
+  await expect.poll(async () => (await group(page)).handOpen, { timeout: 20_000 }).toBe(true);
+  expect(await group(page)).toMatchObject({ players: 1, looksFor: 1, guests: [] });
+  // Four are playing now, as a game that asks between rounds would say.
+  await page.evaluate(() => window.__game.session.setPlayers(4));
+  await expect.poll(async () => (await group(page)).guests, { timeout: 30_000 }).toEqual(['open', 'open', 'open']);
+  expect(await group(page)).toMatchObject({ players: 4, looksFor: 4 });
+  await expect(page.locator('input[name="group-size"][value="4"]')).toBeChecked();
+  // And back to one: the others have no gloves, and the tracker reports no more than one child's two hands.
+  await page.evaluate(() => window.__game.session.setPlayers(1));
+  expect(await group(page)).toMatchObject({ players: 1, looksFor: 1, guests: [], others: [] });
+  await page.waitForTimeout(1500);
+  const found = await page.evaluate(() => new Promise((resolve) => {
+    const { camera } = window.__game;
+    const result = camera.onResult;
+    camera.onResult = (data) => {
+      camera.onResult = result;
+      result(data);
+      resolve(data.hands.length);
+    };
+  }));
+  expect(found).toBeLessThanOrEqual(2);
+});
+
 test('with friends on their own computers, one plays at each: making a game puts it back to one', async ({ page }) => {
   await openGame(page, {}, GAME);
   await expect(page.locator('#start')).toBeEnabled({ timeout: 60_000 });
