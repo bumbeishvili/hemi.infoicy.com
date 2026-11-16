@@ -103,7 +103,9 @@ for (const { name, width, height } of [
       document.body.dataset.fiveFilm = 'right';
       const film = box('.five-film');
       delete document.body.dataset.fiveFilm;
-      const rows = new Set([...document.querySelectorAll('.chip')].map((chip) => Math.round(chip.getBoundingClientRect().top))).size;
+      // Only the chips that are showing: one that's hidden, as the team's stars are on their own, has no place.
+      const showing = [...document.querySelectorAll('.chip')].filter((chip) => chip.getClientRects().length);
+      const rows = new Set(showing.map((chip) => Math.round(chip.getBoundingClientRect().top))).size;
       return { hudOnCamera: overlap(box('.hud-top'), frame), progressOnCamera: overlap(box('.race-progress'), frame), orderOnFilm: overlap(box('.race-order'), film), rows };
     });
     console.log(name, JSON.stringify(layout));
