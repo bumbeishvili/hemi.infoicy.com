@@ -244,7 +244,7 @@ Tested in [test/e2e/loading.spec.js](test/e2e/loading.spec.js), in all 28 games,
 
 ## Several people in front of one camera
 
-A game is for one child unless a grown-up says otherwise. In a game that several can play at one screen, a row asks **How many are playing?**, from 1 to 4, and it always starts at 1: someone standing nearby in the picture, a parent or a therapist, is never taken for a player unless someone says so. The number isn't saved, so the next visit starts at one again. The row is on the chooser of a whole-body game and on the title card of a hand game ([core/group-choice.js](core/group-choice.js)). So far those games are **Swamp Splash**, where each stands and jumps (see [below](#swamp-splash)), and **Balloon Pop**, where each has a hand. The others are still for one child in front of the camera, with friends each on their own computer.
+A game is for one child unless a grown-up says otherwise. In a game that several can play at one screen, a row asks **How many are playing?**, from 1 to 4, and it always starts at 1: someone standing nearby in the picture, a parent or a therapist, is never taken for a player unless someone says so. The number isn't saved, so the next visit starts at one again. The row is on the chooser of a whole-body game and on the title card of a hand game ([core/group-choice.js](core/group-choice.js)). So far those games are **Swamp Splash**, where each stands and jumps (see [below](#swamp-splash)), **Hat Chase**, where they march together (see [below](#hat-chase)), and **Balloon Pop**, where each has a hand. The others are still for one child in front of the camera, with friends each on their own computer.
 
 **In a whole-body game:**
 
@@ -1724,7 +1724,18 @@ What's new is named on the title card, under the countdown and on the finish car
 
 **How it's tested.** The rules are tested without a screen in [test/unit/hat-chase.test.js](test/unit/hat-chase.test.js), with a pretend child who is said to step, jump, bend their knees or reach up, or to be in the picture or not, and a seeded random, so the same thing happens every time. Among other things: that each knee lifted is a metre and the character stops by itself at each thing, what each thing wants and what it's worth, the magpie's pace and its getting away, the gentle magpie, nobody being stuck, how quick a child has to be at each level, each level's new thing from its level on, and the marching, both made up and on the real tracker's readings above. They also check that every line it says has its voice files. In the browser, so far it's only in the tests every game is in: the hub's, the loading bar's, and a level chosen in the middle of a game starting it again. It has no browser tests of its own yet, so nothing has checked in a browser that nothing flashes, or how its screens fit.
 
-There's no playing with friends, and nobody has played it with a real child: see **Not tested yet**. As in every game, nothing is stored but the settings and the level.
+**Several walking in front of one camera.** On the chooser a grown-up can say how many are playing, up to four: see [Several people in front of one camera](#several-people-in-front-of-one-camera). Each has a character on the path, in the order they stand in front of the camera, a step and a half apart, with the last of them in front. They go along together:
+
+- **Each one's step takes them all on by its share of a step:** half a step with two walking, a quarter with four. So together they go as fast as they march between them, and no faster than one child marching would, and the magpie is as hard to keep up with as it is for one. If one of them stops marching, they all go slower. No more than two whole steps wait to be walked, as for one child.
+- **Anyone's jump, bend or reach is for all of them.** They stop together at each thing in the way, and get past it together when any one of them makes the move. What counts as a jump and a bend comes down to meet each of them on their own, and each has their own marcher, so one who lifts the same leg twice is told about their own legs.
+- **Each character shows its own walker:** a step of theirs shows on their character for half a second, whether or not the others are marching, and standing still it bends its knees and reaches up as they do. That's how each can tell which is theirs, and that their marching counts.
+- **The finish card** says how many steps they took between them and each one's share, by their character's name.
+- **What a grown-up sets** under the gear icon, how high a knee has to come and whether the legs take turns, is for every walker.
+- These choices are a first guess: sharing the steps out keeps the chase fair, but it does mean a child who can't march fast is helped along by the others, and a jump by anyone means the child the game is for may not be the one who jumps.
+
+Tested in [test/unit/hat-chase.test.js](test/unit/hat-chase.test.js) and, with filmed people side by side, in [test/e2e/hat-chase/group.spec.js](test/e2e/hat-chase/group.spec.js).
+
+There's no playing with friends on their own computers, and nobody has played it with a real child, alone or with others: see **Not tested yet**. As in every game, nothing is stored but the settings and the level.
 
 ## Sound
 
