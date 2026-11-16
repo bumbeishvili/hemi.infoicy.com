@@ -446,26 +446,30 @@ test('level 9: two things in a row: landing from the first is standing at the se
 
 /* ---------- level 10 ---------- */
 
-test('level 10: the cup is in the magpie’s tree, on the screen, and catching the magpie up there wins it; at level 9 there is no cup', async ({ page }) => {
+/** The gold drawn about the magpie's tree, at the end of the path, with only the land and what's in the tree. */
+const goldInTheTree = async (page) => {
+  const { end, metre, ground } = await state(page);
+  const x = await across(page, end + 1.6);
+  return colourIn(page, { left: x - metre * 2.5, right: x + metre * 2.5, top: ground - metre * 5.5, bottom: ground }, [255, 210, 63], {
+    near: 45,
+    without: ['drawHero', 'drawMagpie', 'drawEffects', 'drawPathStar', 'drawThing', 'drawInFront', 'drawAppleTree'],
+  });
+};
+
+/** Taken on to the end of the path, as marching would: the magpie is caught up at its tree. */
+const winHere = async (page) => {
+  await bringToTheEnd(page, 1.5);
+  await page.evaluate(() => {
+    const { chase } = window.__game;
+    chase.step('left');
+    chase.step('right');
+  });
+  await waitForScreen(page, 'finish');
+  return { ...(await state(page)), cups: await page.evaluate(() => window.__cups ?? 0) };
+};
+
+test('level 10: catching the magpie up at its tree wins the cup, and the card says so, with all ten levels done; winning level 9 does not', async ({ page }) => {
   test.setTimeout(150_000);
-  const GOLD = [255, 210, 63];
-  /** The gold drawn about the magpie's tree, at the end of the path, with only the land and what's in the tree. */
-  const goldInTheTree = async () => {
-    const { end, metre, ground } = await state(page);
-    const x = await across(page, end + 1.6);
-    return colourIn(page, { left: x - metre * 2.5, right: x + metre * 2.5, top: ground - metre * 5.5, bottom: ground }, GOLD, { near: 45, without: ['drawHero', 'drawMagpie', 'drawEffects', 'drawPathStar', 'drawThing', 'drawInFront', 'drawAppleTree'] });
-  };
-  const win = async () => {
-    await bringToTheEnd(page, 1.5);
-    const gold = await goldInTheTree();
-    await page.evaluate(() => {
-      const { chase } = window.__game;
-      chase.step('left');
-      chase.step('right');
-    });
-    await waitForScreen(page, 'finish');
-    return { ...(await state(page)), gold, cups: await page.evaluate(() => window.__cups) };
-  };
   await reachPlay(page, atLevel(9, { ...GENTLE, chaseLength: 8 }));
   await page.evaluate(() => {
     const { sound } = window.__game;
@@ -476,23 +480,35 @@ test('level 10: the cup is in the magpie’s tree, on the screen, and catching t
       cup();
     };
   });
-  let end = await win();
-  const nine = end.gold;
+  let end = await winHere(page);
   expect([end.stats.cup, end.cups]).toEqual([false, 0]);
-  await expect(page.locator('#finish-prizes')).not.toContainText('cup');
+  await expect(page.locator('#finish-prizes')).not.toContainText(/cup/i);
   await expect(page.locator('#level-next-new')).toContainText('The cup is in the magpie’s tree');
   await expect(page.locator('#chase-again')).toHaveText('Next level');
   await page.locator('#chase-again').click();
   await waitForScreen(page, 'playing');
   expect((await state(page)).level).toBe(10);
   await listen(page);
-  end = await win();
-  console.log('gold drawn about the magpie’s tree: at level 9', nine, 'and at level 10', end.gold);
-  expect(nine).toBeLessThan(5);
+  end = await winHere(page);
   expect([end.stats.cup, end.cups]).toEqual([true, 1]);
   expect((await heard(page)).map(({ type }) => type).slice(-2)).toEqual(['cup', 'won']);
   await expect(page.locator('#finish-prizes')).toContainText(/the cup is won/i);
   await expect(page.locator('#level-done-text')).toHaveText('All 10 levels done!');
   await shot(page, 'hat-cup');
-  expect(end.gold, 'the cup is drawn in the magpie’s tree at level 10').toBeGreaterThan(40);
+});
+
+test('level 10: the cup is drawn in the magpie’s tree, where the card says it is; at level 9 there is none', async ({ page }) => {
+  test.setTimeout(150_000);
+  await reachPlay(page, atLevel(9, { ...GENTLE, chaseLength: 8 }));
+  await bringToTheEnd(page, 1.5);
+  const nine = await goldInTheTree(page);
+  await reopenWith(page, atLevel(10, { ...GENTLE, chaseLength: 8 }));
+  await playAgain(page);
+  expect((await state(page)).level).toBe(10);
+  await bringToTheEnd(page, 1.5);
+  const ten = await goldInTheTree(page);
+  await shot(page, 'hat-cup-tree');
+  console.log('gold drawn about the magpie’s tree: at level 9', nine, 'and at level 10', ten);
+  expect(nine).toBeLessThan(5);
+  expect(ten, 'the cup is drawn in the magpie’s tree at level 10').toBeGreaterThan(40);
 });

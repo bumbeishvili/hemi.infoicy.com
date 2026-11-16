@@ -345,13 +345,24 @@ export const drawnBox = (page, name, which = null) => page.evaluate(([source, me
         if (only !== null && (args[0]?.index ?? args[1]) !== only) draw.apply(this, args);
       },
     });
+    // Drawn again: a few pixels at the edge of a shape can come out differently even so, and they aren't counted.
+    const again = drawAside(view);
+    const apart = (a, b, i) => Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
     const { width, height } = canvas;
-    let box = null;
-    for (let at = 0; at < width * height; at += 1) {
+    // Clearly different: a shadow, drawn faintly, isn't counted.
+    const changed = new Uint8Array(width * height);
+    for (let at = 0; at < changed.length; at += 1) {
       const i = at * 4;
-      // Clearly different: a shadow, drawn faintly, isn't counted.
-      if (Math.abs(all[i] - without[i]) + Math.abs(all[i + 1] - without[i + 1]) + Math.abs(all[i + 2] - without[i + 2]) < 100) continue;
+      changed[at] = apart(all, without, i) >= 100 && apart(again, without, i) >= 100 && apart(all, again, i) < 30 ? 1 : 0;
+    }
+    let box = null;
+    for (let at = 0; at < changed.length; at += 1) {
+      if (!changed[at]) continue;
       const [x, y] = [at % width, Math.floor(at / width)];
+      // A pixel by itself, with hardly anything around it changed, isn't part of a drawing.
+      let around = 0;
+      for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) if ((dx || dy) && x + dx >= 0 && x + dx < width && y + dy >= 0 && y + dy < height) around += changed[at + dy * width + dx];
+      if (around < 3) continue;
       if (!box) box = { left: x, right: x, top: y, bottom: y, count: 0 };
       box.left = Math.min(box.left, x);
       box.right = Math.max(box.right, x);
