@@ -117,3 +117,23 @@ test('level 1 has nothing new to show', async ({ page }) => {
 
 // A level chosen in the middle of a game starts the game again at it: see start-again.spec.js. It used to wait
 // for the next game, which looked as though nothing had happened.
+
+test('on the finish card a grown-up can still open their panel, in a hand game and a body game', async ({ page }) => {
+  await openGame(page);
+  await show(page, null, 'open');
+  await page.locator('#start').click();
+  await waitForScreen(page, 'playing');
+  await page.evaluate(() => window.__game.session.finish());
+  await waitForScreen(page, 'finish');
+  // The finish card covers the whole window, and the gear is on top of it.
+  await page.locator('#open-panel').click({ timeout: 5000 });
+  await expect(page.locator('#panel')).toHaveJSProperty('open', true);
+  await page.locator('#close-panel').click();
+  await expect(page.locator('#play-again')).toBeVisible();
+
+  await openTrail(page);
+  await page.evaluate(() => window.__game.game.setScreen('finish'));
+  await expect(page.locator('#screen-finish')).toBeVisible();
+  await page.locator('#open-panel').click({ timeout: 5000 });
+  await expect(page.locator('#panel')).toHaveJSProperty('open', true);
+});
