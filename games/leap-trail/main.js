@@ -686,8 +686,14 @@ class LeapTrail extends BodyGame {
     const others = this.team ? this.mates.filter(({ gone, far }) => !gone && far !== undefined).map(({ far }) => far) : [];
     run.pack = packPace(run.distance, others);
     const label = byElementId('run-pack');
-    const easing = run.pack < 1 && run.state === 'running';
-    if (label.hidden === easing) label.hidden = !easing;
+    // Not while the runner has stopped for this child, to wait for their move or for them to move again: it's
+    // waiting for them then, as the words at the bottom say.
+    const easing = run.pack < 1 && run.state === 'running' && !run.waiting && !run.resting;
+    if (label.hidden === easing) {
+      label.hidden = !easing;
+      // Under the board of stars, however many friends are on it.
+      if (easing) label.style.top = `${Math.round(byElementId('run-scores').getBoundingClientRect().bottom) + 10}px`;
+    }
   }
 
   /** Running together: what the stars add up to, on the finish card, which fills in as friends get there. */

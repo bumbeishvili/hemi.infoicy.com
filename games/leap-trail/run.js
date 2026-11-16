@@ -740,7 +740,8 @@ export class Run {
       const left = this.gapTo(next) - STOP_GAP;
       const stoppingFrom = speed * 0.9;
       if (left <= 0) return 0;
-      if (left < stoppingFrom) return speed * (left / stoppingFrom) * 0.9 + 0.3;
+      // Easing off for the pack, it comes up to it no faster than it was going.
+      if (left < stoppingFrom) return Math.min(speed * this.pack, speed * (left / stoppingFrom) * 0.9 + 0.3);
     }
     return speed * this.pack;
   }

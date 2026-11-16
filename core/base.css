@@ -558,9 +558,10 @@ body:not([data-screen='countdown'], [data-screen='playing']) .count { display: n
   border-radius: 999px;
 }
 
+/* On top of every card, the finish card too, which covers the whole window: a grown-up can always get to it. */
 .gear {
   position: fixed;
-  z-index: 5;
+  z-index: 7;
   top: 12px;
   right: 12px;
   place-items: center;
