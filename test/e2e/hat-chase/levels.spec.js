@@ -387,8 +387,9 @@ test('level 8: a golden feather over a stream, caught by a big jump for five sta
   expect(stream.high.feather).toBe(true);
   // Drawn above the middle of the stream.
   await hold(page);
-  const feather = await drawnBox(page, 'drawFeather');
   const over = await across(page, stream.at + stream.wide / 2);
+  // Only about this stream: another, further along, may have its own.
+  const feather = await drawnBox(page, 'drawFeather', null, { left: over - now.metre * 1.5, right: over + now.metre * 1.5, top: 0, bottom: now.ground });
   console.log('the feather drawn at', JSON.stringify(feather), 'over the middle of the stream at', over);
   expect(Math.abs(middle(feather).x - over)).toBeLessThan(now.metre * 0.3);
   expect(Math.abs(middle(feather).y - (now.ground - now.metre * 1.75))).toBeLessThan(now.metre * 0.3);

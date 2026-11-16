@@ -332,10 +332,11 @@ const DRAW_ASIDE = `
  * Where something is drawn on the game's canvas, in CSS pixels: the box around every pixel that changes when it
  * isn't drawn. name is the view's method that draws it, as 'drawHero' or 'drawMagpie', and which, if given, is the
  * one of the things that method draws: the index of a thing in the way, a star on the path, or an apple tree. Drawn
- * at the same moment each time, so nothing moves in between. null if nothing is drawn.
+ * at the same moment each time, so nothing moves in between. within, if given, is the only part of the screen looked
+ * at, in CSS pixels, for a method that draws more than one thing and doesn't say which. null if nothing is drawn.
  */
-export const drawnBox = (page, name, which = null) => page.evaluate(([source, method, only]) => {
-  const run = new Function('method', 'only', `${source}
+export const drawnBox = (page, name, which = null, within = null) => page.evaluate(([source, method, only, area]) => {
+  const run = new Function('method', 'only', 'area', `${source}
     const { view } = window.__game;
     const { canvas, ratio } = view;
     const all = drawAside(view);
@@ -359,6 +360,7 @@ export const drawnBox = (page, name, which = null) => page.evaluate(([source, me
     for (let at = 0; at < changed.length; at += 1) {
       if (!changed[at]) continue;
       const [x, y] = [at % width, Math.floor(at / width)];
+      if (area && (x < area.left * ratio || x >= area.right * ratio || y < area.top * ratio || y >= area.bottom * ratio)) continue;
       // A pixel by itself, with hardly anything around it changed, isn't part of a drawing.
       let around = 0;
       for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) if ((dx || dy) && x + dx >= 0 && x + dx < width && y + dy >= 0 && y + dy < height) around += changed[at + dy * width + dx];
@@ -371,8 +373,8 @@ export const drawnBox = (page, name, which = null) => page.evaluate(([source, me
       box.count += 1;
     }
     return box && { left: box.left / ratio, right: (box.right + 1) / ratio, top: box.top / ratio, bottom: (box.bottom + 1) / ratio, count: box.count / (ratio * ratio) };`);
-  return run(method, only);
-}, [DRAW_ASIDE, name, which]);
+  return run(method, only, area);
+}, [DRAW_ASIDE, name, which, within]);
 
 /**
  * How many of the canvas's pixels in a box, in CSS pixels, are near a colour, [r, g, b], as it's drawn now. without
