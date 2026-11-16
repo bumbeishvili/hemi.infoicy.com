@@ -28,6 +28,7 @@ function nextTimestamp(wanted) {
 async function createLandmarker() {
   const modelUrl = new URL('../../vendor/mediapipe/face_landmarker.task', import.meta.url).href;
   const fileset = await visionFiles();
+  self.postMessage({ type: 'progress', share: 0.3 });
 
   let lastError = null;
   for (const delegate of ['GPU', 'CPU']) {
@@ -41,6 +42,7 @@ async function createLandmarker() {
         minFacePresenceConfidence: 0.5,
         minTrackingConfidence: 0.5,
       });
+      self.postMessage({ type: 'progress', share: 0.7 });
       // The first detection compiles GPU programs, so that happens behind the loading screen.
       landmarker.detectForVideo(new ImageData(64, 64), nextTimestamp(0));
       return delegate;

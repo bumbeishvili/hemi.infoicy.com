@@ -62,6 +62,7 @@ core/                   what every game shares
   sound.js, audio/      voice lines and shared sound effects
   camera.js, tracker.worker.js    the webcam and hand tracking
   settings.js, base.css
+  loading.js            the bar that fills while a game gets ready
   levels.js             the ten levels every game has, and where they show
   friends.js, friends-ui.js    playing with friends on their own computers, and how it looks
   glove.js              the glove that copies a hand, finger by finger
@@ -221,6 +222,19 @@ Playing with friends, most games still can't be lost, as each computer would hav
 **What a level never changes:** anything a grown-up or therapist chose. That's the hand in play, how open a hand has to be, how far there is to reach, how big a movement has to be, a gentle setting, help like a car that steers itself, and how long a game was set to be. With nobody in the picture, or no hand to see, a game waits, and so does whatever threatens in it: a child who walks away isn't caught for it. Every level-10 game is also tested to make sure nothing flashes, apart from Giraffe's World Tour, which is tested at levels 1, 5 and 8, as its section says. How much harder level 10 is than level 1 is in each game's section. It's no longer held to 70% of level 1's time to react, as it was when nothing could be lost.
 
 **Settings saved before the games changed.** A game's settings are saved all together, in this browser. So a child who had played before 14 November 2026 has the way each game came then saved, though nobody chose it. Where that way was changed, what was saved is dropped, once, so that the game comes as it does now. A grown-up who really had chosen the old way has to choose it again, under the gear icon. Which settings these are is in `OLD_DEFAULTS` in `core/settings.js`. For the same reason, no two games save a setting under one name and have it come two ways, or whichever was played last would decide for the other: Leap Trail's pace and Smoothie Stand's have names of their own, apart from Balloon Pop's and Robot Rescue's, and Moto Mountain and Rooftop Rope leave the other body games' move size as those games have it. A unit test keeps it so.
+
+## While a game gets ready
+
+A game takes a few seconds to open, and several more after the start button, mostly for the tracker and the voice lines: on a first visit, 3 to 14 seconds were measured, the longest in the games with the most to say. A bar fills through both waits, in every game ([core/loading.js](core/loading.js)).
+
+- **While the page opens.** Before any of the game's code has run there's only the style sheet, so it draws a bar in the middle of the page that creeps along by itself. When the title card comes, the bar is on it, under a start button that can't be pressed yet and looks it. It goes by what's done: the card is up, the words are in, the game is built. Then the button can be pressed and the bar goes.
+- **After the start button,** on the "Getting everything ready" card. This bar goes by what's really loaded: the camera opening is 15% of it, the tracker 35% (its files, its model, and its first look, which is the slow part on a computer that hasn't run it before), and the sounds and voice lines 50%, counted one by one.
+- **It never goes back,** and on a second go it starts from what's still loaded, which is everything but the camera.
+- **What it can't show:** how long the browser waits for a grown-up to allow the camera. The bar stands still until they do, and the card says to allow it.
+
+The whole-body games' start button used to work before the game was ready, and a press then was lost. It waits now, as the others' did.
+
+Tested in [test/e2e/loading.spec.js](test/e2e/loading.spec.js), in all 26 games, with the loading slowed down as a slow connection would, and in [test/unit/loading.test.js](test/unit/loading.test.js).
 
 ## Choices made for these children
 

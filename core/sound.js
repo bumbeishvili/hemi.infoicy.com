@@ -45,6 +45,10 @@ export class Sound {
     this.buffers = new Map();
     this.voiceClips = new Map();
     this.ready = Promise.resolve();
+    // How many of the sounds and voice lines are in, of how many, for the bar on the loading card
+    // (core/loading.js), which hears of each one through onProgress.
+    this.loaded = { done: 0, total: 0 };
+    this.onProgress = () => {};
     this.currentVoice = null;
     this.waitingLine = null;
     this.loops = new Map();
@@ -115,13 +119,18 @@ export class Sound {
     } catch (error) {
       console.error('Could not load a sound:', String(url), error);
     }
+    // In or not, it's one less to wait for.
+    this.loaded.done += 1;
+    this.onProgress();
   }
 
   async load() {
     const shared = Object.entries(SHARED_SOUNDS).map(([name, file]) => [name, new URL(file, AUDIO_ROOT)]);
+    const sounds = [...shared, ...Object.entries(this.gameSounds)];
+    this.loaded = { done: 0, total: sounds.length + this.lines.length };
+    this.onProgress();
     await Promise.all([
-      ...[...shared, ...Object.entries(this.gameSounds)].map(([name, url]) =>
-        this.loadClip(url, (buffer) => this.buffers.set(name, buffer))),
+      ...sounds.map(([name, url]) => this.loadClip(url, (buffer) => this.buffers.set(name, buffer))),
       this.loadVoice(),
     ]);
   }
@@ -144,6 +153,7 @@ export class Sound {
     if (!this.context) return;
     this.stopVoice();
     this.linesLoaded = false;
+    this.loaded = { done: 0, total: this.lines.length };
     this.ready = this.loadVoice();
   }
 

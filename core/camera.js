@@ -52,6 +52,16 @@ export class TrackingCamera {
     this.busy = false;
     this.lastResultAt = 0;
     this.delegate = null;
+    // How far the camera and its tracker have got, each from 0 to 1, for the bar on the loading card
+    // (core/loading.js), which hears of each change through onProgress.
+    this.progress = { camera: 0, tracker: 0 };
+    this.onProgress = () => {};
+  }
+
+  /** The camera, or its tracker, has got this far. */
+  reached(what, share) {
+    this.progress[what] = share;
+    this.onProgress();
   }
 
   get aspect() {
@@ -82,6 +92,7 @@ export class TrackingCamera {
     this.stream?.getTracks().forEach((track) => track.stop());
     this.stream = null;
     this.video.srcObject = null;
+    this.progress.camera = 0;
   }
 
   async openCamera() {
@@ -100,6 +111,7 @@ export class TrackingCamera {
     }
     this.video.srcObject = this.stream;
     await this.video.play();
+    this.reached('camera', 1);
   }
 
   loadTracker() {
@@ -109,13 +121,18 @@ export class TrackingCamera {
       const failToStart = (cause) => {
         this.worker.terminate();
         this.trackerReady = null;
+        this.progress.tracker = 0;
         reject(new CameraProblem('tracker', cause));
       };
       this.worker.onerror = (event) => failToStart(event.message);
       this.worker.onmessage = ({ data }) => {
         if (data.type === 'ready') {
           this.delegate = data.delegate;
+          this.reached('tracker', 1);
           resolve();
+        } else if (data.type === 'progress') {
+          // The tracker's files, its model, and its first look, which is the slow one the first time.
+          this.reached('tracker', Math.max(this.progress.tracker, data.share));
         } else if (data.type === 'result') {
           this.busy = false;
           this.lastResultAt = performance.now();

@@ -16,6 +16,7 @@ function nextTimestamp(wanted) {
 async function createLandmarker() {
   const modelUrl = new URL('../vendor/mediapipe/hand_landmarker.task', import.meta.url).href;
   const fileset = await visionFiles();
+  self.postMessage({ type: 'progress', share: 0.3 });
 
   let lastError = null;
   for (const delegate of ['GPU', 'CPU']) {
@@ -33,6 +34,7 @@ async function createLandmarker() {
         minHandPresenceConfidence: 0.5,
         minTrackingConfidence: 0.5,
       });
+      self.postMessage({ type: 'progress', share: 0.7 });
       // The first detection compiles GPU programs, which took about 6 seconds on a
       // computer that had never run this before. Do it now, behind the loading screen,
       // so a child isn't told to show hands they are already showing.

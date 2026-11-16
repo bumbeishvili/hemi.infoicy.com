@@ -21,13 +21,23 @@ for (const script of ['tracker.worker.js', 'body/pose.worker.js']) {
         self.postMessage({ type: 'loaded' });`;
       const worker = new Worker(URL.createObjectURL(new Blob([wrapper], { type: 'text/javascript' })), { type: 'module' });
       worker.onerror = (event) => resolve({ type: 'crash', message: event.message });
+      // On its way to being ready the tracker says how far it's got, for the bar on the loading card.
+      const shares = [];
       const realWorkerReply = (message) => {
         if (message.data.type === 'loaded') worker.postMessage({ type: 'init' });
-        else resolve(message.data);
+        else if (message.data.type === 'progress') shares.push(message.data.share);
+        else resolve({ ...message.data, shares });
       };
       worker.onmessage = realWorkerReply;
     }), script);
-    expect(answer).toEqual({ type: 'ready', delegate: 'CPU' });
+    const { shares, ...ready } = answer;
+    expect(ready).toEqual({ type: 'ready', delegate: 'CPU' });
+    // It said how far it had got, part of the way each time, and never as if it had finished.
+    expect(shares.length).toBeGreaterThanOrEqual(2);
+    for (const share of shares) {
+      expect(share).toBeGreaterThan(0);
+      expect(share).toBeLessThan(1);
+    }
     // The first try failing is the point of this test, and it logs why.
     pageErrors.length = 0;
   });

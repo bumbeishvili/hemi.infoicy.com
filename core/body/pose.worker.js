@@ -18,6 +18,7 @@ const nextTimestamp = (wanted) => {
 
 async function createLandmarkers() {
   const fileset = await visionFiles();
+  self.postMessage({ type: 'progress', share: 0.2 });
   const poseModel = new URL('../../vendor/mediapipe/pose_landmarker_full.task', import.meta.url).href;
   const handModel = new URL('../../vendor/mediapipe/hand_landmarker.task', import.meta.url).href;
 
@@ -33,6 +34,7 @@ async function createLandmarkers() {
         minPosePresenceConfidence: 0.5,
         minTrackingConfidence: 0.5,
       });
+      self.postMessage({ type: 'progress', share: 0.5 });
       prepareToLoad();
       hand = await HandLandmarker.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: handModel, delegate },
@@ -41,6 +43,7 @@ async function createLandmarkers() {
         minHandDetectionConfidence: 0.3,
         minHandPresenceConfidence: 0.4,
       });
+      self.postMessage({ type: 'progress', share: 0.75 });
       // The first detection compiles GPU programs, so that happens behind the loading screen.
       pose.detectForVideo(new ImageData(64, 64), nextTimestamp(0));
       hand.detect(new ImageData(64, 64));

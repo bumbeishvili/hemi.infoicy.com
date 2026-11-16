@@ -1,6 +1,7 @@
 // The screens every game shares: the mirror, prompts, hand meters, the title and finish
 // cards, and the grown-ups' panel. Each game's index.html only holds its own canvas.
 
+import { LOADING_BAR } from './loading.js';
 import { HAND_CHOICES } from './settings.js';
 
 const GEAR_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-1.7-1L15 3.500h-4L10.700 6a7.500 7.500 0 0 0-1.700 1l-2.400-1-2 3.400 2 1.600a7.600 7.600 0 0 0 0 2l-2 1.600 2 3.400 2.400-1a7.500 7.500 0 0 0 1.700 1l.3 2.500h4l.3-2.500a7.500 7.500 0 0 0 1.700-1l2.400 1 2-3.400zM12.700 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/></svg>`;
@@ -73,6 +74,7 @@ export function mountShell({
   <section id="screen-loading" class="screen">
     <div class="card title-card">
       <h2>Getting everything ready…</h2>
+      ${LOADING_BAR}
       <p class="small-print">If your browser asks, please allow the camera.</p>
     </div>
   </section>

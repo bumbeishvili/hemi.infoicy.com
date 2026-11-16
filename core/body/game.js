@@ -13,6 +13,7 @@
 import { CameraProblem, TrackingCamera } from '../camera.js';
 import { Confetti, PromptBox } from '../hud.js';
 import { Levels, mountLevels } from '../levels.js';
+import { openingBar, watchLoading } from '../loading.js';
 import { appliesAtOnce, loadSettings, saveSettings } from '../settings.js';
 import { MoveDemo } from './demo.js';
 import { ICONS } from './icons.js';
@@ -92,6 +93,11 @@ export class BodyGame {
   }
 
   async start() {
+    // The characters and the scene take a moment to build, and a click before they're ready would be lost. A bar
+    // under the button fills until it can be pressed: see core/loading.js.
+    const startButton = byElementId('start');
+    if (startButton) startButton.disabled = true;
+    const opening = openingBar();
     this.settings = loadSettings(this.defaults);
     const { settings } = this;
     if (!byId(settings.fighter)) settings.fighter = this.defaults.fighter;
@@ -112,6 +118,7 @@ export class BodyGame {
     ];
     const georgian = new Map(lines.map(({ text, ka }) => [text, ka]));
     this.translate = (text) => (settings.language === 'ka' ? georgian.get(text) ?? text : text);
+    opening.step('words');
 
     this.sound = this.createSound({ sound: settings.sound, voice: settings.voice, language: settings.language, lines });
     this.reader = new BodyReader({ size: settings.moveSize });
@@ -146,6 +153,9 @@ export class BodyGame {
     this.chooseFighter(settings.fighter, { silent: true });
 
     if (new URLSearchParams(location.search).has('debug')) this.exposeForTests();
+    opening.step('game');
+    if (startButton) startButton.disabled = false;
+    opening.done();
     document.body.dataset.ready = 'yes';
     requestAnimationFrame((now) => this.tick(now));
   }
@@ -302,6 +312,8 @@ export class BodyGame {
   async openCameraThen(next) {
     this.sound.unlock();
     this.setScreen('loading');
+    // The bar on the card fills as the camera opens and the tracker and the sounds load.
+    watchLoading(this.camera, this.sound);
     try {
       await Promise.all([this.camera.start(), this.sound.ready]);
     } catch (problem) {

@@ -165,6 +165,66 @@ h2 {
   box-shadow: 0 2px 0 var(--sun-deep);
 }
 
+/* The start button can't be pressed until the game is ready, and looks it. */
+.big-button:disabled { opacity: 0.55; cursor: progress; }
+.big-button:disabled:hover { background: var(--sun); }
+.big-button:disabled:active { transform: none; box-shadow: 0 7px 0 var(--sun-deep); }
+
+/* ---------- the bar that fills while a game gets ready: see core/loading.js ---------- */
+.loading-bar {
+  width: min(360px, 100%);
+  height: 16px;
+  background: var(--accent-track);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.loading-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.25s ease-out;
+}
+
+/* Before any of the game's code has run there's nothing on the page but its empty picture, so the style sheet
+   draws the bar itself, in the middle, creeping along: the first part of the same bar that the title card then
+   shows under its start button, which starts from where this one gets to. It goes when the title card comes.
+   Only a game's page says which screen it's on, so the page for choosing a game, which shares this sheet, has
+   no such bar. */
+body[data-screen]:not(:has(.title-card))::before,
+body[data-screen]:not(:has(.title-card))::after {
+  content: '';
+  position: fixed;
+  z-index: 10;
+  top: calc(50% - 8px);
+  left: calc(50% - min(360px, 70vw) / 2);
+  height: 16px;
+  border-radius: 999px;
+}
+
+body[data-screen]:not(:has(.title-card))::before {
+  width: min(360px, 70vw);
+  background: var(--accent-track);
+}
+
+body[data-screen]:not(:has(.title-card))::after {
+  width: calc(min(360px, 70vw) * 0.3);
+  background: var(--accent);
+  animation: opening-creep 5s cubic-bezier(0.1, 0.7, 0.2, 1) both;
+}
+
+@keyframes opening-creep {
+  from { width: calc(min(360px, 70vw) * 0.03); }
+  to { width: calc(min(360px, 70vw) * 0.3); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-screen]:not(:has(.title-card))::after { animation: none; }
+  .loading-fill { transition: none; }
+}
+
 :focus-visible {
   outline: 4px solid var(--accent);
   outline-offset: 3px;

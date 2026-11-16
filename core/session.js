@@ -34,6 +34,7 @@ import { CameraProblem, TrackingCamera } from './camera.js';
 import { HandCheck, HandMonitor, OPEN_RULES, PlayStats, promptFor } from './hands.js';
 import { Hud } from './hud.js';
 import { Levels, mountLevels } from './levels.js';
+import { openingBar, watchLoading } from './loading.js';
 import { appliesAtOnce, loadSettings, saveSettings } from './settings.js';
 import { SHAPE_RESTING, choiceOf, shapesFor } from './shapes.js';
 import { givenFor } from './mapping.js';
@@ -120,8 +121,10 @@ export class GameSession {
 
   async start() {
     mountShell(this.shell);
-    // Pictures of the characters can take a moment, and a click before they're ready would be lost.
+    // Pictures of the characters can take a moment, and a click before they're ready would be lost. A bar under
+    // the button fills until it can be pressed: see core/loading.js.
     document.getElementById('start').disabled = true;
+    const opening = openingBar();
     this.settings = loadSettings(this.defaults);
     const { settings } = this;
     this.levels = new Levels(settings);
@@ -134,6 +137,7 @@ export class GameSession {
       const base = new URL('./', this.gameLines);
       for (const line of await fetchLines(this.gameLines)) lines.push({ ...line, base });
     }
+    opening.step('words');
     const georgian = new Map(lines.map(({ text, ka }) => [text, ka]));
     this.translate = (text) => (settings.language === 'ka' ? georgian.get(text) ?? text : text);
 
@@ -233,7 +237,9 @@ export class GameSession {
       if (this.game.debug) Object.defineProperties(window.__game, Object.getOwnPropertyDescriptors(this.game.debug));
     }
 
+    opening.step('game');
     byId('start').disabled = false;
+    opening.done();
     requestAnimationFrame((now) => this.tick(now));
   }
 
@@ -327,6 +333,8 @@ export class GameSession {
   async openCameraThen(next) {
     this.sound.unlock();
     this.setScreen('loading');
+    // The bar on the card fills as the camera opens and the tracker and the sounds load.
+    watchLoading(this.camera, this.sound);
     try {
       await Promise.all([this.camera.start(), this.sound.ready]);
     } catch (problem) {

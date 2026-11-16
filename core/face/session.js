@@ -30,6 +30,7 @@
 // ?debug in the address, a stand-in for the tracker can be given as window.__faceTracker: see test/e2e/fake-face.js.
 import { CameraProblem, TrackingCamera } from '../camera.js';
 import { Levels, mountLevels } from '../levels.js';
+import { openingBar, watchLoading } from '../loading.js';
 import { appliesAtOnce, loadSettings, saveSettings } from '../settings.js';
 import { Sound } from '../sound.js';
 import { FaceHud } from './hud.js';
@@ -88,7 +89,10 @@ export class FaceSession {
 
   async start() {
     mountFaceShell(this.shell);
+    // A click before everything is ready would be lost. A bar under the button fills until it can be pressed:
+    // see core/loading.js.
     document.getElementById('start').disabled = true;
+    const opening = openingBar();
     this.settings = loadSettings({ mouthStrictness: MOUTH_RULES.defaultStrictness, ...this.defaults });
     const { settings } = this;
     this.levels = new Levels(settings);
@@ -104,6 +108,7 @@ export class FaceSession {
       const base = new URL('./', this.gameLines);
       for (const line of await fetchLines(this.gameLines)) lines.push({ ...line, base });
     }
+    opening.step('words');
     const georgian = new Map(lines.map(({ text, ka }) => [text, ka]));
     this.translate = (text) => (settings.language === 'ka' ? georgian.get(text) ?? text : text);
 
@@ -191,7 +196,9 @@ export class FaceSession {
     }
 
     this.hud.update(this.monitor.snapshot);
+    opening.step('game');
     byId('start').disabled = false;
+    opening.done();
     requestAnimationFrame((now) => this.tick(now));
   }
 
@@ -235,6 +242,8 @@ export class FaceSession {
   async openCameraThen(next) {
     this.sound.unlock();
     this.setScreen('loading');
+    // The bar on the card fills as the camera opens and the tracker and the sounds load.
+    watchLoading(this.camera, this.sound);
     try {
       await Promise.all([this.camera.start(), this.sound.ready]);
     } catch (problem) {
