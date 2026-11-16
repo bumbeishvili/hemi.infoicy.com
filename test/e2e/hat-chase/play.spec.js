@@ -554,10 +554,17 @@ test('a hedgehog left too long rolls in: it comes nearer on the screen, then a t
   expect(now.hero.x).toBeGreaterThan(now.course[index].at + now.course[index].wide);
 });
 
-test('with nobody in the picture the hedgehog and the magpie wait where they are, and the child is asked back; back in view, they come on again', async ({ page }) => {
+for (const [level, kind, words] of [[4, 'hedgehog', 'the hedgehog'], [7, 'bees', 'the bees']]) {
+  test(`with nobody in the picture ${words} and the magpie wait where they are, and the child is asked back; back in view, they come on again`, async ({ page }) => {
+    await nobodyThere(page, level, kind);
+  });
+}
+
+/** At level so-and-so, up to the first thing of a kind that comes at the character, and then nobody in the picture. */
+async function nobodyThere(page, level, kind) {
   test.setTimeout(120_000);
-  await reachPlay(page, atLevel(4));
-  const index = await walkUpTo(page, 'hedgehog', 300);
+  await reachPlay(page, atLevel(level));
+  const index = await walkUpTo(page, kind, 300);
   expect(index).not.toBe(null);
   await nobody(page);
   await expect(promptText(page)).toHaveText('Come back where I can see you', { timeout: 15_000 });
@@ -574,7 +581,7 @@ test('with nobody in the picture the hedgehog and the magpie wait where they are
   await standInView(page);
   await expectSoon(async () => (await state(page)).time, { timeout: 15_000 }).toBeGreaterThan(stopped.time);
   await expectSoon(async () => (await state(page)).station?.left ?? 0, { timeout: 15_000 }).toBeLessThan(stopped.station.left);
-});
+}
 
 /* ---------- nobody is stuck ---------- */
 
