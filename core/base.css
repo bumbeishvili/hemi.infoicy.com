@@ -1553,3 +1553,36 @@ body[data-screen='waiting'] #screen-friends { display: grid; }
 body[data-friends-race][data-screen] .level-now,
 body[data-friends-race][data-screen] .level-new-now,
 body[data-friends-race][data-screen] .level-done { display: none; }
+
+/* ---------- how many are playing in front of this camera, on the card of a game several can play ---------- */
+.group-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+}
+
+/* On a hand game's title card everything is in the middle, and so is this. */
+.title-card .group-choice { justify-content: center; }
+
+.group-choice legend { width: 100%; padding: 0 0 6px; font-weight: 600; }
+.group-choice label { position: relative; cursor: pointer; }
+.group-choice input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+
+.group-choice span {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--line, #d7e0ea);
+  border-radius: 50%;
+  background: #ffffff;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.group-choice input:checked + span { border-color: var(--sun-deep); background: var(--sun); }
+.group-choice input:focus-visible + span { outline: 3px solid var(--ink); outline-offset: 2px; }

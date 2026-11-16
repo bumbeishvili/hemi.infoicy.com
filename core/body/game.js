@@ -11,6 +11,7 @@
 //
 // A game's screens are its own, apart from welcome, choose, loading, problem and bodycheck.
 import { CameraProblem, TrackingCamera } from '../camera.js';
+import { groupChoice as groupChoiceFor } from '../group-choice.js';
 import { Confetti, PromptBox } from '../hud.js';
 import { Levels, mountLevels } from '../levels.js';
 import { openingBar, watchLoading } from '../loading.js';
@@ -60,11 +61,7 @@ export const BODY_SAY = {
  * For the chooser of a game that several can play in front of one camera: a row of numbers for how many are
  * playing. See watchGroupChoice.
  */
-export const groupChoice = () => `
-      <fieldset class="group-choice">
-        <legend>How many are playing?</legend>
-        ${Array.from({ length: MOST_PEOPLE }, (_, index) => `<label><input type="radio" name="group-size" value="${index + 1}"${index ? '' : ' checked'}> <span>${index + 1}</span></label>`).join('')}
-      </fieldset>`;
+export const groupChoice = () => groupChoiceFor(MOST_PEOPLE);
 
 const PROBLEM_PROMPTS = {
   'no-body': { key: 'no-body', text: BODY_SAY.showAll, side: null },

@@ -169,6 +169,11 @@ class BalloonGame {
       hello: () => ({ driver: settings.fighter ?? '', level: session.levels.current, length: settings.balloons, mode: friendsMode(settings.maths, settings.popFriends !== 'against' && settings.away === 'gentle') }),
       screen: () => session.screen,
       portraits: () => session.portraits,
+      // With friends on their own computers, one plays at each camera: several at this one is for a game of
+      // its own (the row on the title card, which the friends box hides while it's open).
+      onRoom: () => {
+        if (this.friends?.room.joined && session.players > 1) session.setPlayers(1);
+      },
       onMove: (id, message) => {
         if (message.t === 'hand') this.friendsGloves.find((each) => each.id === id)?.track.push(message, performance.now());
         else if (message.t === 'world') this.worldTrack?.push(message, performance.now());
@@ -875,6 +880,8 @@ new GameSession({
   choices: { balloons: Number, pace: String, reach: String, maths: String, away: String, popFriends: String },
   // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
   atOnce: ['pace', 'reach'],
+  // Several can play at one camera, each with a glove of their own, all popping into the one count.
+  group: true,
   tagline: (side) => `Pop the balloons with your open ${side} hand!`,
   finishLine: 'You popped them all!',
   portraits: () => renderPortraits(ROSTER),

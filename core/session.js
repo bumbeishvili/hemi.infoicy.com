@@ -31,6 +31,8 @@
 // A prompt from a game can say it asks for the open move, as asks: 'open'. When a grown-up has chosen a hand shape
 // for that move (see core/shapes.js), it's asked for in that shape's words instead.
 import { CameraProblem, TrackingCamera } from './camera.js';
+import { groupChoice, showGroupChoice, watchGroupChoice } from './group-choice.js';
+import { MOST_PLAYERS } from './hand-group.js';
 import { HandCheck, HandMonitor, OPEN_RULES, PlayStats, promptFor } from './hands.js';
 import { Hud } from './hud.js';
 import { Levels, mountLevels } from './levels.js';
@@ -81,9 +83,13 @@ export class GameSession {
    * as the open move, are kept with the game's hand shapes, and are read as session.given, { id: value }. A
    * saved value that the row doesn't offer any more is its fallback. The game hears a change as
    * settingChanged({ given: id }).
+   *
+   * group is for a game several can play in front of one camera, each with a hand of their own: its title card
+   * asks how many are playing, and the game hears of each choice as playersChanged(count). See setPlayers.
    */
-  constructor({ shell, defaults = {}, choices = {}, atOnce = [], startsAgain = [], tagline, finishLine, createSound, createGame, lines = null, portraits = null, moves = { open: 'Play', closed: null }, mapping = null }) {
+  constructor({ shell, defaults = {}, choices = {}, atOnce = [], startsAgain = [], tagline, finishLine, createSound, createGame, lines = null, portraits = null, moves = { open: 'Play', closed: null }, mapping = null, group = false }) {
     this.shell = shell;
+    this.group = group;
     // The game's settings that go on to a round that's being played at once: see appliesAtOnce in settings.js.
     this.atOnce = atOnce;
     this.startsAgain = startsAgain;
@@ -119,8 +125,28 @@ export class GameSession {
     this.retryAfterProblem = () => this.beginCheck();
   }
 
+  /** How many are playing at this camera: one, unless a grown-up has said more on the title card. */
+  get players() {
+    return this.monitor?.players ?? 1;
+  }
+
+  /**
+   * So many are playing at this camera, each with a hand of their own: the tracker looks for that many people's
+   * hands, the first to come is the hand in play, and the rest are the snapshot's guests (core/hands.js). The
+   * row on the title card shows it.
+   */
+  setPlayers(count) {
+    const before = this.players;
+    this.monitor.setPlayers(this.group ? count : 1);
+    this.camera.setPeople(this.players);
+    document.body.dataset.players = String(this.players);
+    showGroupChoice(this.players);
+    if (this.players !== before) this.game?.playersChanged?.(this.players);
+  }
+
   async start() {
     mountShell(this.shell);
+    if (this.group) document.getElementById('start').insertAdjacentHTML('beforebegin', groupChoice(MOST_PLAYERS));
     // Pictures of the characters can take a moment, and a click before they're ready would be lost. A bar under
     // the button fills until it can be pressed: see core/loading.js.
     document.getElementById('start').disabled = true;
@@ -204,6 +230,13 @@ export class GameSession {
 
     const byId = (id) => document.getElementById(id);
     byId('start').addEventListener('click', () => this.openCameraThen(() => this.beginCheck()));
+    if (this.group) {
+      // The row has been on the card since the page opened, so someone may have chosen already.
+      const chosen = Number(document.querySelector('input[name="group-size"]:checked')?.value) || 1;
+      watchGroupChoice(chosen, (count) => this.setPlayers(count));
+      this.setPlayers(chosen);
+    }
+    document.body.dataset.players = String(this.players);
     byId('play-again').addEventListener('click', () => this.playAgain());
     byId('problem-retry').addEventListener('click', () => this.openCameraThen(this.retryAfterProblem));
     byId('open-panel').addEventListener('click', () => this.openPanel());

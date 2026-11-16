@@ -62,6 +62,7 @@
     leftShorten: null, // One hand shorter than the other, for a game where each hand does its own: instead of shorten.
     rightShorten: null,
     sameHand: false, // Every photo drawn as the same hand in the same place: see PALM above.
+    hands: null, // Several people's hands, in place of the two above: see showHands.
   };
   const scene = { left: 'open', right: 'open', ...DEFAULTS };
 
@@ -124,6 +125,17 @@
       scene.footage = false;
       scene.people = 0;
       Object.assign(scene, DEFAULTS, change);
+    },
+    /**
+     * Shows the hands of several people, in place of one child's two: hands is a list of { name, side, x, y,
+     * scale }, each a photo (open, fist and so on) as that hand (left or right), with its middle so far across
+     * and down the mirror picture, from 0 to 1, and scale 1 the size of a hand held near the camera. The rest
+     * of the scene, such as sameHand, is as show() takes it.
+     */
+    showHands(hands, change = {}) {
+      scene.footage = false;
+      scene.people = 0;
+      Object.assign(scene, DEFAULTS, { left: null, right: null }, change, { hands });
     },
     /** Shows a clip from test/fixtures/body, from a moment in it, playing or held still. */
     /** Moves the footage that's playing across, without starting it again. See shiftX below. */
@@ -240,6 +252,10 @@
           ctx.translate(-WIDTH / 2, -HEIGHT * 0.94);
         }
         ctx.drawImage(footage, (WIDTH - width) / 2 - (scene.footageShiftX ?? 0) * WIDTH, (HEIGHT - height) / 2 + scene.footageShiftY * HEIGHT, width, height);
+        return;
+      }
+      if (scene.hands) {
+        for (const { name, side = 'right', x = 0.5, y = 0.5, scale = 1 } of scene.hands) drawHand(ctx, name, x * WIDTH, y * HEIGHT, side, scale);
         return;
       }
       const middle = HEIGHT / 2;

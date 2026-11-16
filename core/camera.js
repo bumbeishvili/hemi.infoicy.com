@@ -52,7 +52,7 @@ export class TrackingCamera {
     this.busy = false;
     this.lastResultAt = 0;
     this.delegate = null;
-    this.people = 1; // How many people a body tracker is to look for: see setPeople.
+    this.people = 1; // How many people the tracker is to look for: see setPeople.
     // How far the camera and its tracker have got, each from 0 to 1, for the bar on the loading card
     // (core/loading.js), which hears of each change through onProgress.
     this.progress = { camera: 0, tracker: 0 };
@@ -70,8 +70,8 @@ export class TrackingCamera {
   }
 
   /**
-   * How many people are playing in front of this camera, for a tracker that can look for more than one: the
-   * body tracker. It's told now if it's loaded, and as it loads if it isn't.
+   * How many people are playing in front of this camera: the body tracker looks for that many bodies, and the
+   * hand tracker for that many people's hands. It's told now if it's loaded, and as it loads if it isn't.
    */
   setPeople(count) {
     if (count === this.people) return;

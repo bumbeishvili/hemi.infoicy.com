@@ -302,12 +302,16 @@ class BalloonGlove extends Glove {
   burnt = 0; // Seconds of being held open still needed, after popping a wrong answer.
   smokeIn = 0;
 
-  draw(ctx, palmSize) {
+  draw(ctx, palmSize, look = null) {
     this.stain = this.burnt > 0 ? 0.25 + 0.75 * (this.burnt / COOL_SECONDS) : 0;
     this.embers = this.burnt > 0;
-    super.draw(ctx, palmSize);
+    super.draw(ctx, palmSize, look);
   }
 }
+
+// With several playing at one camera, the outline of each of the other gloves, in the order they came. Each is
+// still green when open and yellow when not, as the first one is.
+const GUEST_INKS = ['#1f5fd0', '#b4530a', '#7a3cc2'];
 
 export class BalloonField {
   /**
@@ -338,6 +342,8 @@ export class BalloonField {
     this.introduced = new Set();
     this.cloud = makeCloudSprite();
     this.gloves = { left: new BalloonGlove('left'), right: new BalloonGlove('right') };
+    // With several playing at one camera, a glove for each hand but the first: see setPlayers in core/hands.js.
+    this.guests = [];
     this.balloons = [];
     this.shards = [];
     this.rings = [];
@@ -415,8 +421,7 @@ export class BalloonField {
     // Balloons that floated off the top while they could still have been popped, and whether too many have.
     this.away = 0;
     this.tooManyAway = false;
-    this.gloves.left.burnt = 0;
-    this.gloves.right.burnt = 0;
+    for (const glove of this.hands) glove.burnt = 0;
   }
 
   /** A new round: an empty sky and nothing popped. */
@@ -562,8 +567,7 @@ export class BalloonField {
   stopNumbers() {
     this.clearNumbers();
     this.numbered = false;
-    this.gloves.left.burnt = 0;
-    this.gloves.right.burnt = 0;
+    for (const glove of this.hands) glove.burnt = 0;
   }
 
   get total() {
@@ -943,6 +947,15 @@ export class BalloonField {
       else glove.hide();
       if (popping) this.coolGlove(glove, dt);
     }
+    // Everyone else's hands, with several playing: each pops, bumps and is burnt as the first does.
+    const others = snapshot?.guests ?? [];
+    if (this.guests.length !== others.length) this.guests = others.map((_, index) => this.guests[index] ?? Object.assign(new BalloonGlove(snapshot.side), { place: index + 1 }));
+    this.guests.forEach((glove, index) => {
+      glove.side = snapshot.side;
+      if (showHands) glove.follow(others[index], dt, this);
+      else glove.hide();
+      if (popping) this.coolGlove(glove, dt);
+    });
 
     const { pace, plan } = this;
     // On a friend's game the balloons are the host's, where the host's game says they are.
@@ -1064,9 +1077,16 @@ export class BalloonField {
     return prize;
   }
 
+  /** Every glove there is: the hand in play's and the other hand's, and with several playing, everyone else's. */
+  get hands() {
+    return [...Object.values(this.gloves), ...this.guests];
+  }
+
   /** Prizes fall, drift towards a nearby hand, and are caught by the glove coming near, open or closed. */
   updatePrizes(dt, catching) {
-    const glove = this.gloves[this.side];
+    // With several playing, each prize is for whoever's glove is nearest it.
+    const catchers = [this.gloves[this.side], ...this.guests].filter((each) => each.visible);
+    const awayFrom = (each, prize) => Math.hypot(each.x - prize.x, each.y - prize.y);
     const magnet = this.power?.kind === 'magnet';
     const range = (magnet ? MAGNET.pullRange : PRIZE.pullRange) * this.height;
     const pull = (magnet ? MAGNET.pull : PRIZE.pull) * this.height;
@@ -1076,7 +1096,8 @@ export class BalloonField {
       prize.age += dt;
       prize.vy = Math.min(prize.vy + this.height * 0.5 * dt, fall * (prize.kind === 'sweet' ? 0.85 : 1));
       prize.y += prize.vy * dt;
-      if (catching && glove.visible) {
+      const glove = catchers.reduce((nearest, each) => (!nearest || awayFrom(each, prize) < awayFrom(nearest, prize) ? each : nearest), null);
+      if (catching && glove) {
         const dx = glove.x - prize.x;
         const dy = glove.y - prize.y;
         const away = Math.hypot(dx, dy);
@@ -1342,7 +1363,7 @@ export class BalloonField {
     };
     const help = REACH_HELP[this.reachName] * height;
     if (help > 0) {
-      for (const glove of Object.values(this.gloves)) {
+      for (const glove of this.hands) {
         if (glove.visible && glove.status === 'open') towards(glove, help, 1, height * REACH_HELP_RANGE);
       }
     }
@@ -1356,7 +1377,7 @@ export class BalloonField {
   /** Whether a balloon with an answer on it has been chosen, and what that means for the glove. */
   touchNumbered(balloon, dt) {
     if (balloon.leaving || !balloon.arrived) return false;
-    const glove = Object.values(this.gloves).find((each) => each.visible && each.reachTo(balloon.x, balloon.y, this.palmSize) <= balloon.r);
+    const glove = this.hands.find((each) => each.visible && each.reachTo(balloon.x, balloon.y, this.palmSize) <= balloon.r);
     // A hand that was already there when it arrived hasn't chosen it, so it has to come back.
     if (!balloon.ready) {
       if (!glove) balloon.ready = true;
@@ -1408,7 +1429,7 @@ export class BalloonField {
     const extra = this.power?.kind === 'bubble' ? this.palmSize * BUBBLE_REACH : 0;
     // A balloon this game has already let go of, while the host's still has it, can't be popped again.
     if (this.shared && this.gone.has(balloon.id)) return true;
-    for (const glove of Object.values(this.gloves)) {
+    for (const glove of this.hands) {
       if (!glove.visible || glove.reachTo(balloon.x, balloon.y, this.palmSize) > balloon.r + extra) continue;
       if (glove.status === 'open' && balloon.kind === 'power') {
         this.popPower(balloon, glove);
@@ -1808,6 +1829,7 @@ export class BalloonField {
     this.drawFriendsGloves();
     this.gloves.left.draw(ctx, this.palmSize);
     this.gloves.right.draw(ctx, this.palmSize);
+    for (const glove of this.guests) glove.draw(ctx, this.palmSize, { ink: GUEST_INKS[(glove.place - 1) % GUEST_INKS.length] });
     this.drawPower();
     if (this.bird) this.drawBird(this.bird);
     this.drawFlying();
