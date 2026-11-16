@@ -22,7 +22,7 @@ Movement-based games for children, played in front of a webcam.
 - Resting never costs anything.
 - Each game has 10 levels.
 - Play with friends on their own computers in 22 of the games: make a game on the title card and send them the link or its 3-letter code. Mighty Moves, Bounce Back, Tank Patrol and Cannon Bay are for two, and High Five Racers, Balloon Pop, Leap Trail, Giraffe's Maze, Frost Arena, Arrow Meadow, Giraffe's Puzzles, Flap, Little Chick!, Mighty Lift, Gobble and Grow, Giraffe's Paint Box, Moto Mountain and Rooftop Rope for up to four, together or against each other as whoever makes the game chooses, and the rest are everyone playing in the same game.
-- Several can play in front of one camera, up to four: side by side in Swamp Splash, and each with a glove of their own in Balloon Pop. A grown-up says how many before the game starts.
+- Several can play in front of one camera, up to four: jumping side by side in Swamp Splash, marching along together in Hat Chase, and each with a glove of their own in Balloon Pop. A grown-up says how many before the game starts.
 - Gobble and Grow is played with the mouth, Mighty Lift by raising an arm, Flap, Little Chick! by bending the wrists back, Moto Mountain by leaning the body to the side, and Rooftop Rope by standing on one leg.
 - A grown-up can change the settings under the gear icon, including which hand shape makes a game's move, like pointing instead of an open hand.
 - The camera picture stays on your computer. The site counts visits with Google Analytics.
