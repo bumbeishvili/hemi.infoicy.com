@@ -131,7 +131,7 @@ const STRAIGHT_FINGER = 0.55;
 
 /**
  * Draws what the tracker sees on the mirror view, each finger coloured by its own state. With other, the hand
- * that isn't in play is drawn too, for a game played with both. links, if a game gives them, are pairs of a
+ * that isn't in play is drawn too, for a game played with both, and with several playing, each one's hand. links, if a game gives them, are pairs of a
  * hand's points to join with a bright line, as { play, other }: a thumb and the finger it's pinched against.
  */
 function drawSkeleton(canvas, snapshot, { other = false, links = null } = {}) {
@@ -151,6 +151,8 @@ function drawSkeleton(canvas, snapshot, { other = false, links = null } = {}) {
 
   const hands = [[snapshot.left, 'play'], [snapshot.right, 'play']];
   if (other) hands.push([snapshot.other, 'other']);
+  // With several playing at one camera, everyone's hand: each can see that theirs has been found.
+  for (const guest of snapshot.guests ?? []) hands.push([guest, 'guest']);
   for (const [hand, which] of hands) {
     if (!hand?.image) continue;
     const at = (index) => [hand.image[index].x * width, hand.image[index].y * height];

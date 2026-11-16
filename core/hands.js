@@ -5,6 +5,7 @@
 // missing, cut off by the frame, too far away or overlapping the other hand does not
 // count as open, however open it looks. A grown-up can choose other hand shapes for a
 // game's moves, like pointing: see core/shapes.js.
+import { followHands, MOST_PLAYERS } from './hand-group.js';
 import { DEFAULT_SHAPES, FINGERS_PROMPT, SHAPES, SHAPE_LOST, SHAPE_MADE, isShaped, shapeScore } from './shapes.js';
 
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
@@ -181,6 +182,15 @@ function dropDuplicate(candidates) {
   return candidates;
 }
 
+/** The same for any number of hands, with several playing: each is kept unless a surer one is in the same place. */
+function dropDuplicates(candidates) {
+  const kept = [];
+  for (const hand of [...candidates].sort((a, b) => b.score - a.score)) {
+    if (kept.every((other) => gap(hand.centre, other.centre) >= DUPLICATE_GAP * Math.max(hand.size, other.size))) kept.push(hand);
+  }
+  return kept;
+}
+
 class HandSide {
   constructor(side, strictness) {
     this.side = side;
@@ -333,12 +343,38 @@ export class HandMonitor {
     this.right = new HandSide('right', right);
     this.side = side;
     this.other = this.watchOther();
+    // How many are playing at this camera, and the hands of all but the first of them: see setPlayers.
+    this.players = 1;
+    this.guests = [];
+    this.shapes = null;
     // Straight on is wherever the hand starts.
     this.neutralSteer = null;
     this.steerInput = null;
     this.steer = 0;
     this.lastUpdate = null;
     this.snapshot = this.buildSnapshot(false);
+  }
+
+  /**
+   * Several playing at one camera, each with a hand of their own: count is how many, one as a game comes.
+   * Everyone plays with the same hand, right or left, the side in play. The first hand to come is the hand in
+   * play, as ever, and the others are the snapshot's guests, each open or closed by the same rules. Which hand
+   * in the picture is whose is in core/hand-group.js.
+   */
+  setPlayers(count) {
+    const players = Math.min(MOST_PLAYERS, Math.max(1, Math.round(count) || 1));
+    if (players === this.players) return;
+    this.players = players;
+    this.guests = this.makeGuests();
+    this.snapshot = this.buildSnapshot(this.snapshot.overlap);
+  }
+
+  makeGuests() {
+    return Array.from({ length: this.players - 1 }, () => {
+      const guest = new HandSide(this.side, this[this.side].strictness);
+      if (this.shapes) guest.setShapes(this.shapes);
+      return guest;
+    });
   }
 
   /**
@@ -354,6 +390,7 @@ export class HandMonitor {
   setSide(side) {
     this.side = side;
     this.other = this.watchOther();
+    this.guests = this.makeGuests();
     this.neutralSteer = null;
     this.steerInput = null;
     this.steer = 0;
@@ -363,6 +400,7 @@ export class HandMonitor {
   setStrictness(side, value) {
     this[side].strictness = value;
     if (this.other.side === side) this.other.strictness = value;
+    for (const guest of this.guests) if (guest.side === side) guest.strictness = value;
     this.snapshot = this.buildSnapshot(this.snapshot.overlap);
   }
 
@@ -371,8 +409,10 @@ export class HandMonitor {
    * other hand, which some games use for something extra, is always just open or closed.
    */
   setShapes(shapes) {
+    this.shapes = shapes;
     this.left.setShapes(shapes);
     this.right.setShapes(shapes);
+    for (const guest of this.guests) guest.setShapes(shapes);
     this.snapshot = this.buildSnapshot(this.snapshot.overlap);
   }
 
@@ -381,6 +421,7 @@ export class HandMonitor {
     this.left.forget();
     this.right.forget();
     this.other.forget();
+    for (const guest of this.guests) guest.forget();
     this.steerInput = null;
     this.steer = 0;
     this.lastUpdate = null;
@@ -422,6 +463,7 @@ export class HandMonitor {
   update(rawHands, now, aspect = 16 / 9) {
     const dt = this.lastUpdate === null ? 0 : now - this.lastUpdate;
     this.lastUpdate = now;
+    if (this.players > 1) return this.updateGroup(rawHands, now, aspect, dt);
 
     const candidates = dropDuplicate(rawHands.slice(0, 2).map((raw) => readCandidate(raw, aspect)));
     const overlap =
@@ -438,6 +480,41 @@ export class HandMonitor {
     // Worth knowing: a hand is in view, but it isn't the one being played with.
     this.otherHandSeen = candidates.length > 0 && !hand;
 
+    this.steerWith(hand, overlap, dt);
+    this.snapshot = this.buildSnapshot(overlap);
+    return this.snapshot;
+  }
+
+  /**
+   * One look with several playing. Every hand that may play is followed from look to look by where it is: the
+   * first is the hand in play, and the rest are the guests. A hand the tracker is sure is the other one, left
+   * for right, is left out, as a child's other hand is. A hand touching any other is never open, whoever's
+   * they are.
+   */
+  updateGroup(rawHands, now, aspect, dt) {
+    const found = dropDuplicates(rawHands.map((raw) => readCandidate(raw, aspect)));
+    const touching = (hand) => found.some((other) => other !== hand && gap(hand.centre, other.centre) < OVERLAP_GAP * Math.max(hand.size, other.size));
+    const playing = found.filter((hand) => !(hand.side && hand.side !== this.side && hand.score >= MIN_LABEL_SCORE));
+    const { to, heir } = followHands([this[this.side], ...this.guests], playing, now);
+    const [hand, ...guests] = to.map((index) => playing[index] ?? null);
+    // A guest whose hand has become the hand in play starts again, for whoever comes next.
+    if (heir > 0) this.guests[heir - 1].forget();
+    const overlap = Boolean(hand && touching(hand));
+
+    this.left.update(this.side === 'left' ? hand : null, now, overlap);
+    this.right.update(this.side === 'right' ? hand : null, now, overlap);
+    this.guests.forEach((guest, index) => guest.update(guests[index], now, Boolean(guests[index] && touching(guests[index]))));
+    // The other hand has no part here: with several playing, a hand of that side could be anyone's.
+    this.other.update(null, now, false);
+    this.otherHandSeen = found.length > 0 && !hand;
+
+    this.steerWith(hand, overlap, dt);
+    this.snapshot = this.buildSnapshot(overlap);
+    return this.snapshot;
+  }
+
+  /** Moving the hand in play side to side steers, from wherever it started. */
+  steerWith(hand, overlap, dt) {
     if (hand && !overlap) {
       const input = hand.centre.x;
       this.steerInput = this.steerInput === null ? input : this.steerInput + (input - this.steerInput) * smoothing(dt, STEER_SMOOTH_MS);
@@ -448,9 +525,6 @@ export class HandMonitor {
       this.steer -= this.steer * smoothing(dt, STEER_RELEASE_MS);
       if (Math.abs(this.steer) < 0.01) this.steer = 0;
     }
-
-    this.snapshot = this.buildSnapshot(overlap);
-    return this.snapshot;
   }
 
   buildSnapshot(overlap) {
@@ -465,6 +539,9 @@ export class HandMonitor {
       handVisible: hand.status !== 'missing',
       otherHandSeen: this.otherHandSeen ?? false,
       other: this.other.view(),
+      // With several playing, the hands of all but the first: each as a hand's view is, with which place it has.
+      players: this.players,
+      guests: this.guests.map((guest, index) => ({ ...guest.view(), place: index + 1 })),
       steerInput: this.steerInput,
       steer: this.steer,
       drive: handOpen ? DRIVE_BASE + (1 - DRIVE_BASE) * hand.excess : 0,

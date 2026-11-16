@@ -85,6 +85,9 @@ const ids = ROSTER.map(({ id }) => id);
 /** How much of a character still shows, at x in a maze cols across: all of it inside, fading out past the way out. */
 const showing = (x, cols) => Math.min(1, Math.max(0, 1 - (x - cols) / FADE_OUT_CELLS));
 
+/** A friend's character and glove in this child's maze, following what their game sends. */
+const newWalker = (friend) => ({ id: friend.id, spec: friend.spec, name: friend.spec.name, track: new Track(WALKER_TRACK), trail: new Trail(), glove: new Glove('right'), fade: 0, z: -1, walked: 0 });
+
 class MazeGame {
   chimeOnOpen = false; // The hand opens and closes all the time here, so a chime would be noise.
 
@@ -120,6 +123,7 @@ class MazeGame {
       portraits: () => session.portraits,
       onMove: (id, message) => this.fromFriend(id, message),
       onGone: (friend) => this.friendGone(friend),
+      onBack: (friend) => this.friendBack(friend),
       // A race: whoever got out of the last maze first comes first, by their time, as in High Five Racers. Together,
       // nobody is placed, and each one's line is the fruit they ate on the way.
       resultText: ({ ms, dropped }) => (this.team ? `${dropped} fruit` : time(ms)),
@@ -278,9 +282,7 @@ class MazeGame {
       const { size, seed } = readMode(friendly.mode);
       const mazes = MAZE_COUNTS.includes(friendly.length) ? friendly.length : 3;
       this.run = new MazeRun({ seed, size, level: friendly.level, mazes, race: true, ways: this.ways(), events: this.events });
-      for (const friend of friendly.friends) {
-        this.friendWalkers.set(friend.id, { id: friend.id, spec: friend.spec, name: friend.spec.name, track: new Track(WALKER_TRACK), trail: new Trail(), glove: new Glove('right'), fade: 0, z: -1, walked: 0 });
-      }
+      for (const friend of friendly.friends) this.friendWalkers.set(friend.id, newWalker(friend));
       this.artFor([this.myCharacter().id, ...friendly.friends.map((friend) => friend.spec.id)]);
     } else {
       this.run = this.soloRun(level);
@@ -576,6 +578,16 @@ class MazeGame {
     this.showRace();
   }
 
+  /**
+   * A friend who had gone is here again in the same game, as after a connection lost for longer than a moment:
+   * their character is back, wherever they've got to, and together they take everyone on again and are taken.
+   */
+  friendBack(friend) {
+    if (!this.friends.current || this.friendWalkers.has(friend.id)) return;
+    this.friendWalkers.set(friend.id, newWalker(friend));
+    this.showRace();
+  }
+
   /** Together: the mazes everyone got out of and the fruit they ate on the way, on the finish card. */
   showTeamFruit() {
     const line = byId('finish-team');
@@ -785,8 +797,9 @@ class MazeGame {
    */
   mazesOut(id) {
     const { run } = this;
-    // The child's own: the mazes behind them, and this one too once they're out of it, or carried out of it.
-    if (id === this.friends.room.you) return run.over ? run.mazes : run.index + (['out', 'carried', 'sliding'].includes(run.phase) ? 1 : 0);
+    // The child's own: the mazes behind them, and this one too once they're out of it, or carried out of it. In the
+    // countdown, before the first maze has begun, that's none.
+    if (id === this.friends.room.you) return run.over ? run.mazes : Math.max(0, run.index) + (['out', 'carried', 'sliding'].includes(run.phase) ? 1 : 0);
     if (this.friends.results.has(id)) return run.mazes;
     const at = this.friendWalkers.get(id)?.at;
     if (!at) return 0;

@@ -95,6 +95,9 @@ export class FriendsPanel {
    *   hello()          what friends are told about this player, apart from the name: { driver, level, length }
    *   screen()         which screen it's on, and portraits() the characters' pictures
    *   onGone(friend)   a friend has gone in the middle, and their car or plane with them
+   *   onBack(friend)   a friend who had gone is here again in the same game, as after a connection lost for
+   *                    longer than a moment: a game that says this puts back what onGone took away, and the
+   *                    friend counts as here again. Unless said, a friend who has gone stays gone for that game
    *   resultText(result)   how someone did, from { ms, won, dropped }, for the finish card
    *   onMove(id, message)  something came from a friend's game: where they are, or their score. Unless
    *                        said, where they are goes to the track follow() gave for them
@@ -110,8 +113,8 @@ export class FriendsPanel {
    * the game chooses, everyone is shown, and the game that starts has team: true when it's together. Then nobody
    * is placed on the finish card: everyone is on the same side.
    */
-  constructor({ game = '', linkKey = 'race', words, hello, screen, portraits, onGone = () => {}, onMove = null, onRoom = () => {}, rank = null, resultText, titles = null, teams = null, startAfter, waitingBefore, resultsAfter, finishTitle }) {
-    Object.assign(this, { linkKey, words, helloFor: hello, screen, portraits, onGone, onRoom, resultText, titles, teams });
+  constructor({ game = '', linkKey = 'race', words, hello, screen, portraits, onGone = () => {}, onBack = null, onMove = null, onRoom = () => {}, rank = null, resultText, titles = null, teams = null, startAfter, waitingBefore, resultsAfter, finishTitle }) {
+    Object.assign(this, { linkKey, words, helloFor: hello, screen, portraits, onGone, onBack, onRoom, resultText, titles, teams });
     this.rank = rank ?? ((a, b) => Number(b.won) - Number(a.won) || (a.won ? a.ms - b.ms : b.dropped - a.dropped || a.ms - b.ms));
     this.current = null; // The race or flight with friends being played, once it has started: see start().
     this.results = new Map(); // id: { ms, won, dropped }, how each friend did.
@@ -446,13 +449,23 @@ export class FriendsPanel {
 
   /**
    * A friend who has gone in the middle takes their car or plane with them, unless they're back within a few
-   * seconds, as they are after losing the connection for a moment.
+   * seconds, as they are after losing the connection for a moment. One back later than that is taken back by a
+   * game that says how (onBack).
    */
   watchForGone() {
     const now = performance.now();
     for (const friend of this.current.friends) {
-      if (friend.gone) continue;
-      if (this.room.members.some((member) => member.id === friend.id)) friend.missingSince = null;
+      const here = this.room.members.some((member) => member.id === friend.id);
+      if (friend.gone) {
+        // Back in the same game after longer than a moment: a game that can take them back does.
+        if (!here || !this.onBack) continue;
+        friend.gone = false;
+        friend.missingSince = null;
+        this.onBack(friend);
+        if (this.screen() === 'finish') this.showResults();
+        continue;
+      }
+      if (here) friend.missingSince = null;
       else friend.missingSince ??= now;
     }
     clearTimeout(this.goneTimer);

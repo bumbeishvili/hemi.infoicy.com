@@ -2,9 +2,16 @@
 // Camera frames arrive as ImageBitmaps and are closed as soon as they are read.
 // Nothing here stores a frame or sends one anywhere.
 import { HandLandmarker } from '../vendor/mediapipe/vision_bundle.mjs';
+import { MOST_PLAYERS } from './hand-group.js';
 import { prepareToLoad, visionFiles } from './vision-files.js';
 
 let landmarker = null;
+// How many are playing at this camera: one as a game comes, or several, each with a hand of their own (see
+// core/hand-group.js). The tracker looks for two hands for each of them, as each has another hand that may be
+// in the picture too, and reports all it finds.
+let people = 1;
+let changing = Promise.resolve(); // A change to that, which a frame waits for.
+const peopleFrom = (count) => Math.min(MOST_PLAYERS, Math.max(1, Math.round(Number(count)) || 1));
 let lastTimestamp = -1;
 
 // detectForVideo requires strictly increasing timestamps.
@@ -25,7 +32,7 @@ async function createLandmarker() {
       landmarker = await HandLandmarker.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: modelUrl, delegate },
         runningMode: 'VIDEO',
-        numHands: 2,
+        numHands: people * 2,
         // Eager to find a hand: one held in an unusual posture or further from the camera
         // still has to be found. This only lets more candidates through to the next
         // check. Presence then confirms it is really a hand, and openness is measured
@@ -61,6 +68,7 @@ function track(bitmap, timestamp) {
 
 self.onmessage = async ({ data }) => {
   if (data.type === 'init') {
+    people = peopleFrom(data.people);
     try {
       const delegate = await createLandmarker();
       self.postMessage({ type: 'ready', delegate });
@@ -70,9 +78,23 @@ self.onmessage = async ({ data }) => {
     return;
   }
 
+  if (data.type === 'people') {
+    const count = peopleFrom(data.count);
+    if (count === people || !landmarker) {
+      people = count;
+      return;
+    }
+    people = count;
+    changing = changing.then(() => landmarker.setOptions({ numHands: count * 2 })).catch((error) => {
+      self.postMessage({ type: 'error', message: String(error?.message ?? error) });
+    });
+    return;
+  }
+
   if (data.type === 'frame') {
     const { bitmap, timestamp, width, height } = data;
     try {
+      await changing;
       const hands = track(bitmap, timestamp);
       self.postMessage({ type: 'result', hands, timestamp, aspect: width / height });
     } catch (error) {

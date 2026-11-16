@@ -828,3 +828,48 @@ test('the numbers for the finish card: jumps, big ones, the biggest, frogs and s
   assert.equal(swamp.stats.stars, 0);
   assert.equal(swamp.stats.cup, false);
 });
+
+/* ---------- several jumping in front of one camera ---------- */
+
+test('with several jumping, a landing says whose it was, and bent knees only make a super splash of that jumper\'s own next jump', () => {
+  const events = [];
+  const swamp = new Swamp({ level: 3, gentle: true, random: seeded(), onEvent: (event) => events.push(event) });
+  swamp.begin();
+  // The second jumper bends their knees, and the first one lands: an ordinary splash.
+  swamp.squat(1);
+  swamp.land(1.2, { by: 0 });
+  assert.deepEqual(events.filter(({ type }) => type === 'land').map(({ by, bent }) => [by, bent]), [[0, false]]);
+  // Then the second one lands, soon enough after bending: theirs is the super splash.
+  swamp.update(0.5, { seen: true });
+  swamp.land(1.2, { by: 1 });
+  assert.deepEqual(events.filter(({ type }) => type === 'land').map(({ by, bent }) => [by, bent]), [[0, false], [1, true]]);
+  assert.equal(swamp.stats.supers, 1);
+  assert.equal(swamp.stats.jumps, 2);
+  // And it's used up: their next jump is an ordinary one again.
+  swamp.land(1.2, { by: 1 });
+  assert.equal(swamp.stats.supers, 1);
+  // Bent knees wear off for each jumper on their own.
+  swamp.squat(2);
+  swamp.update(SQUAT.within + 0.1, { seen: true });
+  swamp.land(1.2, { by: 2 });
+  assert.equal(swamp.stats.supers, 1);
+  // One jumper on their own is the first, as it always was.
+  swamp.squat();
+  assert.equal(swamp.bent, 0);
+  swamp.land(1.2);
+  assert.equal(events.at(-1).type === 'land' || events.some(({ type, by }) => type === 'land' && by === 0), true);
+  assert.equal(swamp.stats.supers, 2);
+});
+
+test('everyone\'s mud lands on the one window: two jumpers cover it as one would with as many jumps', () => {
+  const together = new Swamp({ level: 1, gentle: true, random: seeded() });
+  const alone = new Swamp({ level: 1, gentle: true, random: seeded() });
+  together.begin();
+  alone.begin();
+  for (let jump = 0; jump < 6; jump += 1) {
+    together.land(1.5, { by: jump % 2 });
+    alone.land(1.5);
+  }
+  assert.equal(together.coverage, alone.coverage);
+  assert.ok(together.coverage > 0.2);
+});

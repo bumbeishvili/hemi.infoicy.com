@@ -33,6 +33,10 @@ const RAIN_CLOUD = { from: 0.44, to: 0.85, y: 0.085 };
 const MUD_SECONDS = 0.45; // A square of mud comes, or goes, over this long,
 const SPREAD = 0.045; // and this much later for each square further from the middle of its splat.
 const JUMP_TALL = 0.3; // How high the character goes for the biggest jump, as a share of the screen's height.
+// Several playing in front of one camera stand side by side, this far apart across the screen, a little smaller
+// when there are three or four of them.
+// On the title and the chooser they stand closer together, between the cards at either side.
+const GROUP = { apart: [0, 0.24, 0.2, 0.17], close: [0, 0.16, 0.115, 0.085], size: [1, 1, 0.88, 0.78] };
 
 export class SwampView {
   constructor(canvas) {
@@ -40,7 +44,7 @@ export class SwampView {
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.time = 0;
-    this.art = null; // The character's pictures, if they could be drawn.
+    this.arts = [null]; // Each character's pictures, if they could be drawn: one, or one for each of several jumpers.
     this.view = 'title';
     this.swamp = null;
     this.way = RAIN_CLOUD; // Where the rain cloud's way runs, for the tests to find it by.
@@ -61,9 +65,8 @@ export class SwampView {
     this.wait.fill(0);
     this.drops = [];
     this.effects = [];
-    this.jump = 0;
-    this.crouch = 0;
-    this.squash = 0;
+    // What each jumper's body is doing: how high off the floor, how far the knees are bent, and how flat from a landing.
+    this.bodies = this.arts.map(() => ({ jump: 0, crouch: 0, squash: 0 }));
     this.frogHops = FROG_PADS.map(() => 0);
     this.bubble = { size: 0, popping: 0 };
     this.heron = null;
@@ -83,14 +86,44 @@ export class SwampView {
 
   /** The character who jumps: one of the roster (core/body/roster.js). */
   setWalker(spec) {
-    try {
-      const tallest = Math.max(window.innerHeight, window.screen?.height || 0);
-      this.art = renderGiraffe(spec, giraffePixels(tallest * PLACE.tall, this.ratio));
-    } catch (error) {
-      // Without its picture the game still works: the mud flies all the same.
-      console.warn('Could not draw the character:', error);
-      this.art = null;
-    }
+    this.setWalkers([spec]);
+  }
+
+  /** The characters who jump, side by side, when several play in front of one camera: each one of the roster. */
+  setWalkers(specs) {
+    const tallest = Math.max(window.innerHeight, window.screen?.height || 0);
+    this.arts = specs.map((spec) => {
+      try {
+        return renderGiraffe(spec, giraffePixels(tallest * PLACE.tall, this.ratio));
+      } catch (error) {
+        // Without its picture the game still works: the mud flies all the same.
+        console.warn('Could not draw the character:', error);
+        return null;
+      }
+    });
+    this.bodies = this.arts.map((_, index) => this.bodies[index] ?? { jump: 0, crouch: 0, squash: 0 });
+  }
+
+  /** The one character's pictures, or the first of several. */
+  get art() {
+    return this.arts[0];
+  }
+
+  /** How high off the floor the one jumper is, or the first of several, and how far their knees are bent. */
+  get jump() {
+    return this.bodies[0].jump;
+  }
+
+  get crouch() {
+    return this.bodies[0].crouch;
+  }
+
+  /** Where a jumper's feet are, as shares of the screen: in the middle for one, and side by side for several. */
+  feetOf(index) {
+    const count = this.arts.length;
+    const spread = this.view === 'title' || this.view === 'choose' ? GROUP.close : GROUP.apart;
+    const apart = spread[count - 1] ?? spread.at(-1);
+    return { x: PLACE.feet.x + (index - (count - 1) / 2) * apart, y: PLACE.feet.y };
   }
 
   /** 'title', 'choose', 'play' or 'finish': where the game is, for how the character stands. */
@@ -104,10 +137,15 @@ export class SwampView {
     this.clear();
   }
 
-  /** How high the child is off the floor right now, and how far their knees are bent, each from 0 to 1. */
-  setBody({ jump = 0, crouch = 0 } = {}) {
-    this.jump = clamp(jump, 0, 1);
-    this.crouch = clamp(crouch, 0, 1);
+  /**
+   * How high a child is off the floor right now, and how far their knees are bent, each from 0 to 1. index is
+   * which of the jumpers, when several play in front of one camera.
+   */
+  setBody({ jump = 0, crouch = 0 } = {}, index = 0) {
+    const body = this.bodies[index];
+    if (!body) return;
+    body.jump = clamp(jump, 0, 1);
+    body.crouch = clamp(crouch, 0, 1);
   }
 
   at(x, y) {
@@ -119,13 +157,15 @@ export class SwampView {
     const { width: w, height: h } = this;
     switch (event.type) {
       case 'land': {
-        // Mud flies up from the character's feet: more of it, and further, for a bigger jump.
-        this.squash = 1;
+        // Mud flies up from the feet of whoever landed: more of it, and further, for a bigger jump.
+        const lander = this.bodies[event.by ?? 0] ?? this.bodies[0];
+        lander.squash = 1;
+        const feet = this.feetOf(this.bodies.indexOf(lander));
         const count = Math.round(8 + Math.min(3, event.size) * 9);
         for (let n = 0; n < count; n += 1) {
           const angle = -Math.PI / 2 + (Math.random() - 0.5) * 2.3;
           const speed = h * (0.5 + Math.random() * 0.5) * Math.min(1.6, 0.6 + event.size * 0.4);
-          this.drops.push({ x: w * PLACE.feet.x, y: h * PLACE.feet.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, r: h * (0.006 + Math.random() * 0.012), age: 0, life: 0.75 });
+          this.drops.push({ x: w * feet.x, y: h * feet.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, r: h * (0.006 + Math.random() * 0.012), age: 0, life: 0.75 });
         }
         break;
       }
@@ -207,7 +247,7 @@ export class SwampView {
       this.bubble.size += (wanted - this.bubble.size) * (1 - Math.exp(-dt * 8));
     }
     this.bubble.popping = Math.max(0, this.bubble.popping - dt / 0.4);
-    this.squash = Math.max(0, this.squash - dt / 0.28);
+    for (const body of this.bodies) body.squash = Math.max(0, body.squash - dt / 0.28);
     this.frogHops = this.frogHops.map((hop) => Math.max(0, hop - dt / 0.7));
     this.cheering = Math.max(0, this.cheering - dt / 4);
     this.raining = Math.max(0, this.raining - dt / 2.2);
@@ -244,7 +284,7 @@ export class SwampView {
     this.drawSwamp();
     this.drawFrogs();
     this.drawBubble();
-    this.drawWalker();
+    this.arts.forEach((_, index) => this.drawWalker(index));
     this.drawDrops();
     this.drawMud();
     this.drawShower();
@@ -398,25 +438,30 @@ export class SwampView {
   }
 
   /** The character: standing, down with bent knees, up in the air with its arms up, or flat for a moment as it lands. */
-  drawWalker() {
-    const { ctx, width: w, height: h, art } = this;
-    const feet = this.at(PLACE.feet.x, PLACE.feet.y);
-    const up = this.jump * h * JUMP_TALL;
+  drawWalker(index = 0) {
+    const { ctx, width: w, height: h } = this;
+    const art = this.arts[index];
+    const body = this.bodies[index];
+    const place = this.feetOf(index);
+    const feet = this.at(place.x, place.y);
+    const size = GROUP.size[this.arts.length - 1] ?? GROUP.size.at(-1);
+    const up = body.jump * h * JUMP_TALL;
     // Its shadow on the mud, smaller the higher it is.
     ctx.fillStyle = 'rgb(18 48 77 / 0.2)';
     ctx.beginPath();
-    ctx.ellipse(feet.x, feet.y + h * 0.008, w * 0.06 * (1 - this.jump * 0.5), h * 0.016 * (1 - this.jump * 0.5), 0, 0, Math.PI * 2);
+    ctx.ellipse(feet.x, feet.y + h * 0.008, w * 0.06 * size * (1 - body.jump * 0.5), h * 0.016 * size * (1 - body.jump * 0.5), 0, 0, Math.PI * 2);
     ctx.fill();
     if (!art) return;
     const cheering = this.cheering > 0 || this.view === 'finish';
     const waving = this.view === 'title' || this.view === 'choose';
     let frame = art.frames.stand;
-    if (this.jump > 0.08 || cheering) frame = art.frames.cheer;
+    if (body.jump > 0.08 || cheering) frame = art.frames.cheer;
     else if (waving && !this.reducedMotion && Math.floor(this.time * 1.4) % 2) frame = art.frames.wave;
     // Bent knees are the whole of it a little shorter and wider, and a landing is the same for a moment.
-    const flat = Math.max(this.crouch * 0.22, smooth(this.squash) * 0.2);
-    const bounce = cheering && !this.reducedMotion ? Math.abs(Math.sin(this.time * 5)) * h * 0.03 : 0;
-    const scale = (h * PLACE.tall) / art.tall;
+    const flat = Math.max(body.crouch * 0.22, smooth(body.squash) * 0.2);
+    // Cheering, several bob up and down one after another, not all at once.
+    const bounce = cheering && !this.reducedMotion ? Math.abs(Math.sin(this.time * 5 + index * 0.9)) * h * 0.03 : 0;
+    const scale = ((h * PLACE.tall) / art.tall) * size;
     ctx.save();
     ctx.translate(feet.x, feet.y - up - bounce);
     ctx.scale(scale * (1 + flat * 0.6), scale * (1 - flat));
