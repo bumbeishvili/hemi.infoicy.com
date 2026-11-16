@@ -71,6 +71,14 @@ test('one who walks behind the other to the far side, hidden for a moment on the
   }
 });
 
+test('two who step past each other between two looks are told apart by how tall each is in the picture', () => {
+  const people = new People(2);
+  // Ana is nearer the camera, so taller in the picture, and Ben stands just beside her, further off.
+  people.assign([bodyAt(0.4, 0.55, 'ana'), bodyAt(0.5, 0.4, 'ben')], 0);
+  // A look later each is a little past where the other was: going by places alone, they'd have changed over.
+  assert.deepEqual(names(people.assign([bodyAt(0.44, 0.4, 'ben'), bodyAt(0.46, 0.55, 'ana')], 0.5)), ['ana', 'ben']);
+});
+
 test('a player the camera loses for a moment is nobody for that moment, and the other is still themselves', () => {
   const people = new People(2);
   people.assign([bodyAt(0.3, 0.5, 'ana'), bodyAt(0.7, 0.5, 'ben')], 0);
