@@ -362,7 +362,9 @@ test('together, three cars: the one in front waits for the last, not the nearest
   await expect.poll(() => seenBy(page, 'Cat'), { timeout: 10_000 }).toBeGreaterThan(benAt + 110);
   await driveTo(page, benAt + 150);
   await expect.poll(async () => (await raceOf(page)).convoy, { timeout: 10_000 }).toBe(0.5);
-  // Cat, in the middle, waits for Ben too, rather than being towed after Ana. Ben is towed.
+  // Cat, in the middle, waits for Ben too, rather than being towed after Ana, once her game sees Ana in front.
+  // Ben is towed.
+  await expect.poll(() => seenBy(cat.page, 'Ana'), { timeout: 10_000 }).toBeGreaterThan(benAt + 140);
   await expect.poll(async () => (await raceOf(cat.page)).convoy, { timeout: 10_000 }).toBe(0.5);
   await expect.poll(async () => (await raceOf(ben.page)).convoy, { timeout: 10_000 }).toBe(1.2);
   // Cat drops back near Ben: now she's far behind Ana, the first, and towed.
