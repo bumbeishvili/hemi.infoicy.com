@@ -15,11 +15,13 @@ const promptText = (page) => page.locator('#prompt-text');
 const screenSize = (page) => page.evaluate(() => ({ w: window.__game.view.width, h: window.__game.view.height }));
 const mean = (list) => list.reduce((sum, value) => sum + value, 0) / list.length;
 
-/** Where the rain cloud is drawn now, and the mark at the end of its way. */
+/** Where the rain cloud is drawn now, and the mark at the end of its way: its way is the game's own, read from it. */
 const cloudPlaces = async (page) => {
   const { w, h } = await screenSize(page);
   const { cloud } = await state(page);
-  return { cloud: { x: w * (0.34 + (0.93 - 0.34) * cloud), y: h * 0.085 }, end: { x: w * 0.93, y: h * 0.085 }, sky: { x: w * 0.12, y: h * 0.085 } };
+  const way = await page.evaluate(() => window.__game.view.way);
+  // The sky is read above the mud meter's chip, well left of where the cloud starts.
+  return { cloud: { x: w * (way.from + (way.to - way.from) * cloud), y: h * way.y }, end: { x: w * way.to, y: h * way.y }, sky: { x: w * (way.from - 0.12), y: h * way.y } };
 };
 
 /* ---------- a jump ---------- */

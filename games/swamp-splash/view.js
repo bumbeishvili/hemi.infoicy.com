@@ -43,6 +43,7 @@ export class SwampView {
     this.art = null; // The character's pictures, if they could be drawn.
     this.view = 'title';
     this.swamp = null;
+    this.way = RAIN_CLOUD; // Where the rain cloud's way runs, for the tests to find it by.
     // What each square of the window shows: how much of its mud is there, what it's going to, and how long it waits.
     this.shown = new Float32Array(GRID.wide * GRID.high);
     // And how much of its gold is there: gold lies over the mud, and comes and goes a little at a time as mud does.
