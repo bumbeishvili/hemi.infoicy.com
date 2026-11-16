@@ -822,3 +822,14 @@ test('anyone\'s jump gets everyone past a thing in the way, and a second jump ju
   assert.equal(act(), false);
   assert.equal(chase.stats.cleared + chase.stats.jumps >= 1, true);
 });
+
+test('the step that climbs past a thing after a long wait is counted for whoever took it', () => {
+  const { chase } = setup({ walkers: 2, gentle: true });
+  marchToNext(chase);
+  assert.ok(chase.station, 'they have come to something');
+  wait(chase, HELP_AFTER + 0.2);
+  const before = [...chase.stats.by];
+  assert.equal(chase.step('right', 1), true);
+  assert.deepEqual(chase.stats.by, [before[0], before[1] + 1]);
+  assert.equal(chase.stats.helped, 1);
+});
