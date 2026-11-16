@@ -29,7 +29,7 @@ const STAR = { fill: '#ffd23f', edge: '#e0a800' };
 // Where things are on the screen, as shares of its width and height. The character is to the left while it
 // walks, with the path ahead of it, beside the title card and the finish card, and in the middle to be chosen.
 const PLACE = { ground: 0.76, tall: 0.25 };
-const HERO_AT = { title: 0.14, choose: 0.5, play: 0.24, finish: 0.12 };
+const HERO_AT = { title: 0.14, choose: 0.5, play: 0.24, finish: 0.12, lost: 0.12 };
 // Before a game, how far ahead of the character the magpie waits, in metres: clear of each screen's cards.
 const WAITS_AT = { title: 11, choose: 2.6 };
 const PLACE_RATE = 4; // How quickly the character goes over to its place when the screen changes, a second.
@@ -90,7 +90,7 @@ export class ChaseView {
     }
   }
 
-  /** 'title', 'choose', 'play' or 'finish': where the game is, for how the character stands. */
+  /** 'title', 'choose', 'play', 'finish' or 'lost': where the game is, for where the character stands, and how. */
   setView(name) {
     this.view = name;
   }

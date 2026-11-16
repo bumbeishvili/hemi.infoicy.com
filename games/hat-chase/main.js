@@ -470,8 +470,11 @@ class HatChase extends BodyGame {
     ]);
     // Catching the magpie up at its tree moves on a level, and a game it got away in is to be tried again.
     this.finishLevel(!lost);
-    if (lost) byElementId('finish-title').textContent = LOST_TITLE;
-    else {
+    if (lost) {
+      byElementId('finish-title').textContent = LOST_TITLE;
+      // The character stands beside the card, not under it.
+      this.view.setView('lost');
+    } else {
       byElementId('finish-title').textContent = SAY.won;
       this.view.setView('finish');
       this.confetti.start();
