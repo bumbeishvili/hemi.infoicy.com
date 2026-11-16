@@ -12,6 +12,7 @@ const GAMES = readdirSync(new URL('../../games/', import.meta.url), { withFileTy
   .sort();
 // The games played with the whole body have a character to choose first, and their own button after that.
 const BODY_START = {
+  'hat-chase': '#chase-start',
   'leap-trail': '#run-start',
   'mighty-lift': '#lift-start',
   'mighty-moves': '#fight-start',
@@ -44,8 +45,8 @@ const sheetBar = (page) => page.evaluate(() => {
   return { track: parseFloat(track.width), fill: parseFloat(fill.width), moving: fill.animationName };
 }).catch(() => null);
 
-test('there are 27 games, and each has a test of its bar here', () => {
-  expect(GAMES.length).toBe(27);
+test('there are 28 games, and each has a test of its bar here', () => {
+  expect(GAMES.length).toBe(28);
   for (const game of Object.keys(BODY_START)) expect(GAMES).toContain(game);
 });
 

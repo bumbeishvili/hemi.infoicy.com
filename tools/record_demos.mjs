@@ -1215,6 +1215,91 @@ const FILMS = {
       return { state, coverage: Math.round(coverage * 100), jumps: stats.jumps, big: stats.big, highest: Math.round(window.__game.game.highest * 100) };
     }),
   },
+  'hat-chase': {
+    // Level 3, with the magpie that waits a little way ahead, for a calm walk: streams, low branches and apple trees.
+    settings: { levels: { 'hat-chase': 3 }, chaseMagpie: 'waits', chaseLength: 8 },
+    // The child's picture, small enough to stay under the path, clear of the character's feet.
+    css: '.camera-frame { --camera-small: 20vw !important; }',
+    async ready(page) {
+      // The rendered person of stands.webm on both feet, in full view, which is what the body check wants.
+      await footage(page, 'stands', { from: 0.5, playing: false });
+      await page.locator('#start').click();
+      await page.locator('#chase-start').click();
+      await screenIs(page, 'countdown');
+      // The path laid out again, the same every time: a stream, then a low branch, an apple tree just past it,
+      // and another stream.
+      await page.evaluate(async () => {
+        const { layPath } = await import('/games/hat-chase/chase.js');
+        let seed = 2;
+        const random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+        Object.assign(window.__game.chase, layPath({ level: 3, things: 8, random }));
+      });
+      await screenIs(page, 'playing');
+      // Past the "Go!", with the character showing how to march.
+      await wait(page, 1200);
+    },
+    async play(page) {
+      // The person in the picture marches on the spot: one foot up and down, then the other, from moments in
+      // stands.webm, where each foot goes up 6 centimetres a second, the right from 1 second and the left from
+      // 10. The real tracker reads those lifts as steps, and so that the walk goes at the same pace every time,
+      // each lift is also told to the rules as a step. At each thing in the way the person stands while the
+      // character shows what it wants, and then the move is told to the rules: a big jump over the first stream,
+      // which catches the star above it, bent knees under the branch, both arms up under the apple tree, and an
+      // ordinary jump over the next stream.
+      const lift = async (side, centimetres) => footage(page, 'stands', { from: (side === 'right' ? 1 : 10) + centimetres / 6, playing: false });
+      const standing = () => footage(page, 'stands', { from: 0.5, playing: false });
+      const read = () => page.evaluate(() => {
+        const { chase } = window.__game;
+        return { state: chase.state, needs: chase.station?.needs ?? null, tree: Boolean(chase.treeHere), busy: chase.busy, cleared: chase.stats.cleared };
+      });
+      const started = Date.now();
+      let side = 'right';
+      let jumps = 0;
+      while (Date.now() - started < 30_000) {
+        const now = await read();
+        if (now.state !== 'play' || now.cleared >= 3) break;
+        if (now.busy) {
+          await wait(page, 100);
+          continue;
+        }
+        if (now.needs || now.tree) {
+          await standing();
+          await wait(page, 1100);
+          await page.evaluate(([needs, size]) => {
+            const { chase } = window.__game;
+            if (needs === 'jump') chase.jump(size);
+            else if (needs === 'squat') chase.squat();
+            else chase.reach();
+          }, [now.needs, jumps === 0 ? 2 : 1.2]);
+          if (now.needs === 'jump') jumps += 1;
+          await wait(page, 900);
+          continue;
+        }
+        side = side === 'right' ? 'left' : 'right';
+        await lift(side, 14);
+        await lift(side, 28);
+        await page.evaluate((leg) => window.__game.chase.step(leg), side);
+        await wait(page, 140);
+        await lift(side, 14);
+        await standing();
+        await wait(page, 60);
+      }
+      // Over the second stream, and walking on.
+      for (let i = 0; i < 3; i += 1) {
+        side = side === 'right' ? 'left' : 'right';
+        await lift(side, 28);
+        await page.evaluate((leg) => window.__game.chase.step(leg), side);
+        await wait(page, 200);
+        await standing();
+        await wait(page, 120);
+      }
+      await wait(page, 600);
+    },
+    report: (page) => page.evaluate(() => {
+      const { stats, hero, magpie, state } = window.__game.chase;
+      return { state, x: Math.round(hero.x * 10) / 10, lead: Math.round((magpie.x - hero.x) * 10) / 10, steps: stats.steps, left: stats.left, right: stats.right, jumps: stats.jumps, big: stats.big, squats: stats.squats, apples: stats.apples, stars: stats.stars, cleared: stats.cleared };
+    }),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {
