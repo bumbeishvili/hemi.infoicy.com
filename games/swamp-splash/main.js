@@ -17,6 +17,11 @@ const COUNT_FROM = 3;
 const GO_SHOWN_SECONDS = 0.9;
 const AIR_MOST = 1.6; // A jump that hasn't come down by now, as far as the camera can tell, has.
 const AIR_LEAST = 0.12;
+// A lifted foot can go up as slowly as the child likes, and be held there, so a lift isn't over by the clock: the
+// splash is the foot coming down again, into the swamp. It's down once it's most of the way back from its highest,
+// or, at the very most, after this long.
+const LIFT_BACK = 0.4;
+const LIFT_MOST = 15;
 const SIZE_MOST = 2.8; // No jump counts for more than this, however high.
 const STAR_SIZE = 1.5; // A star jump is never less than this, even one stepped into.
 // How high a big jump is: how far the child's hips go up, as a share of their leg length (the camera measures
@@ -221,7 +226,9 @@ class SwampSplash extends BodyGame {
     air.peak = Math.max(air.peak, this.height());
     air.raw = Math.max(air.raw, this.rise());
     const long = now - air.since;
-    if ((long >= AIR_LEAST && this.down()) || long >= AIR_MOST) this.touchDown();
+    // A lifted foot is coming down once it's most of the way back from its highest.
+    const back = this.lifting && this.rise() < air.raw * LIFT_BACK;
+    if ((long >= AIR_LEAST && (this.down() || back)) || long >= (this.lifting ? LIFT_MOST : AIR_MOST)) this.touchDown();
   }
 
   touchDown() {
@@ -326,7 +333,7 @@ class SwampSplash extends BodyGame {
     // Nobody in the picture: everything waits, the rain cloud too.
     const lost = this.bodyLost();
     // A jump the camera lost sight of comes down all the same.
-    if (this.air && (lost || performance.now() / 1000 - this.air.since >= AIR_MOST)) this.touchDown();
+    if (this.air && (lost || performance.now() / 1000 - this.air.since >= (this.lifting ? LIFT_MOST : AIR_MOST))) this.touchDown();
     swamp.update(dt, { seen: !lost });
     if (swamp.state !== 'play') return;
     this.idleFor = lost ? 0 : this.idleFor + dt;

@@ -26,7 +26,9 @@ const WATER = ['#9aa862', '#74843f'];
 const PLACE = { feet: { x: 0.5, y: 0.8 }, tall: 0.34, horizon: 0.5 };
 const FROG_PADS = [{ x: 0.24, y: 0.74 }, { x: 0.77, y: 0.71 }, { x: 0.33, y: 0.9 }];
 const BUBBLE_AT = { x: 0.64, y: 0.86 };
-const RAIN_CLOUD = { from: 0.34, to: 0.93, y: 0.085 }; // It starts clear of the mud meter, at the top left.
+// The rain cloud's way along the top: it starts clear of the mud meter and the golden stars, at the top left, and
+// ends clear of the gear, at the top right.
+const RAIN_CLOUD = { from: 0.44, to: 0.85, y: 0.085 };
 
 const MUD_SECONDS = 0.45; // A square of mud comes, or goes, over this long,
 const SPREAD = 0.045; // and this much later for each square further from the middle of its splat.
@@ -43,7 +45,8 @@ export class SwampView {
     this.swamp = null;
     // What each square of the window shows: how much of its mud is there, what it's going to, and how long it waits.
     this.shown = new Float32Array(GRID.wide * GRID.high);
-    this.gold = new Uint8Array(GRID.wide * GRID.high);
+    // And how much of its gold is there: gold lies over the mud, and comes and goes a little at a time as mud does.
+    this.gold = new Float32Array(GRID.wide * GRID.high);
     this.wait = new Float32Array(GRID.wide * GRID.high);
     this.clear();
     window.addEventListener('resize', () => this.resize());
@@ -172,8 +175,8 @@ export class SwampView {
     for (const cell of cells) {
       const [cx, cy] = [(cell % GRID.wide) + 0.5, Math.floor(cell / GRID.wide) + 0.5];
       const far = Math.hypot(cx - x * GRID.wide, cy - y * GRID.high);
-      if (this.shown[cell] < 0.05) this.wait[cell] = far * SPREAD;
-      if (golden) this.gold[cell] = 1;
+      // Gold spreads over mud that's there already, as mud spreads over a clean window.
+      if (golden || this.shown[cell] < 0.05) this.wait[cell] = far * SPREAD;
     }
   }
 
@@ -186,14 +189,16 @@ export class SwampView {
       const step = Math.min(dt, 1 / 30) / MUD_SECONDS;
       for (let cell = 0; cell < this.shown.length; cell += 1) {
         const want = swamp.mud[cell] ? 1 : 0;
-        if (!want) this.gold[cell] = 0;
-        else if (swamp.mud[cell] === 2) this.gold[cell] = 1;
-        if (this.shown[cell] === want) continue;
+        const wantGold = swamp.mud[cell] === 2 ? 1 : 0;
+        if (this.shown[cell] === want && this.gold[cell] === wantGold) continue;
         if (this.wait[cell] > 0 && !still) {
           this.wait[cell] -= dt;
           continue;
         }
-        this.shown[cell] = still ? want : clamp(this.shown[cell] + (want > this.shown[cell] ? step : -step), 0, 1);
+        const towards = (now, wanted) => (still ? wanted : clamp(now + (wanted > now ? step : -step), 0, 1));
+        this.shown[cell] = towards(this.shown[cell], want);
+        // Washed gold goes as its mud goes, still gold, and never turns brown first.
+        this.gold[cell] = towards(this.gold[cell], wantGold);
       }
       // The mud bubble grows as the rules' one does.
       const age = swamp.bubble?.age;
@@ -435,8 +440,11 @@ export class SwampView {
   drawMud() {
     const { ctx, width: w, height: h, shown } = this;
     const [cw, ch] = [w / GRID.wide, h / GRID.high];
-    const blob = (cell, grow) => {
-      const share = shown[cell];
+    const { gold } = this;
+    // How much of a square's blob there is: all its mud for the brown, and for the gold, as much as has come.
+    const amount = (cell, golden) => (golden ? Math.min(shown[cell], gold[cell]) : shown[cell]);
+    const blob = (cell, grow, golden) => {
+      const share = amount(cell, golden);
       const size = Math.sqrt(share) * (0.76 + chance(cell, 1) * 0.18) * grow;
       const x = ((cell % GRID.wide) + 0.5 + (chance(cell, 2) - 0.5) * 0.3) * cw;
       const y = (Math.floor(cell / GRID.wide) + 0.5 + (chance(cell, 4) - 0.5) * 0.3) * ch;
@@ -450,8 +458,8 @@ export class SwampView {
         ctx.beginPath();
         let any = false;
         for (let cell = 0; cell < shown.length; cell += 1) {
-          if (shown[cell] <= 0.01 || this.gold[cell] !== golden) continue;
-          blob(cell, grow);
+          if (amount(cell, golden) <= 0.01) continue;
+          blob(cell, grow, golden);
           any = true;
         }
         if (any) ctx.fill();
@@ -460,11 +468,13 @@ export class SwampView {
       ctx.fillStyle = look.light;
       ctx.beginPath();
       for (let cell = 0; cell < shown.length; cell += 1) {
-        if (shown[cell] < 0.6 || this.gold[cell] !== golden || chance(cell, 7) > 0.3) continue;
+        // The shine is the gold's where the square is golden, and the mud's where it isn't.
+        const share = amount(cell, golden);
+        if (share < 0.6 || (!golden && gold[cell] > 0.5) || chance(cell, 7) > 0.3) continue;
         const x = ((cell % GRID.wide) + 0.3 + chance(cell, 8) * 0.4) * cw;
         const y = (Math.floor(cell / GRID.wide) + 0.3 + chance(cell, 9) * 0.4) * ch;
         ctx.moveTo(x + cw * 0.16, y);
-        ctx.ellipse(x, y, cw * 0.16 * shown[cell], ch * 0.09 * shown[cell], -0.5, 0, Math.PI * 2);
+        ctx.ellipse(x, y, cw * 0.16 * share, ch * 0.09 * share, -0.5, 0, Math.PI * 2);
       }
       ctx.fill();
     }
