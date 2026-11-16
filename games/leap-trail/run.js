@@ -158,6 +158,23 @@ export function trailLevel(level = 1, { gentle = false } = {}) {
   };
 }
 
+// Friends running together, on the same side, stay in one pack. A runner more than ahead metres in front of the
+// last of them eases off, down to slowest of the trail's pace over the next slack metres. Nobody is stopped by
+// it. And nobody is hurried: a runner behind is never made faster, as that would leave less time for each move.
+export const PACK = { ahead: 30, slack: 30, slowest: 0.5 };
+
+/**
+ * How much of the trail's pace a runner in a pack runs at. mine is how far it has run, and others how far each
+ * friend who's still here has, in metres. With no friends left it's a runner on its own.
+ */
+export function packPace(mine, others) {
+  const far = others.filter(Number.isFinite);
+  if (!far.length) return 1;
+  const ahead = mine - Math.min(...far);
+  if (ahead <= PACK.ahead) return 1;
+  return 1 - (1 - PACK.slowest) * Math.min(1, (ahead - PACK.ahead) / PACK.slack);
+}
+
 /** A level, run with friends: the same obstacles, places and coins, without the extras that would need sharing. */
 // Nor hearts: running with friends is a race for stars, and everyone runs on to the finish.
 export const withFriends = (rules) => ({ ...rules, gold: 0, spring: 0, gems: false, powers: [], powerEvery: 0, keyEvery: 0, hearts: null });
@@ -474,6 +491,8 @@ export class Run {
   } = {}) {
     this.levelNumber = levelNumber;
     this.friends = friends;
+    // Running together with friends, how much of the trail's pace this runner runs at: see packPace.
+    this.pack = 1;
     const kind = { gentle: gentle && !friends };
     this.levelRules = friends ? withFriends(trailLevel(levelNumber)) : trailLevel(levelNumber, kind);
     this.settings = paceAt(pace, levelNumber, kind);
@@ -723,7 +742,7 @@ export class Run {
       if (left <= 0) return 0;
       if (left < stoppingFrom) return speed * (left / stoppingFrom) * 0.9 + 0.3;
     }
-    return speed;
+    return speed * this.pack;
   }
 
   /** Running through a star in the same lane picks it up, whatever the runner is doing. */

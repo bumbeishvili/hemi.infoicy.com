@@ -352,4 +352,23 @@ body:not([data-screen='run']):not([data-screen='countdown']):not([data-screen='f
 }
 
 .run-scores li.is-you { color: var(--accent); }
+/* Running together: what everyone's stars add up to, over what each has brought. */
+.run-scores li.is-team { padding-bottom: 4px; border-bottom: 2px solid rgba(20, 40, 70, 0.14); font-weight: 700; }
+
+/* Running together: why the runner has eased off, under the stars, while it's far in front of the others. */
+.run-pack {
+  position: fixed;
+  z-index: 3;
+  top: 196px;
+  right: 12px;
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+  font-size: 16px;
+  font-weight: 600;
+}
+.run-pack[hidden] { display: none; }
+body:not([data-screen='run']) .run-pack { display: none; }
 .run-scores strong::before { content: '★ '; color: #f5b800; }

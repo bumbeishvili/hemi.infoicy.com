@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { seededRandom } from '../../core/friends.js';
 import { Practice } from '../../games/leap-trail/practice.js';
 import { LANE_STEP, LaneReader, bodyAcross } from '../../games/leap-trail/lanes.js';
-import { ARCH_STARS, CHEST_COINS, GEM_COINS, GOLD_STARS, LANES, NEW_THINGS, OBSTACLES, PACES, POWERS, Run, fills, layCourse, newAt, newThingsAt, paceAt, powersFor, trailLevel } from '../../games/leap-trail/run.js';
+import { ARCH_STARS, CHEST_COINS, GEM_COINS, GOLD_STARS, LANES, NEW_THINGS, OBSTACLES, PACES, PACK, POWERS, Run, fills, layCourse, newAt, newThingsAt, paceAt, packPace, powersFor, trailLevel } from '../../games/leap-trail/run.js';
 
 function seeded(seed = 7) {
   let state = seed;
@@ -1418,4 +1418,68 @@ test('with friends, a star reached is asked for, and it\'s whoever\'s the server
     if (run.mustJump) run.jump();
   }
   assert.ok(!events.some(({ type, star }) => type === 'star-asked' && star.index === later.index));
+});
+
+/* ---------- friends, together: one pack ---------- */
+
+test('in a pack, a runner beside its friends or behind them runs at the trail\'s pace, and so does one with no friends left', () => {
+  assert.equal(packPace(200, [200]), 1);
+  assert.equal(packPace(200, [200 - PACK.ahead]), 1);
+  assert.equal(packPace(200, [190, 230]), 1);
+  assert.equal(packPace(200, []), 1);
+  // A friend whose place hasn't come yet doesn't count.
+  assert.equal(packPace(200, [NaN, undefined]), 1);
+  // Nobody is hurried: however far behind the first, a runner is never made faster, which would leave less time for each move.
+  for (const behind of [10, 40, 100, 1000]) assert.equal(packPace(200, [200 + behind]), 1, `${behind} metres behind`);
+});
+
+test('the runner far in front of the last of its friends eases off, evenly, down to half the pace and no further', () => {
+  const at = (ahead) => packPace(500 + ahead, [500, 520]);
+  assert.equal(at(PACK.ahead), 1);
+  assert.ok(at(PACK.ahead + 1) < 1);
+  assert.ok(Math.abs(at(PACK.ahead + PACK.slack / 2) - (1 + PACK.slowest) / 2) < 1e-9);
+  assert.equal(at(PACK.ahead + PACK.slack), PACK.slowest);
+  assert.equal(at(PACK.ahead + PACK.slack + 5000), PACK.slowest);
+  let before = 1;
+  for (let ahead = 0; ahead <= 150; ahead += 5) {
+    assert.ok(at(ahead) <= before, `${ahead} metres in front`);
+    before = at(ahead);
+  }
+  // It's the last of them that's waited for, not the nearest, and nobody is ever stopped by it.
+  assert.equal(packPace(600, [590, 400]), PACK.slowest);
+  assert.equal(PACK.slowest, 0.5);
+  // The pack begins to wait within a few seconds' running at any pace, and well before the runner behind is out of sight.
+  for (const { speed } of Object.values(PACES)) assert.ok(PACK.ahead / speed >= 1 && PACK.ahead / speed <= 3, `${PACK.ahead / speed} seconds at ${speed}`);
+});
+
+test('a runner easing off for the pack runs at half the trail\'s speed between obstacles, and is given just as long for each move', () => {
+  const alone = setup({ obstacles: 6, pace: 'slow', friends: true }).run;
+  const eased = setup({ obstacles: 6, pace: 'slow', friends: true }).run;
+  eased.pack = PACK.slowest;
+  for (const run of [alone, eased]) step(run, 1.5, () => run.noteActivity());
+  // Both are still getting up to speed, at the same rate: one towards the trail's pace, the other towards half of it.
+  assert.ok(alone.speed > alone.settings.speed * 0.9, `${alone.speed}`);
+  assert.ok(Math.abs(eased.speed / alone.speed - PACK.slowest) < 0.02, `${eased.speed} against ${alone.speed}`);
+  // The same trail either way: the obstacles are where they were, so the eased runner has longer before each.
+  assert.deepEqual(eased.course.map(({ at }) => at), alone.course.map(({ at }) => at));
+  // And the eased runner still gets to the end, clearing everything.
+  eased.pack = PACK.slowest;
+  perfectRun(eased);
+  assert.equal(eased.state, 'finished');
+  assert.equal(eased.stats.cleared, 6);
+  // Back with the pack, it's back at the trail's pace.
+  const back = setup({ obstacles: 6, pace: 'slow', friends: true }).run;
+  back.pack = PACK.slowest;
+  step(back, 1, () => back.noteActivity());
+  back.pack = 1;
+  assert.ok(back.speed < back.settings.speed * 0.6, `${back.speed}`);
+  step(back, 1.5, () => back.noteActivity());
+  assert.ok(back.speed > back.settings.speed * 0.9, `${back.speed}`);
+});
+
+test('Leap Trail comes as a run friends make together, and whoever made it can choose against each other', () => {
+  const source = readFileSync(new URL('../../games/leap-trail/main.js', import.meta.url), 'utf8');
+  assert.match(source, /trailFriends: 'together',/);
+  assert.match(source, /const CHOICES = \{[^}]*trailFriends: String/);
+  for (const value of ['together', 'against']) assert.ok(source.includes(`name="trailFriends" value="${value}"`), value);
 });

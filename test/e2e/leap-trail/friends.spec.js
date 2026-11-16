@@ -19,8 +19,10 @@ async function secondPlayer(browser) {
   return { context, page, errors };
 }
 
+// These are the tests of the contest for stars, against each other, which a grown-up now has to choose: as the
+// game comes, friends run together as one pack, and that's in together.spec.js.
 async function openRun(page, settings = {}, hash = '') {
-  await openGame(page, { onMissed: 'stumble', trailPace: 'slow', ...settings }, GAME, hash);
+  await openGame(page, { onMissed: 'stumble', trailPace: 'slow', trailFriends: 'against', ...settings }, GAME, hash);
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
   await standInView(page);
 }

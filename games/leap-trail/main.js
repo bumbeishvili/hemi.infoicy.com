@@ -5,16 +5,18 @@
 // lanes.js, and the world is in world.js.
 //
 // Friends can run together, each on their own computer: everyone runs the same trail, sees the others' runners
-// beside them, copying their children, and a star on the trail is had by whoever gets to it first.
+// beside them, copying their children, and a star on the trail is had by whoever gets to it first. Together, as
+// it comes, they're one pack on the same side: a runner far in front eases off, and everyone's stars add up.
+// Against each other, a grown-up's choice, whoever catches the most stars comes first.
 import { BODY_KEYS, bodyFrom, bodyList } from '../../core/body/characters.js';
 import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
-import { SO_CLOSE } from '../../core/sound.js';
+import { DID_IT_TOGETHER, SO_CLOSE } from '../../core/sound.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { seededRandom, Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
 import { bodyAcross, LaneReader } from './lanes.js';
 import { Practice } from './practice.js';
-import { ARCH_STARS, GEM_COINS, GOLD_STARS, POWERS, Run, newAt as newAtLevel, newThingsAt } from './run.js';
+import { ARCH_STARS, GEM_COINS, GOLD_STARS, packPace, POWERS, Run, newAt as newAtLevel, newThingsAt } from './run.js';
 import { TrailSound } from './trail-sound.js';
 import { World } from './world.js';
 
@@ -44,9 +46,11 @@ const DEFAULTS = {
   // Whether stumbles cost hearts, and a run whose hearts are gone is over: 'yes', or 'no' for the gentle
   // trail, the game as it was, where every run gets to the finish and moves on a level.
   trailHearts: 'yes',
+  // With friends: 'together', as one pack on the same side, or 'against' each other, for the most stars.
+  trailFriends: 'together',
   fighter: 'giraffe',
 };
-const CHOICES = { jumpWith: String, trailPace: String, obstacles: Number, onMissed: String, trailLanes: String, trailHearts: String };
+const CHOICES = { jumpWith: String, trailPace: String, obstacles: Number, onMissed: String, trailLanes: String, trailHearts: String, trailFriends: String };
 const LENGTHS = [10, 20, 40];
 
 // Running with friends, each on their own computer: see core/friends-ui.js for what each of these is.
@@ -56,8 +60,13 @@ const RUN_WORDS = {
   codeLabel: 'A friend’s run code',
   codeName: 'Run code',
   how: 'Tell your friend the code. Then you both choose a runner and press <b>Let’s run!</b>',
+  // Together or against each other, as whoever made the run chooses: see teams in core/friends-ui.js.
+  together: 'Together',
+  against: 'Against each other',
+  howTogether: 'Tell your friend the code. Then you both choose a runner and press <b>Let’s run!</b>, and run the trail together as one team: your stars add up.',
+  teamTitle: 'You ran it together!',
   leave: 'Leave this run',
-  privacy: 'Only your name, who runs, where your runner is and how it moves go to your friends. The camera picture stays on this computer.',
+  privacy: 'Only your name, who runs, whether you chose together or against each other, where your runner is and how it moves go to your friends. The camera picture stays on this computer.',
   alone: 'Run on your own',
   full: 'That run already has 4 runners.',
   lost: 'Can’t reach the run. Check the internet, then try again.',
@@ -201,6 +210,11 @@ class LeapTrail extends BodyGame {
       rank: (a, b) => b.dropped - a.dropped,
       resultText: ({ dropped }) => `${dropped} ${dropped === 1 ? 'star' : 'stars'}`,
       titles: { first: 'You caught the most stars!', other: 'Great running!' },
+      // With friends, together or against each other: the grown-ups' choice, which the friends box can change too.
+      teams: {
+        get: () => (this.settings.trailFriends === 'against' ? 'against' : 'together'),
+        set: (choice) => this.chooseTeams(choice),
+      },
       startAfter: byElementId('start'),
       waitingBefore: byElementId('screen-finish'),
       resultsAfter: document.querySelector('#screen-finish .finish-hero'),
@@ -271,6 +285,18 @@ class LeapTrail extends BodyGame {
     if ('jumpWith' in change || 'hands' in change) this.handUsed = false;
     // What the cards say is new depends on these.
     if ('trailLanes' in change || 'onMissed' in change || 'trailHearts' in change) this.levelUi.refresh();
+    // Friends are shown the choice at once, as it's the host's that counts.
+    if ('trailFriends' in change && this.friends) {
+      if (this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
+      this.friends.showTeams();
+    }
+  }
+
+  /** Together or against each other, chosen in the friends box: kept with the grown-ups' settings, and shown there. */
+  chooseTeams(choice) {
+    this.changeSettings({ trailFriends: choice });
+    const input = document.querySelector(`input[name="trailFriends"][value="${choice}"]`);
+    if (input) input.checked = true;
   }
 
   showChosen(spec) {
@@ -464,6 +490,11 @@ class LeapTrail extends BodyGame {
     // seed. It doesn't move anyone's own level on, and each child keeps their own way of getting over things.
     const friendly = this.friends.current;
     document.body.toggleAttribute('data-friends-race', Boolean(friendly));
+    // Together, they're one pack, and their stars add up: see packPace in run.js.
+    this.team = Boolean(friendly?.team);
+    document.body.toggleAttribute('data-friends-team', this.team);
+    byElementId('run-pack').hidden = true;
+    byElementId('finish-team').hidden = true;
     const levelNumber = friendly ? friendly.level : this.startLevel();
     const host = friendly ? fromMode(friendly.mode) : null;
     this.run = new Run({
@@ -548,6 +579,7 @@ class LeapTrail extends BodyGame {
       const at = mate.track.at(now);
       if (!at) return null;
       const body = mate.body.at(now);
+      mate.far = at.d;
       return { ...at, d: at.d + at.s * SHOWN_BEHIND_SECONDS, live: body?.p?.length === BODY_KEYS.length ? bodyFrom(body.p) : null };
     });
     this.world.placeMates(wheres);
@@ -587,6 +619,12 @@ class LeapTrail extends BodyGame {
     else if (message.t === 'score') {
       mate.stars = message.n;
       this.showScores();
+      // A star they reached just before the end may only be settled after it: their line on the card fills in.
+      const result = this.friends.results.get(id);
+      if (result && message.n > result.dropped) {
+        result.dropped = message.n;
+        if (this.screen === 'finish') this.friends.showResults();
+      }
     }
   }
 
@@ -605,17 +643,22 @@ class LeapTrail extends BodyGame {
     }
   }
 
-  /** Everyone's stars, top right, with friends: the most first. */
+  /**
+   * Everyone's stars, top right, with friends. Against each other, the most first. Together, what they add up to,
+   * and under it what each has brought, the child first and nobody ranked.
+   */
   showScores() {
     const board = byElementId('run-scores');
     const friendly = this.mates.length > 0;
     board.hidden = !friendly;
     if (!friendly) return;
     const rows = [{ name: 'You', stars: this.run?.starTotal ?? 0, you: true }, ...this.mates.filter(({ gone }) => !gone).map(({ friend, stars }) => ({ name: friend.spec.name, stars, you: false }))];
-    rows.sort((a, b) => b.stars - a.stars);
-    board.replaceChildren(...rows.map(({ name, stars, you }) => {
+    if (this.team) rows.unshift({ name: 'Together', stars: this.teamStars, team: true });
+    else rows.sort((a, b) => b.stars - a.stars);
+    board.replaceChildren(...rows.map(({ name, stars, you, team }) => {
       const row = document.createElement('li');
       if (you) row.className = 'is-you';
+      if (team) row.className = 'is-team';
       const who = document.createElement('span');
       who.textContent = name;
       const count = document.createElement('strong');
@@ -623,6 +666,54 @@ class LeapTrail extends BodyGame {
       row.append(who, count);
       return row;
     }));
+  }
+
+  /** Running together: the stars of everyone in the pack, with those of a friend who has finished or gone. */
+  get teamStars() {
+    const { results } = this.friends;
+    let total = this.run?.starTotal ?? 0;
+    // A friend's last count may not have arrived, but how they finished always does: whichever is more.
+    for (const { friend, stars } of this.mates) total += Math.max(stars, results.get(friend.id)?.dropped ?? 0);
+    return total;
+  }
+
+  /**
+   * Running together: how much of the trail's pace this runner runs at, to stay in one pack with the friends
+   * still running, and a small label saying why while it's easing off.
+   */
+  keepPack() {
+    const { run } = this;
+    const others = this.team ? this.mates.filter(({ gone, far }) => !gone && far !== undefined).map(({ far }) => far) : [];
+    run.pack = packPace(run.distance, others);
+    const label = byElementId('run-pack');
+    const easing = run.pack < 1 && run.state === 'running';
+    if (label.hidden === easing) label.hidden = !easing;
+  }
+
+  /** Running together: what the stars add up to, on the finish card, which fills in as friends get there. */
+  showTeamStars() {
+    const line = byElementId('finish-team');
+    line.hidden = !this.team;
+    if (!this.team) return;
+    const total = this.teamStars;
+    const text = `Together you caught ${total} ${total === 1 ? 'star' : 'stars'}.`;
+    if (line.textContent !== text) line.textContent = text;
+  }
+
+  /**
+   * With friends, a star reached just before the end may only be settled after it, once the server has said
+   * whose it is. Friends hear the count again, and this child's own card fills in, so every card says the same.
+   */
+  tellLateStars() {
+    const stars = this.run.starTotal;
+    if (stars === this.lastNumbers.stars) return;
+    this.lastNumbers.stars = stars;
+    this.friends.sendScore(stars, performance.now() - this.goAt);
+    const mine = this.friends.results.get(this.friends.room.you);
+    if (mine) mine.dropped = stars;
+    if (this.screen !== 'finish') return;
+    byElementId('finish-stars').textContent = String(stars);
+    this.friends.showResults();
   }
 
   /** A friend has gone in the middle, and their runner with them. */
@@ -702,6 +793,7 @@ class LeapTrail extends BodyGame {
     }
 
     if (reader.moving) run.noteActivity(dt);
+    this.keepPack();
     run.setLane(this.readLane(dt));
     this.world.setLive(reader.hasPose ? reader.pose : null);
     this.updateMeter();
@@ -986,7 +1078,7 @@ class LeapTrail extends BodyGame {
       world.tumbledOut();
       sound.finish(SO_CLOSE, { lost: true });
     } else {
-      sound.finish(SAY.madeIt);
+      sound.finish(this.team ? DID_IT_TOGETHER : SAY.madeIt);
       world.celebrate();
     }
     this.timer = AFTER_FINISH_SECONDS;
@@ -1027,6 +1119,7 @@ class LeapTrail extends BodyGame {
       this.finishLevel(!lost);
     }
     this.friends.showResults();
+    this.showTeamStars();
     if (lost) {
       const left = course.filter(({ state }) => state === 'ahead' || state === 'passing').length;
       byElementId('finish-title').textContent = 'Out of hearts!';
@@ -1074,10 +1167,12 @@ class LeapTrail extends BodyGame {
   frame(dt, now) {
     if (this.run) this.updateNew(dt);
     if (this.mates.length) this.updateMates(now);
-    if (this.screen === 'run' || this.screen === 'finishing') {
-      this.sendRunner(now);
-      if (this.asked.size) this.settleUnanswered(now);
-    }
+    // Running together, the finish card's count fills in as friends still running catch more.
+    if (this.team && this.screen === 'finish') this.showTeamStars();
+    if (this.friends.current && this.run && (this.screen === 'finishing' || this.screen === 'finish')) this.tellLateStars();
+    if (this.screen === 'run' || this.screen === 'finishing') this.sendRunner(now);
+    // A star asked for is settled even once the finish card is up, so none is left waiting for an answer.
+    if (this.asked.size && ['run', 'finishing', 'finish'].includes(this.screen)) this.settleUnanswered(now);
     switch (this.screen) {
       case 'practice':
         this.updatePractice(dt, now);
@@ -1132,9 +1227,11 @@ mountBodyShell({
   </header>
   <div id="power-row" class="power-row" aria-hidden="true"></div>
   <ol id="run-scores" class="run-scores" aria-label="Stars" hidden></ol>
+  <p id="run-pack" class="run-pack" hidden>Waiting for your friends!</p>
   <div id="trail-new" class="trail-new" aria-hidden="true"></div>`,
   finishBody: `
       <h2 id="finish-title">You made it!</h2>
+      <p id="finish-team" class="finish-open" hidden></p>
       <p class="finish-hero"><span class="hero-mark" aria-hidden="true">★</span> <span id="finish-stars">0</span> stars<span class="finish-coins"> <span class="coin-mark" aria-hidden="true"></span><span id="finish-coins">0</span> coins</span></p>
       <p id="finish-line" class="finish-open"></p>
       <p id="finish-prizes" class="finish-prizes"></p>
@@ -1163,6 +1260,11 @@ mountBodyShell({
       <legend>Running out of hearts</legend>
       <label><input type="radio" name="trailHearts" value="yes"> Yes: each stumble costs a heart, and a run is over when they’re all gone</label>
       <label><input type="radio" name="trailHearts" value="no"> Gentle: no hearts, every run gets to the finish and moves on a level</label>
+    </fieldset>
+    <fieldset class="choice">
+      <legend>With friends</legend>
+      <label><input type="radio" name="trailFriends" value="together"> Together: one pack on the same side, where a runner far in front eases off for the others, and the stars add up</label>
+      <label><input type="radio" name="trailFriends" value="against"> Against each other: whoever catches the most stars comes first</label>
     </fieldset>
     <fieldset class="choice">
       <legend>When a move is missed</legend>
