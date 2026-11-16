@@ -48,6 +48,8 @@ body[data-screen='playing'] .coach.is-visible { display: flex; }
 }
 
 .chip-magpie[data-danger='far'] .magpie-fill { background: #e0762f; }
+/* The magpie that waits has no bar: there's nothing for it to fill with. */
+.magpie-meter[hidden] { display: none; }
 
 /* How far along the path the character is, with the magpie's tree at the end. */
 .path-track {

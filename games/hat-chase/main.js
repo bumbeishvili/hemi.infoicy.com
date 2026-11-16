@@ -118,7 +118,10 @@ class HatChase extends BodyGame {
     const game = this;
     return {
       view: this.view,
-      marcher: this.marcher,
+      // Each game has a marcher and a chase of its own, so these are whichever is being played now.
+      get marcher() {
+        return game.marcher;
+      },
       get chase() {
         return game.chase;
       },
@@ -210,11 +213,19 @@ class HatChase extends BodyGame {
     this.idleFor = 0;
   }
 
-  /** Both arms up high: the apples come down, or, for a child who can't jump, it's the jump. */
+  /**
+   * Both arms up high: the apples come down, or, for a child who can't jump, it's the jump. Theirs is always a big
+   * one, as there's no telling a higher reach from a lower: the star over a stream is theirs to catch too.
+   */
   armsUp(now) {
     const { chase } = this;
-    if (this.armsJump && chase.station?.needs === 'jump') this.takeOff(now, false);
-    else chase.reach();
+    if (!this.armsJump || chase.station?.needs !== 'jump') {
+      chase.reach();
+      return;
+    }
+    if (!chase.jump(BIG_JUMP)) return;
+    this.idleFor = 0;
+    this.newEasing();
   }
 
   /** What the panel says the camera can see, so a grown-up can tell why a step isn't counting. */

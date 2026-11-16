@@ -1665,7 +1665,7 @@ A magpie has flown off with the hat, and the child's character, one of the ten, 
 - **The magpie:** it flies on (the default), or gentle, where it waits a little way ahead.
 - **How high a knee has to come:** Low, 8% of the leg length, Medium, 11% (the default), or High, 16%, as above.
 - **Which leg steps:** either, so every knee lifted is a step (the default), or the legs take turns, as above.
-- **How the child jumps:** really jumping, which can be a star jump (the default), or reaching both arms up high, for a child who can stand and march but not jump. Reaching up is then the jump wherever one is wanted, and anywhere else it still picks the apples. Reaching up is never a big jump, so for that child the star or the golden feather above a stream stays where it is.
+- **How the child jumps:** really jumping, which can be a star jump (the default), or reaching both arms up high, for a child who can stand and march but not jump. Reaching up is then the jump wherever one is wanted, and anywhere else it still picks the apples. Reaching up always counts as a big jump, as there's no telling a higher reach from a lower, so that child catches the star or the golden feather above a stream too.
 - **Length of the path:** 8, 12 (the default) or 18 things in the way.
 - **How big a movement has to be,** as in every body game, is the smallest jump and the least bend of the knees that count.
 
