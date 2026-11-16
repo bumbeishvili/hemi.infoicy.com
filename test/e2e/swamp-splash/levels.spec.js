@@ -192,8 +192,10 @@ test('level 4: a little cloud is seen over a strip of the window, and then that 
   const { w, h } = await screenSize(page);
   await expectSoon(async () => distance((await pixels(page, [{ x: ((from + 2.5) / GRID.wide) * w, y: 0.19 * h }]))[0], [223, 230, 238]), { timeout: 10_000 }).toBeLessThan(8);
   await shot(page, 'swamp-shower-coming');
-  // Each frame from the moment it rains: when each square in the middle of the strip last showed mud. Under the
-  // little cloud the mud can't be seen, and at the strip's sides the mud beside it can reach in.
+  // Each frame from the moment it rains: when each muddy square in the middle of the strip last showed mud. Under
+  // the little cloud the mud can't be seen, and at the strip's sides the mud beside it can reach in. A square the
+  // rules call clean can show the edge of the mud above it, which goes as soon as that starts to go, so only the
+  // squares the shower washed are timed.
   const watched = await page.evaluate(async ({ start, wide, high, look, test }) => {
     const { view, swamp } = window.__game;
     const looks = new Function(`return (${test});`)();
@@ -208,13 +210,14 @@ test('level 4: a little cloud is seen over a strip of the window, and then that 
     const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
     while (!swamp.stats.showers) await frame();
     const rained = performance.now();
-    const had = cells.filter((cell) => muddy(read(cell)));
+    const washed = new Set(window.__heard.find(({ type, why }) => type === 'clean' && why === 'shower').list);
+    const had = cells.filter((cell) => washed.has(cell) && muddy(read(cell)));
     const last = new Map(had.map((cell) => [cell, 0]));
     for (let n = 0; n < 150; n += 1) {
       await frame();
       for (const cell of had) if (muddy(read(cell))) last.set(cell, performance.now() - rained);
     }
-    return { had, last: [...last.entries()], still: had.filter((cell) => muddy(read(cell))) };
+    return { had, last: [...last.entries()], still: cells.filter((cell) => muddy(read(cell))) };
   }, { start: from, wide: GRID.wide, high: GRID.high, look: MUD, test: LOOKS_MUDDY });
   // What the rules washed is that strip, and only that.
   const washed = (await heard(page, 'clean')).filter(({ why }) => why === 'shower');

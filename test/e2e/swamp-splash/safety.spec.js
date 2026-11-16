@@ -155,18 +155,38 @@ function clashes({ found, width, height }) {
 }
 
 /**
- * The rounds the rain cloud is drawn as, as view.js draws them, with its outline, when it has come so far along its
- * way: from 0 at the start to 1 at the end.
+ * The rain cloud held where it is when it has come so far along its way, from 0 at the start to 1 at the end: the
+ * game is held still, and only drawn, so that it stays there while it's looked at.
  */
-const cloudRounds = (page, along) => page.evaluate((share) => {
-  const { width: w, height: h } = window.__game.view;
-  const [x, y, size] = [w * (0.34 + (0.93 - 0.34) * share), h * 0.085, h * 0.045];
-  const outline = Math.max(2, h * 0.004) / 2;
-  return [[-0.9, 0.15, 0.62], [0, -0.22, 0.85], [0.95, 0.12, 0.66], [0.1, 0.3, 0.7]].map(([dx, dy, r]) => ({ x: x + dx * size, y: y + dy * size, r: r * size + outline }));
+const holdCloudAt = (page, along) => page.evaluate((share) => {
+  const { swamp, game } = window.__game;
+  swamp.time = swamp.rules.seconds * share;
+  game.paused = true;
 }, along);
 
-/** Whether a round and a box share any of the screen. */
-const touches = ({ x, y, r }, box) => Math.hypot(x - Math.max(box.left, Math.min(x, box.right)), y - Math.max(box.top, Math.min(y, box.bottom))) < r;
+/**
+ * How many of the canvas's pixels under each of these pieces on top of it are the rain cloud's, its grey or its
+ * dark outline, and how many there are along the top of the window, where it goes: to know it's found where it is.
+ * Along the top there's only the sky, the cloud and the faint line of its way, at the start of a game.
+ */
+const cloudUnder = (page, pieces) => page.evaluate(async (list) => {
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const { view } = window.__game;
+  const count = ({ left, top, width, height }) => {
+    const r = view.ratio;
+    const { data } = view.ctx.getImageData(Math.floor(left * r), Math.floor(top * r), Math.max(1, Math.ceil(width * r)), Math.max(1, Math.ceil(height * r)));
+    let found = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const [red, green, blue] = [data[i], data[i + 1], data[i + 2]];
+      if (Math.hypot(red - 184, green - 196, blue - 210) < 20 || Math.hypot(red - 18, green - 48, blue - 77) < 40) found += 1;
+    }
+    return found;
+  };
+  const under = {};
+  for (const [name, selector] of list) under[name] = count(document.querySelector(selector).getBoundingClientRect());
+  under['the top of the window'] = count({ left: 0, top: 0, width: view.width, height: view.height * 0.16 });
+  return under;
+}, pieces);
 
 for (const viewport of [{ width: 1180, height: 820 }, { width: 1440, height: 900 }]) {
   test.describe(`at ${viewport.width}×${viewport.height}`, () => {
@@ -209,26 +229,31 @@ for (const viewport of [{ width: 1180, height: 820 }, { width: 1440, height: 900
 
     test(`the rain cloud starts its way clear of the mud meter, at ${viewport.width}×${viewport.height}`, async ({ page }) => {
       await reachPlay(page);
-      expect((await state(page)).cloud).toBeLessThan(0.05);
-      const { found } = await boxes(page);
-      const rounds = await cloudRounds(page, 0);
-      expect(rounds.filter((round) => touches(round, found['mud meter']))).toEqual([]);
+      await holdCloudAt(page, 0);
+      const under = await cloudUnder(page, [['mud meter', '.chip-mud']]);
+      console.log('the cloud\'s pixels, starting out:', JSON.stringify(under));
+      expect(under['the top of the window']).toBeGreaterThan(500);
+      expect(under['mud meter']).toBe(0);
     });
 
     test(`the rain cloud starts its way clear of the golden chip too, from the level that brings it, at ${viewport.width}×${viewport.height}`, async ({ page }) => {
       await reachPlay(page, atLevel(7));
-      const { found } = await boxes(page);
-      expect(found['golden chip']).toBeTruthy();
-      const rounds = await cloudRounds(page, 0);
-      for (const name of ['mud meter', 'golden chip']) expect(rounds.filter((round) => touches(round, found[name])), name).toEqual([]);
+      await expect(page.locator('#stars-chip')).toBeVisible();
+      await holdCloudAt(page, 0);
+      const under = await cloudUnder(page, [['mud meter', '.chip-mud'], ['golden chip', '#stars-chip']]);
+      console.log('the cloud\'s pixels, starting out at level 7:', JSON.stringify(under));
+      expect(under['the top of the window']).toBeGreaterThan(500);
+      expect([under['mud meter'], under['golden chip']]).toEqual([0, 0]);
     });
 
     test(`the rain cloud's way ends clear of the gear, at ${viewport.width}×${viewport.height}`, async ({ page }) => {
       await reachPlay(page);
-      const { found } = await boxes(page);
-      for (const along of [0.9, 0.95, 1]) {
-        const rounds = await cloudRounds(page, along);
-        expect(rounds.filter((round) => touches(round, found.gear)), `the cloud ${along} of the way along`).toEqual([]);
+      for (const along of [0.9, 0.95, 0.999]) {
+        await holdCloudAt(page, along);
+        const under = await cloudUnder(page, [['gear', '#open-panel']]);
+        console.log(`the cloud's pixels, ${along} of the way along:`, JSON.stringify(under));
+        expect(under['the top of the window']).toBeGreaterThan(500);
+        expect(under.gear, `the cloud ${along} of the way along`).toBe(0);
       }
     });
   });

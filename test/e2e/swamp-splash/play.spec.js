@@ -131,12 +131,17 @@ test('what is on the screen is what the rules say: every muddy square shows mud,
   await settled(page);
   const { mud, coverage } = await state(page);
   const now = await squareColours(page, ALL);
-  // A square's mud is a blob a little bigger than itself, which can reach the middle of the square beside it.
+  // A square's mud is a blob a little bigger than itself, which can reach the middle of the square beside it. The
+  // character is brown in places too, and moves a little as the child's knees are read: over it, a clean square is
+  // one with no mud drawn.
   const near = nearMud(mud, 1);
+  const over = new Set(await characterSquares(page));
+  const shown = await page.evaluate(() => [...window.__game.view.shown]);
   const wrong = [];
   for (const cell of ALL) {
     if (mud[cell] && !looksMuddy(now[cell])) wrong.push(`square ${cell} is muddy, and shows ${now[cell]}`);
-    if (!near.has(cell) && looksMuddy(now[cell]) && distance(now[cell], clean[cell]) > 12) wrong.push(`square ${cell} is clean, and shows mud: ${now[cell]}`);
+    if (near.has(cell)) continue;
+    if (over.has(cell) ? shown[cell] > 0 : looksMuddy(now[cell]) && distance(now[cell], clean[cell]) > 12) wrong.push(`square ${cell} is clean, and shows mud: ${now[cell]}`);
   }
   expect(wrong).toEqual([]);
   expect(mud.filter(Boolean).length).toBeGreaterThan(60);
