@@ -304,3 +304,28 @@ body:not([data-sunset='yes']) .sunset-chip { display: none; }
 .sunset-bar { display: block; height: 5px; margin-top: 3px; border-radius: 3px; background: rgba(0, 0, 0, 0.12); overflow: hidden; }
 .sunset-fill { display: block; height: 100%; width: 100%; background: #f4a32c; transition: width 0.3s linear; }
 .sunset-chip[data-waits='yes'] .sunset-fill { background: #9bb4c9; }
+
+/* ---------- several lifting in front of one camera ---------- */
+/* In the warm-up their picture and the film are one above the other on the left, the film as small as it is
+   while playing, and the rest of the screen is for their lifters, side by side. */
+body[data-screen='warmup']:not([data-players='1']) .body-frame {
+  --warm-width: min(34vw, calc(40vh * var(--camera-aspect)));
+  top: 70px;
+}
+
+body[data-screen='warmup']:not([data-players='1']) .coach {
+  top: auto;
+  bottom: 12px;
+  left: clamp(50px, 6vw, 90px);
+  width: min(21vw, 30vh);
+}
+
+body[data-screen='warmup']:not([data-players='1']) .coach-text { font-size: clamp(18px, 2.2vw, 30px); }
+body[data-screen='warmup']:not([data-players='1']) .lift-meter { top: 70px; height: min(40vh, calc(34vw / var(--camera-aspect))); }
+
+/* They play the plain game, as friends do: none of what a level brings is in it, so no level is shown. */
+body[data-lift-crew][data-screen] .level-now,
+body[data-lift-crew][data-screen] .level-new-now,
+body[data-lift-crew][data-screen] .level-done { display: none; }
+/* With friends, each on their own computer, it's one at each camera, so the chooser doesn't ask how many. */
+body[data-friends-room] .group-choice { display: none; }

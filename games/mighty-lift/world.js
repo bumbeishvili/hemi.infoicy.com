@@ -26,12 +26,27 @@ const FRIEND_MOST = 1.08; // As tall as a friend can stand under a thing at the 
 const MATE_SLOTS = [[-2.35, -0.8], [-3.5, -1.5], [-0.05, -1.75]];
 const MATE_SIZE = 0.9;
 const TEAM_SIZE = 1.22; // The thing everyone lifts together is this much bigger.
+// Several lifting in front of one camera stand side by side, left to right across the screen as they stand in
+// front of it: where each is and how big, [x, z, size], for so many of them. They're all the same size, as
+// nobody is the main one. Two and three stand where a child and their friends do. Four are in a row, a little
+// smaller, so that nobody is behind anybody.
+const HOME = [LIFTER_AT[0], LIFTER_AT[2]];
+const BESIDE = {
+  2: [[...MATE_SLOTS[0], 1], [...HOME, 1]],
+  3: [[...MATE_SLOTS[1], 1], [...MATE_SLOTS[0], 1], [...HOME, 1]],
+  4: [[-3.5, -0.6, 0.85], [-2.5, -0.6, 0.85], [-1.5, -0.6, 0.85], [-0.5, -0.6, 0.85]],
+};
 
 const VIEWS = {
   choose: { at: [LIFTER_AT[0], 1.62, 7.5], look: [LIFTER_AT[0], 0.98, 0], fov: 30 },
   // The lifter on the right of the screen, with the child's own picture on the left.
   warmup: { at: [LIFTER_AT[0] - 2.1, 1.7, 8.3], look: [LIFTER_AT[0] - 2.1, 1.05, 0], fov: 30 },
+  // With several at one camera, their lifters side by side on the right, clear of their picture and the film,
+  // which are one above the other on the left: see the warm-up in style.css.
+  warmupBeside: { at: [LIFTER_AT[0] - 2.4, 1.7, 9.3], look: [LIFTER_AT[0] - 2.4, 1.05, 0], fov: 30 },
   play: { at: [0.42, 2.05, 9.4], look: [0.42, 1.5, 0], fov: 30 },
+  // Three or four side by side reach further to the left, so the view is from a little further that way.
+  playBeside: { at: [-0.1, 2.05, 9.4], look: [-0.1, 1.5, 0], fov: 30 },
   win: { at: [-0.1, 1.8, 7.4], look: [-0.5, 1.25, 0], fov: 30 },
 };
 
@@ -648,6 +663,7 @@ export class World {
 
     this.lifter = null;
     this.mates = [];
+    this.beside = false; // Whether several are lifting side by side in front of one camera: see setMates.
     this.game = null;
     this.thing = null; // What's on the hook: { model, top, inner, reach, kind }.
     this.thingY = 0;
@@ -746,10 +762,18 @@ export class World {
   setView(name, { snap = false } = {}) {
     this.view = name;
     if (!snap) return;
-    this.cameraAt.set(...VIEWS[name].at);
-    this.cameraLook.set(...VIEWS[name].look);
-    this.camera.fov = VIEWS[name].fov;
+    const view = this.viewNow;
+    this.cameraAt.set(...view.at);
+    this.cameraLook.set(...view.look);
+    this.camera.fov = view.fov;
     this.camera.updateProjectionMatrix();
+  }
+
+  /** Where the camera is going. The warm-up has a view of its own when several stand side by side, and so has a game with three or four. */
+  get viewNow() {
+    if (this.beside && this.view === 'warmup') return VIEWS.warmupBeside;
+    if (this.beside && this.view === 'play' && this.mates.length >= 2) return VIEWS.playBeside;
+    return VIEWS[this.view];
   }
 
   /** Where a place in the yard is on the screen, in pixels, and whether it's behind the camera. */
@@ -785,14 +809,15 @@ export class World {
     this.lifter.each = each;
   }
 
-  /** Friends' characters, each with a weight of their own, beside the child's. team has their ropes go to the same ring. */
-  setMates(specs, { hands = ['right'], level = 1, team = false } = {}) {
+  /**
+   * Friends' characters, each with a weight of their own, beside the child's. team has their ropes go to the same
+   * ring. beside is for several lifting in front of one camera: the child's own lifter is the first of them, and
+   * they all stand left to right, as they do in front of it. Otherwise the child's lifter is where it always is.
+   */
+  setMates(specs, { hands = ['right'], level = 1, team = false, beside = false } = {}) {
     for (const mate of this.mates) mate.dispose();
-    this.mates = specs.map((spec, index) => {
+    this.mates = specs.map((spec) => {
       const mate = new Lifter(spec, this.scene);
-      const [x, z] = MATE_SLOTS[index % MATE_SLOTS.length];
-      mate.body.root.position.set(x, 0, z);
-      mate.body.root.scale.setScalar(MATE_SIZE);
       mate.body.faceTowards(LIFTER_FACES);
       mate.presenting = false;
       mate.roped = team;
@@ -800,6 +825,16 @@ export class World {
       return mate;
     });
     this.team = team && specs.length > 0;
+    this.beside = beside && specs.length > 0;
+    const places = this.beside
+      ? BESIDE[Math.min(4, specs.length + 1)]
+      : [[...HOME, 1], ...specs.map((_, index) => [...MATE_SLOTS[index % MATE_SLOTS.length], MATE_SIZE])];
+    [this.lifter, ...this.mates].forEach((lifter, index) => {
+      if (!lifter) return;
+      const [x, z, size] = places[index % places.length];
+      lifter.body.root.position.set(x, 0, z);
+      lifter.body.root.scale.setScalar(size);
+    });
   }
 
   /** What each friend is doing: { lift, live }, or null for one who has gone. */
@@ -922,6 +957,7 @@ export class World {
       this.friend.body.setExpression('happy');
     }
     this.lifter?.body.setExpression('happy', 1.6);
+    if (this.beside) for (const mate of this.mates) mate.body.setExpression('happy', 1.6);
   }
 
   /** A star taken: it bursts into little ones. */
@@ -971,9 +1007,10 @@ export class World {
     this.trophyUp = 0.001;
   }
 
-  /** Everyone's free: the lifter puts the weight down and jumps for joy. */
+  /** Everyone's free: the lifter puts the weight down and jumps for joy, and so do those lifting beside it at one camera. */
   celebrate() {
     if (this.lifter) this.lifter.won = true;
+    if (this.beside) for (const mate of this.mates) mate.won = true;
     this.setView('win');
     const [x, , z] = LIFTER_AT;
     this.burst(x, 2.2, z + 0.4, ['#ffd23f', '#ff5a4f', '#3b82f6', '#27c96b'], 16);
@@ -1030,7 +1067,11 @@ export class World {
       lifter.shaking = game?.phase === 'resting';
       lifter.update(dt, this.reducedMotion);
     }
-    for (const mate of this.mates) if (!mate.gone) mate.update(dt, this.reducedMotion);
+    for (const mate of this.mates) {
+      if (mate.gone) continue;
+      mate.shaking = this.beside && game?.phase === 'resting';
+      mate.update(dt, this.reducedMotion);
+    }
     this.updateThing(dt, playing);
     this.updateFriend(dt);
     this.updateDucks(dt);
@@ -1268,7 +1309,7 @@ export class World {
   }
 
   updateCamera(dt) {
-    const view = VIEWS[this.view];
+    const view = this.viewNow;
     const rate = 2.6;
     this.cameraAt.x = damp(this.cameraAt.x, view.at[0], rate, dt);
     this.cameraAt.y = damp(this.cameraAt.y, view.at[1], rate, dt);

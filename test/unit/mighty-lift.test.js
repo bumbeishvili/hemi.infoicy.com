@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BodyReader } from '../../core/body/reader.js';
 import { ROSTER } from '../../core/body/roster.js';
-import { Arm, Arms, HEIGHTS, HOLDS, LIFT_COUNTS, Lifting, MOST_LIFT, NEW_THINGS, STAR_AT, THINGS, Warmup, armHeights, layOut, liftLevel, newAt, sidesFor, starAtFor, thingsUpTo } from '../../games/mighty-lift/lift.js';
+import { Arm, Arms, HEIGHTS, HOLDS, LIFT_COUNTS, Lifting, MOST_LIFT, NEW_THINGS, Partner, STAR_AT, THINGS, Warmup, armHeights, layOut, liftLevel, newAt, sidesFor, starAtFor, thingsUpTo } from '../../games/mighty-lift/lift.js';
 
 const footage = JSON.parse(readFileSync(new URL('../fixtures/mighty-lift-arms.json', import.meta.url)));
 const toBody = ([, image, world]) => (image
@@ -1231,4 +1231,72 @@ test('the gentle game is as it was: no clock, and however slowly the arm goes, e
   assert.equal(game.timeLeft, null);
   liftUntilOver(game, 4, 4);
   assert.deepEqual([game.state, game.lost, game.stats.freed], ['finished', false, game.rescues.length]);
+});
+
+/* ---------- several lifting in front of one camera ---------- */
+
+test('someone else at the camera: each time their arm goes up to its line is one lift, and a wobble at the top isn\'t another', () => {
+  const partner = new Partner();
+  assert.equal(partner.read(0.5), false, 'half way up is no lift');
+  assert.equal(partner.up, false);
+  assert.equal(partner.read(1.02), true, 'up at the line');
+  assert.equal(partner.up, true);
+  assert.equal(partner.lifts, 1);
+  // Dipping a little under the line and back is the same lift, still held.
+  assert.equal(partner.read(0.92), false);
+  assert.equal(partner.up, true, 'still up, as a wobble doesn\'t drop it');
+  assert.equal(partner.read(1.1), false);
+  assert.equal(partner.lifts, 1);
+  // Further down it's no longer up, but until the arm has come right down, going up again isn't another lift.
+  assert.equal(partner.read(0.6), false);
+  assert.equal(partner.up, false);
+  assert.equal(partner.read(1.1), false);
+  assert.equal(partner.up, true, 'it does lift the weight again');
+  assert.equal(partner.lifts, 1, 'but it isn\'t counted twice');
+  // Down, and up again: the second lift.
+  assert.equal(partner.read(0.1), false);
+  assert.equal(partner.read(1.2), true);
+  assert.equal(partner.lifts, 2);
+  // An arm the camera can't read is down, and so is one that reads below where it rests.
+  for (const unread of [null, undefined, NaN, -0.4]) {
+    assert.equal(partner.read(unread), false);
+    assert.equal(partner.lift, 0);
+    assert.equal(partner.up, false);
+  }
+});
+
+test('several at one camera lift one weight: one of them alone frees the friend, slowly, and their lifts are their own', () => {
+  const { game, count } = newGame({ level: 1, team: { size: 2 } });
+  const partner = new Partner();
+  // The child rests, and the other one lifts and holds: half the speed, so twice the hold.
+  let seconds = 0;
+  while (count('freed') === 0 && seconds < 10) {
+    partner.read(1.1);
+    game.update(1 / 60, 0, [partner]);
+    seconds += 1 / 60;
+  }
+  assert.equal(count('freed'), 1);
+  assert.ok(seconds > game.holdSeconds * 1.8 && seconds < game.holdSeconds * 2.4, `in about two holds: ${seconds}`);
+  assert.equal(partner.lifts, 1);
+  assert.equal(game.stats.lifts, 0, 'the child who rested lifted nothing');
+  // With one arm of two up, the weight is half way to as high as it goes, not at its line.
+  assert.ok(game.height > 0.5 && game.height < 0.6, String(game.height));
+  assert.equal(game.up, false);
+  // Like the game friends play together, it's the plain one, with no clock: nothing to lose.
+  assert.equal(game.plain, true);
+  assert.equal(game.timeLeft, null);
+});
+
+test('nobody who\'s lifting is stuck under anything: with several lifters, none of their characters needs freeing', () => {
+  const lifters = ['giraffe', 'truffle', 'kit', 'mochi'];
+  for (let first = 0; first < 10; first += 1) {
+    const rescues = layOut({ lifts: 12, level: 1, lifter: lifters, random: () => first / 10, plain: true });
+    assert.equal(rescues.length, 12);
+    for (const { friend } of rescues) assert.ok(!lifters.includes(friend), `${friend} is lifting`);
+  }
+  // One lifter, by name as it always was, or in a list: the same.
+  assert.deepEqual(layOut({ lifts: 8, lifter: ['kit'], random: () => 0.3 }), layOut({ lifts: 8, lifter: 'kit', random: () => 0.3 }));
+  // And with nobody named, as friends play it on their own computers, anyone may be stuck.
+  const anyone = new Set(layOut({ lifts: 12, lifter: null, random: () => 0, plain: true }).map(({ friend }) => friend));
+  assert.equal(anyone.size, ROSTER.length);
 });

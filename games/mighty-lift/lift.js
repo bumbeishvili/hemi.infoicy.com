@@ -450,14 +450,15 @@ export const starAtFor = (reach) => (reach === null || reach === undefined ? 1.1
 
 /**
  * The rescues of one game, in order: exactly as many lifts as a grown-up chose. What the level brings that's
- * new comes first. lifter is the child's own character, who isn't among the friends to free, and random
- * says which friend is first. plain is the game as it's played with friends: baskets only, with none of the
- * levels' new things.
+ * new comes first. lifter is the child's own character, who isn't among the friends to free, or a list of
+ * them when several lift in front of one camera, and random says which friend is first. plain is the game as
+ * it's played with friends: baskets only, with none of the levels' new things.
  */
 export function layOut({ lifts = 8, level = 1, lifter = 'giraffe', random = Math.random, plain = false } = {}) {
   const rules = liftLevel(plain ? 1 : level);
   const at = plain ? 1 : clampLevel(level);
-  const friends = ROSTER.map(({ id }) => id).filter((id) => id !== lifter);
+  const lifters = [lifter].flat();
+  const friends = ROSTER.map(({ id }) => id).filter((id) => !lifters.includes(id));
   const first = Math.floor(random() * friends.length) % friends.length;
   let budget = Math.max(1, Math.round(lifts));
   const kinds = [];
@@ -538,6 +539,32 @@ const CLOCK_REST = 4; // An arm down this long is resting, and the clock waits f
 const HINT_LOW = 4; // Seconds with the arm down before being asked to lift.
 const HINT_MIDDLE = 2.5; // Seconds part of the way up before being asked to go a little higher.
 const HINT_DOWN = 3.5; // Seconds still holding it up after a rescue before being asked to put it down.
+
+/**
+ * Someone else lifting the same weight in front of the same camera. Their arm is up, and each time it goes up is
+ * one more lift, by the same rules as the child's own: see Lifting.readArm. It's given to Lifting.update as one
+ * of the mates, as a friend's arm is from their own computer.
+ */
+export class Partner {
+  constructor() {
+    this.lift = 0;
+    this.up = false;
+    this.armed = true; // Their arm has come down since its last lift.
+    this.lifts = 0;
+  }
+
+  /** How far up their arm is now: 0 at rest, 1 at its own line. Returns whether that was one more lift. */
+  read(lift = 0) {
+    this.lift = Math.max(0, lift || 0);
+    if (this.lift < LOWERED) this.armed = true;
+    this.up = this.lift >= UP_AT || (this.up && this.lift >= DOWN_AGAIN);
+    // Up, and down since the last time: once up it's not armed again until it has come right down.
+    if (!this.up || !this.armed) return false;
+    this.armed = false;
+    this.lifts += 1;
+    return true;
+  }
+}
 
 /**
  * One game. Each frame, update(dt, lift) says how far up the arm is: 0 at rest, 1 at its line. What

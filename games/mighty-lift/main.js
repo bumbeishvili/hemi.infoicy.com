@@ -6,14 +6,19 @@
 //
 // Friends can lift together, each on their own computer: everyone on one big weight, each arm adding its share,
 // or each freeing their own friends, to see who frees the most.
+//
+// Several can lift in front of one camera too, up to four, if a grown-up says how many on the chooser: the crew.
+// Each has a lifter of their own, side by side as they stand, and arms measured against their own reach, and
+// they lift one big weight between them, by the rules friends lift one by: see Lifting's team in lift.js.
 import { BODY_KEYS, bodyFrom, bodyList } from '../../core/body/characters.js';
-import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
+import { BODY_SAY, BodyGame, byElementId, groupChoice } from '../../core/body/game.js';
+import { showGroupChoice } from '../../core/group-choice.js';
 import { SO_CLOSE } from '../../core/sound.js';
 import { ROSTER, byId as characterById } from '../../core/body/roster.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { seededRandom } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
-import { Arms, HEIGHTS, HOLDS, LIFT_COUNTS, Lifting, Warmup, armHeights, newAt as newAtLevel, thingsUpTo } from './lift.js';
+import { Arms, HEIGHTS, HOLDS, LIFT_COUNTS, Lifting, Partner, Warmup, armHeights, newAt as newAtLevel, thingsUpTo } from './lift.js';
 import { LiftSound } from './lift-sound.js';
 import { Mate, armMessage, finishMessage, mateArms, scoreRows, someoneFreedAll } from './team.js';
 import { World } from './world.js';
@@ -30,6 +35,8 @@ const HELPER_STAYS_MS = 900; // A helper waves goodbye for a moment before going
 // much more, in torso lengths, as a star hangs a little above the line.
 const ROOM_ABOVE_LINE = 0.35;
 const ROOM_EDGE = 0.02; // And that far inside the top of the picture.
+// With several at one camera, once one of them has reached up in the warm-up, the others have this long to.
+const WARM_OTHERS_SECONDS = 6;
 
 // liftClock is whether the lifts have to be done before sunset: 'yes', or 'no' for the gentle game, as it was.
 const DEFAULTS = { moveSize: 'small', liftHeight: 'shoulder', liftWith: 'play', liftHold: 'medium', lifts: 8, liftFriends: 'together', liftClock: 'yes', fighter: 'giraffe' };
@@ -113,12 +120,13 @@ class MightyLift extends BodyGame {
       createSound: (options) => new LiftSound(options),
     });
     this.lifting = null;
-    this.warmup = null;
+    this.members = []; // Everyone lifting at this camera, by where they stand: see crew.
+    this.sideBySide = false; // Whether the game being played is several at this camera, on one weight.
     this.practised = false;
     this.timer = 0;
     this.countLeft = 0;
     this.readyLeft = 0;
-    this.readAt = null;
+    this.warmOthers = 0;
     this.liftsToday = 0; // Since the page was opened. Never kept.
     this.lastNumbers = {};
     this.mates = [];
@@ -144,6 +152,37 @@ class MightyLift extends BodyGame {
   /** The film that shows the move, and which side it's on. */
   get film() {
     return { demo: this.arms.both ? 'liftBoth' : 'lift', side: this.arms.sides[0] };
+  }
+
+  /**
+   * Everyone lifting at this camera, left to right as they stand: one, as the game comes, or as many as a
+   * grown-up said. Each has arms of their own, measured against their own reach, and the first one's are the
+   * child's. partner is how the others' arms are counted in a game: see Partner in lift.js.
+   */
+  get crew() {
+    return this.players.map(({ index }) => (this.members[index] ??= this.newMember(index)));
+  }
+
+  newMember(index) {
+    const { settings } = this;
+    const arms = index === 0 ? this.arms : new Arms({ side: settings.hands, liftWith: settings.liftWith, height: settings.liftHeight });
+    return { index, arms, partner: new Partner(), warmup: null, measured: false, readAt: null };
+  }
+
+  /** The first one's warm-up, which is the child's when one is playing. */
+  get warmup() {
+    return this.members[0]?.warmup ?? null;
+  }
+
+  /** How many lifts one of the crew has made in this game. */
+  liftsOf({ index, partner }) {
+    return index === 0 ? this.lifting?.stats.lifts ?? 0 : partner.lifts;
+  }
+
+  /** How far up everyone's arms are between them, which is how high their weight goes: one child's own arm, alone. */
+  get effort() {
+    const { crew } = this;
+    return crew.reduce((sum, { arms }) => sum + arms.lift, 0) / crew.length;
   }
 
   setUp() {
@@ -172,11 +211,20 @@ class MightyLift extends BodyGame {
       this.confetti.stop();
       this.world.setGame(null);
       this.world.setLive(null);
+      // The others who lifted at this camera go, and the child's lifter is back where it stands to be chosen.
+      if (this.world.beside) this.world.setMates([]);
       this.world.lifter.presenting = true;
       this.world.setView('choose');
       this.setScreen('choose');
     });
-    byElementId('warm-skip').addEventListener('click', () => this.warmup?.finish(false));
+    byElementId('warm-skip').addEventListener('click', () => {
+      for (const { warmup } of this.crew) warmup?.finish(false);
+    });
+    // How many are lifting at this camera. Someone new hasn't had their reach measured, so the warm-up comes again.
+    this.watchGroupChoice(() => {
+      this.members.length = Math.min(this.members.length, this.players.length);
+      this.practised = false;
+    });
     // Lifting with friends, if a grown-up makes or joins a game.
     this.friends = new FriendsPanel({
       game: 'mighty-lift',
@@ -187,6 +235,7 @@ class MightyLift extends BodyGame {
       portraits: () => this.portraits,
       onGone: (friend) => this.friendGone(friend),
       onMove: (id, message) => this.fromFriend(id, message),
+      onRoom: () => this.roomChanged(),
       // Whoever freed the most friends. Equal ones share a place.
       rank: (a, b) => b.dropped - a.dropped,
       resultText: ({ dropped }) => (this.team ? plural(dropped, 'lift') : `${plural(dropped, 'friend')} freed`),
@@ -226,6 +275,9 @@ class MightyLift extends BodyGame {
       get mates() {
         return game.mates;
       },
+      get crew() {
+        return game.crew;
+      },
     };
   }
 
@@ -236,15 +288,30 @@ class MightyLift extends BodyGame {
     if (input) input.checked = true;
   }
 
+  /**
+   * With friends, each on their own computer, it's one at each camera: making or joining a game puts it back
+   * to one, and the chooser doesn't ask how many until the game with friends has been left.
+   */
+  roomChanged() {
+    const inRoom = Boolean(this.friends?.room.joined);
+    document.body.toggleAttribute('data-friends-room', inRoom);
+    if (!inRoom || !this.grouped) return;
+    this.setPlayers(1);
+    showGroupChoice(1);
+    this.members.length = 1;
+    this.practised = false;
+  }
+
   settingChanged(change) {
     const { settings } = this;
     if ('hands' in change || 'liftWith' in change) {
-      this.arms.setArms(settings.hands, settings.liftWith);
+      for (const { arms } of this.crew) arms.setArms(settings.hands, settings.liftWith);
       // Another arm has its own reach, so the warm-up comes again.
       this.practised = false;
       this.world.lifter?.setWeight(this.liftSides, this.lifting?.levelNumber ?? this.level);
+      for (const mate of this.world.beside ? this.world.mates : []) mate.setWeight(this.liftSides, this.lifting?.levelNumber ?? this.level);
     }
-    if ('liftHeight' in change) this.arms.setHeight(settings.liftHeight);
+    if ('liftHeight' in change) for (const { arms } of this.crew) arms.setHeight(settings.liftHeight);
     if ('liftFriends' in change && this.friends) {
       if (this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
       this.friends.showTeams();
@@ -265,29 +332,41 @@ class MightyLift extends BodyGame {
    * this game reads. The body reader's own moves, like a jump or a clap, mean nothing here.
    */
   onMoves(moves, now) {
-    const dt = this.readAt === null ? 1 / 30 : Math.min(0.1, Math.max(0.001, now - this.readAt));
-    this.readAt = now;
-    const heights = armHeights(this.latestBody, this.reader.torsoSize);
-    if (this.screen === 'warmup' && this.warmup) this.warmup.update(heights, dt);
-    else this.arms.update(heights, dt);
+    this.readArms(this.players[0], now);
+  }
+
+  /** With several at this camera, each one's arms are read on their own. */
+  onPlayerMoves(player, moves, now) {
+    if (player.index === 0) this.onMoves(moves, now);
+    else this.readArms(player, now);
+  }
+
+  readArms(player, now) {
+    const member = this.crew[player.index];
+    const dt = member.readAt === null ? 1 / 30 : Math.min(0.1, Math.max(0.001, now - member.readAt));
+    member.readAt = now;
+    const heights = armHeights(player.body, player.reader.torsoSize);
+    if (this.screen === 'warmup' && member.warmup) member.warmup.update(heights, dt);
+    else member.arms.update(heights, dt);
   }
 
   /**
    * Whether there's room in the picture, above the shoulders, for the arm to go as high as it's asked to. It
    * goes by the child's own size, so a child a long way off needs less of the picture than one close by.
    */
-  roomToLift() {
-    const body = this.latestBody;
-    const torso = this.reader.torsoSize;
+  roomToLift(body = this.latestBody, torso = this.reader.torsoSize) {
     if (!body || !(torso > 0)) return true;
     const shoulders = Math.min(body.image[11].y, body.image[12].y);
     const room = Math.max(0, (HEIGHTS[this.settings.liftHeight] ?? 0) + ROOM_ABOVE_LINE);
     return shoulders - room * torso >= ROOM_EDGE;
   }
 
-  /** The shared check that the camera can see the child, and then that there's room for the arm to go up. */
+  /**
+   * The shared check that the camera can see the child, and then that there's room for the arm to go up: for
+   * each of them, with several.
+   */
   updateBodyCheck(dt, now) {
-    if (this.latestBody && !this.roomToLift()) {
+    if (this.players.some(({ body, reader }) => body && !this.roomToLift(body, reader.torsoSize))) {
       this.checkHeld = 0;
       byElementId('camera-frame').dataset.ready = 'not-open';
       byElementId('check-progress-fill').style.width = '0%';
@@ -299,8 +378,24 @@ class MightyLift extends BodyGame {
 
   /** Nobody in the picture: the arms aren't seen, so a weight that was up comes down gently by itself. */
   armsUnseen(dt) {
-    this.arms.update({ left: null, right: null }, dt);
-    this.world.setLive(null);
+    for (const { arms } of this.crew) arms.update({ left: null, right: null }, dt);
+    this.showCrew();
+  }
+
+  /**
+   * Each lifter copies the one it belongs to, or, for someone the camera can't see, has its arm as far up as
+   * the rules say. The first is the child's own, and the others stand beside it.
+   */
+  showCrew() {
+    const { world } = this;
+    const seen = ({ index }) => {
+      const { reader } = this.players[index];
+      return reader.hasPose && !this.bodyLost() ? reader.pose : null;
+    };
+    const [first, ...others] = this.crew;
+    world.setLive(seen(first));
+    world.setLift(first.arms.lift, { left: first.arms.left.lift, right: first.arms.right.lift });
+    if (world.beside) world.placeMates(others.map((member) => ({ lift: member.arms.lift, live: seen(member) })));
   }
 
   /** What the panel says the camera can see, so a grown-up can tell why a lift isn't counting. */
@@ -343,26 +438,52 @@ class MightyLift extends BodyGame {
   beginWarmup() {
     const { world } = this;
     world.setGame(null);
+    this.standCrew(this.level);
     world.lifter.presenting = false;
     world.lifter.setWeight(this.liftSides, this.level);
     world.setView('warmup');
     this.lastNumbers = {};
     this.readyLeft = 0;
+    this.warmOthers = 0;
     this.setScreen('warmup');
-    this.warmup = new Warmup({ arms: this.arms, onEvent: (event) => this.onWarmEvent(event) });
+    // Everyone at this camera reaches up at once, each measured on their own.
+    for (const member of this.crew) {
+      member.measured = false;
+      member.warmup = new Warmup({ arms: member.arms, onEvent: (event) => this.onWarmEvent(member, event) });
+    }
     const text = this.arms.both ? SAY.warmBoth : SAY.warmOne;
     const { demo, side } = this.film;
     this.showCoach(demo, this.translate(text), { side });
     this.sound.say(text);
   }
 
-  onWarmEvent({ type }) {
-    if (type !== 'measured') {
+  /**
+   * Several at this camera stand side by side, the others' lifters beside the child's, left to right as they
+   * stand in front of it. One on their own has the yard as it always was.
+   */
+  standCrew(level) {
+    if (!this.grouped && !this.world.beside) return;
+    this.world.setMates(this.cast.slice(1), { hands: this.liftSides, level, team: true, beside: true });
+  }
+
+  /**
+   * One of them has reached as high as they go, or their warm-up was skipped. It's over once that's so for
+   * everyone, and once one of several has been measured, the others have a few seconds more: see updateWarmup.
+   */
+  onWarmEvent(member, { type }) {
+    member.measured = type === 'measured';
+    if (member.measured) this.showSeen(SEEN_WORDS.lift, { x: 0.26, y: 0.45 });
+    const { crew } = this;
+    if (crew.some(({ warmup }) => warmup && !warmup.done)) {
+      if (member.measured && this.warmOthers <= 0) this.warmOthers = WARM_OTHERS_SECONDS;
+      return;
+    }
+    this.warmOthers = 0;
+    if (!crew.some(({ measured }) => measured)) {
       this.endWarmup();
       return;
     }
     this.hideCoach();
-    this.showSeen(SEEN_WORDS.lift, { x: 0.26, y: 0.45 });
     this.sound.say(SAY.ready);
     this.readyLeft = READY_SECONDS;
   }
@@ -378,16 +499,23 @@ class MightyLift extends BodyGame {
       this.prompt.show({ key: 'come-back', text: BODY_SAY.comeBack, side: null }, now);
       return;
     }
-    const { arms, warmup, reader } = this;
-    this.world.setLive(reader.hasPose ? reader.pose : null);
-    this.world.setLift(arms.lift, { left: arms.left.lift, right: arms.right.lift });
-    this.setCoachEffort(Math.min(1, warmup.share));
-    this.updateMeter(warmup.share);
+    // Those who haven't reached up, a while after one of them has, start with their line as a grown-up chose.
+    if (this.warmOthers > 0) {
+      this.warmOthers -= dt;
+      if (this.warmOthers <= 0) for (const { warmup } of this.crew) warmup?.finish(false);
+      if (this.screen !== 'warmup' || this.readyLeft > 0) return;
+    }
+    const { arms, crew } = this;
+    this.showCrew();
+    const share = crew.reduce((sum, { warmup }) => sum + (warmup?.share ?? 0), 0) / crew.length;
+    this.setCoachEffort(Math.min(1, share));
+    this.updateMeter(share);
     this.prompt.show(arms.both && arms.oneSided ? { key: 'both', text: SAY.both, side: null } : null, now);
   }
 
   endWarmup() {
-    this.warmup = null;
+    for (const member of this.members) if (member) member.warmup = null;
+    this.warmOthers = 0;
     this.practised = true;
     this.hideCoach();
     this.prompt.clear();
@@ -415,19 +543,26 @@ class MightyLift extends BodyGame {
     // With friends, everyone plays the host's game: their level, how many lifts, and how long a hold is, laid
     // out from the same seed. It doesn't move anyone's own level on, and each child keeps their own arm and line.
     const friendly = this.friends.current;
-    this.team = Boolean(friendly?.team);
+    // Several at this camera lift one big weight between them, as friends do together, and it's the plain game
+    // that friends play: no level is moved on, as none of what the levels bring is in it. It's still a game
+    // under way, though, which a grown-up's change in the panel starts again.
+    this.sideBySide = !friendly && this.grouped;
+    this.team = Boolean(friendly?.team) || this.sideBySide;
     document.body.toggleAttribute('data-friends-race', Boolean(friendly));
-    document.body.toggleAttribute('data-friends-team', this.team);
+    document.body.toggleAttribute('data-friends-team', Boolean(friendly?.team));
+    document.body.toggleAttribute('data-lift-crew', this.sideBySide);
     const levelNumber = friendly ? friendly.level : this.startLevel();
+    const { crew } = this;
     this.lifting = new Lifting({
       level: levelNumber,
       lifts: friendly && LIFT_COUNTS.includes(friendly.length) ? friendly.length : settings.lifts,
       hold: friendly && HOLDS[friendly.mode] ? friendly.mode : settings.liftHold,
       // With friends, the same friends are under the same things on every screen, whoever each child lifts as.
-      lifter: friendly ? null : this.chosen.id,
+      // Otherwise nobody who's lifting is stuck under anything.
+      lifter: friendly ? null : this.cast.map(({ id }) => id),
       random: friendly ? seededRandom(friendly.seed) : Math.random,
       plain: Boolean(friendly),
-      team: this.team ? { size: friendly.friends.length + 1 } : null,
+      team: this.team ? { size: friendly ? friendly.friends.length + 1 : crew.length } : null,
       reach: this.arms.reach,
       gentle: settings.liftClock === 'no',
       onEvent: (event) => this.onLiftEvent(event),
@@ -436,7 +571,10 @@ class MightyLift extends BodyGame {
     this.setUpMates(friendly);
     // Wherever the arm is as the countdown starts is where it rests, unless it's held up: a bent arm rests
     // higher than one that hangs, and lifting is measured from there.
-    this.arms.restHere(0.8);
+    for (const member of crew) {
+      member.arms.restHere(0.8);
+      member.partner = new Partner();
+    }
     world.lifter.presenting = false;
     world.lifter.setWeight(this.liftSides, levelNumber);
     world.setGame(this.lifting);
@@ -499,17 +637,32 @@ class MightyLift extends BodyGame {
     this.hideCoach();
   }
 
+  /**
+   * The others lifting at this camera, for the rules: each one's arm, up or not, counted as the child's own is.
+   * One of them who's trying and not getting there has their own line come down to meet them.
+   */
+  readPartners(dt, lost) {
+    const { lifting } = this;
+    return this.crew.slice(1).map((member) => {
+      if (member.partner.read(member.arms.lift)) this.onPartnerLift(member);
+      if (!lost && lifting.phase === 'lifting' && !lifting.mustLower && member.arms.tried(dt)) lifting.stats.eased += 1;
+      return member.partner;
+    });
+  }
+
   updatePlaying(dt, now) {
-    const { lifting, arms, reader, world } = this;
+    const { lifting, arms } = this;
     if (this.timer > 0) {
       this.timer -= dt;
       if (this.timer <= 0) this.setCount('');
     }
-    const mates = mateArms(this.mates, now);
+    const lost = this.bodyLost();
+    if (lost) this.armsUnseen(dt);
+    // Whoever else is lifting: friends, each on their own computer, or the others at this camera.
+    const mates = this.sideBySide ? this.readPartners(dt, lost) : mateArms(this.mates, now);
 
     // Nobody in the picture: a weight that was up comes down gently, and everything else waits.
-    if (this.bodyLost()) {
-      this.armsUnseen(dt);
+    if (lost) {
       lifting.update(dt, arms.lift, mates, { seen: false });
       this.prompt.show({ key: 'come-back', text: BODY_SAY.comeBack, side: null }, now);
       this.sound.strain(0);
@@ -518,8 +671,7 @@ class MightyLift extends BodyGame {
     }
 
     lifting.span = arms.span;
-    world.setLive(reader.hasPose ? reader.pose : null);
-    world.setLift(arms.lift, { left: arms.left.lift, right: arms.right.lift });
+    this.showCrew();
     // A child who's trying and not getting there: the line comes down to meet them.
     if (lifting.phase === 'lifting' && !lifting.mustLower && arms.tried(dt)) lifting.stats.eased += 1;
     const before = lifting.height;
@@ -531,9 +683,10 @@ class MightyLift extends BodyGame {
     const hint = arms.both && arms.oneSided && !lifting.up ? 'both' : lifting.hint;
     this.prompt.show(hint ? { key: hint, text: HINTS[hint].text, side: null } : null, now);
     if (hint && HINTS[hint].film) this.showFilm(hint);
-    // The bar under the film fills as the arm gets near its line.
-    if (this.filmFor) this.setCoachEffort(Math.min(1, arms.lift));
-    this.updateMeter(arms.lift);
+    // The bar under the film fills as the arm gets near its line: everyone's arms between them, with several.
+    const { effort } = this;
+    if (this.filmFor) this.setCoachEffort(Math.min(1, effort));
+    this.updateMeter(effort);
     this.updateHud();
     this.sendLifter(now);
     this.settleUnanswered();
@@ -661,6 +814,16 @@ class MightyLift extends BodyGame {
     this.world.setLiftsToday(this.liftsToday);
     this.arms.made();
     if (this.team) this.sawLift();
+    if (this.sideBySide) this.showScores();
+  }
+
+  /** One of the others at this camera has got their arm up to its line: their lift, counted with everyone's. */
+  onPartnerLift(member) {
+    this.liftsToday += 1;
+    this.world.setLiftsToday(this.liftsToday);
+    member.arms.made();
+    this.sawLift();
+    this.showScores();
   }
 
   /** The weight is up at the line. */
@@ -753,11 +916,14 @@ class MightyLift extends BodyGame {
     const { world, sound, lifting } = this;
     // Friends' finish cards fill in with how this child did: lifts, on one weight together, or friends freed.
     if (this.friends.current) this.friends.finished(performance.now() - this.goAt, finishMessage(lifting, this.team));
-    world.setLive(null);
     this.camera.stop();
-    this.reader.forget();
+    for (const player of this.players) {
+      player.reader.forget();
+      player.body = null;
+    }
     this.latestBody = null;
-    this.readAt = null;
+    for (const member of this.crew) member.readAt = null;
+    this.showCrew();
     this.hideFilm();
     this.prompt.clear();
     this.setCount('');
@@ -792,15 +958,18 @@ class MightyLift extends BodyGame {
       { name: 'today', icon: 'starJump', label: 'Lifts today', value: this.liftsToday },
     ]);
     // A game with everyone freed moves on a level, and one where the sun set first stays on it. With friends
-    // it's the host's level, so it doesn't move anyone's own level on.
+    // it's the host's level, so it doesn't move anyone's own level on, and neither does the plain game that
+    // several play at one camera.
     const { lost } = lifting;
-    if (this.friends.current) {
+    if (this.friends.current || this.sideBySide) {
+      this.levelUnderway = false;
       this.levels.last = null;
       this.levelUi.refresh();
     } else {
       this.finishLevel(!lost);
     }
     this.friends.showResults();
+    if (this.sideBySide) this.showCrewFinish();
     if (lost) {
       const stuck = lifting.rescues.length - stats.freed;
       byElementId('finish-title').textContent = 'The sun has set!';
@@ -808,6 +977,22 @@ class MightyLift extends BodyGame {
       byElementId('lift-again').textContent = 'Try again';
     } else this.confetti.start();
     this.setScreen('finish');
+  }
+
+  /** Several lifted at this camera: the card says what they did between them, and each one's share by their lifter's name. */
+  showCrewFinish() {
+    const { cast, crew } = this;
+    const { stats } = this.lifting;
+    const each = crew.map((member) => this.liftsOf(member));
+    const all = each.reduce((sum, lifts) => sum + lifts, 0);
+    const eased = stats.eased ? ' A line came down a little, to meet how high an arm goes.' : '';
+    byElementId('finish-title').textContent = LIFT_WORDS.teamTitle;
+    byElementId('finish-lifts').textContent = plural(all, 'lift');
+    byElementId('finish-line').textContent = `Together you made ${plural(all, 'lift')}: ${each.map((lifts, index) => `${cast[index].name} ${lifts}`).join(', ')}.${eased}`;
+    this.fillTallyCards(byElementId('finish-tally'), [
+      { name: 'lifts', icon: this.arms.both ? 'skyReach' : 'handUp', label: 'Lifts', value: all },
+      { name: 'today', icon: 'starJump', label: 'Lifts today', value: this.liftsToday },
+    ]);
   }
 
   /** What else was won, in words, from what this level has. Nothing at level 1. */
@@ -837,16 +1022,20 @@ class MightyLift extends BodyGame {
 
   liftAgain() {
     this.confetti.stop();
-    this.reader.forget();
+    for (const { reader } of this.players) reader.forget();
     this.openCameraThen(() => this.beginBodyCheck());
   }
 
   /* ---------- with friends ---------- */
 
-  /** Friends' lifters, each following what their own game sends, and their names over them. */
+  /**
+   * Friends' lifters, each following what their own game sends, and their names over them. Or, with several at
+   * this camera, the others' lifters beside the child's.
+   */
   setUpMates(friendly) {
     this.mates = (friendly?.friends ?? []).map((friend) => new Mate(friend));
-    this.world.setMates(this.mates.map(({ friend }) => friend.spec), { level: friendly?.level ?? 1, team: this.team });
+    if (this.sideBySide) this.standCrew(this.lifting.levelNumber);
+    else this.world.setMates(this.mates.map(({ friend }) => friend.spec), { level: friendly?.level ?? 1, team: this.team });
     for (const mark of this.markMates) mark.remove();
     this.markMates = this.mates.map(({ friend }) => {
       const root = document.createElement('div');
@@ -911,13 +1100,19 @@ class MightyLift extends BodyGame {
     for (const [index, at] of this.asked) if (now - at >= CLAIM_ANSWER_MS) this.asked.delete(index);
   }
 
-  /** Everyone's count, top right, with friends: lifts on one weight together, or friends freed, the most first. */
+  /**
+   * Everyone's count, top right, with friends: lifts on one weight together, or friends freed, the most first.
+   * With several at this camera it's each one's lifts by their lifter's name, in the order they stand.
+   */
   showScores() {
     const board = byElementId('lift-scores');
-    const friendly = this.mates.length > 0;
+    const friendly = this.mates.length > 0 || this.sideBySide;
     board.hidden = !friendly;
     if (!friendly || !this.lifting) return;
-    const rows = scoreRows(this.lifting.stats, this.mates, this.team);
+    const { cast } = this;
+    const rows = this.sideBySide
+      ? this.crew.map((member) => ({ name: cast[member.index].name, count: this.liftsOf(member), you: false }))
+      : scoreRows(this.lifting.stats, this.mates, this.team);
     board.dataset.counts = this.team ? 'lifts' : 'freed';
     board.replaceChildren(...rows.map(({ name, count: number, you }) => {
       const row = document.createElement('li');
@@ -972,6 +1167,7 @@ mountBodyShell({
   chooseTitle: 'Who’s lifting today?',
   chooseSide: `
       <p class="choose-tip">Raise your arm, and your lifter lifts too. Hold it up, and your friend gets out.</p>
+      ${groupChoice()}
       <button id="lift-start" class="big-button" type="button">Let’s lift!</button>`,
   hud: `
   <div id="lift-meter" class="lift-meter" data-zone="middle" aria-hidden="true">

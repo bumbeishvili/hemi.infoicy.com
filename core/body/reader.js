@@ -164,11 +164,13 @@ function angleAt(a, joint, b) {
  * see the whole body, because the legs and feet are half of the game.
  */
 const GROUP_EDGE = 0.07; // How near the side of the picture one of several players may stand, as a share of its width.
+// And the middle of their shoulders, in a game played with the top half: further in, as it's their arms that play.
+const GROUP_EDGE_UPPER = 0.1;
 
 export function viewProblem(body, aspect = 16 / 9, { upperBodyOnly = false, armsOut = false, group = false } = {}) {
   if (!body) return 'no-body';
   const points = readPoints(body, aspect);
-  if (upperBodyOnly) return upperBodyProblem(points, aspect, armsOut);
+  if (upperBodyOnly) return upperBodyProblem(points, aspect, armsOut, group);
   const needed = [P.nose, ...SIDES.flatMap((side) => [P[side].shoulder, P[side].hip, P[side].knee, P[side].ankle])];
   const nose = points[P.nose];
   const feetY = Math.max(points[P.left.ankle].y, points[P.right.ankle].y);
@@ -189,9 +191,11 @@ export function viewProblem(body, aspect = 16 / 9, { upperBodyOnly = false, arms
 
 /**
  * For a child who plays sitting down, or closer to the camera: head, shoulders and arms. armsOut is
- * for a game with both arms held out, which needs room to the sides more than above the head.
+ * for a game with both arms held out, which needs room to the sides more than above the head. One child sits
+ * or stands in the middle. Several are side by side, right across the picture, so each only has to be clear of
+ * its edges.
  */
-function upperBodyProblem(points, aspect, armsOut) {
+function upperBodyProblem(points, aspect, armsOut, group = false) {
   const nose = points[P.nose];
   const left = points[P.left.shoulder];
   const right = points[P.right.shoulder];
@@ -202,8 +206,9 @@ function upperBodyProblem(points, aspect, armsOut) {
   if (shoulders < UPPER_BODY.leastShoulders) return 'come-closer';
   if (armsOut && shoulders * UPPER_BODY.widthOfWings > aspect) return 'step-back';
   const middleX = (left.x + right.x) / 2;
-  if (middleX < aspect * 0.2) return 'move-right';
-  if (middleX > aspect * 0.8) return 'move-left';
+  const side = group ? GROUP_EDGE_UPPER : 0.2;
+  if (middleX < aspect * side) return 'move-right';
+  if (middleX > aspect * (1 - side)) return 'move-left';
   return null;
 }
 

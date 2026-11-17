@@ -347,6 +347,29 @@ test('the check says what\'s wrong with the view, in terms a child can act on', 
   }), aspect), 'show-all', 'feet hidden');
 });
 
+test('several playing with their top halves only have to be clear of the picture\'s edges, where one sits in the middle', () => {
+  const onlyTop = { upperBodyOnly: true };
+  const together = { upperBodyOnly: true, group: true };
+  // Someone with the middle of their shoulders so far across the screen, from 0 at its left to 1 at its right.
+  const at = (across, dy = 0) => standing((body) => {
+    const middle = (body.image[11].x + body.image[12].x) / 2;
+    moved(body, 1 - across - middle, dy);
+  });
+  assert.equal(viewProblem(at(0.5), aspect, onlyTop), null);
+  assert.equal(viewProblem(at(0.5), aspect, together), null);
+  // An eighth of the way in from either side, where the outer two of four are: too far over for one child.
+  assert.equal(viewProblem(at(0.125), aspect, onlyTop), 'move-right');
+  assert.equal(viewProblem(at(0.875), aspect, onlyTop), 'move-left');
+  assert.equal(viewProblem(at(0.125), aspect, together), null);
+  assert.equal(viewProblem(at(0.875), aspect, together), null);
+  // Right at the edge, an arm would be out of the picture, whoever it is.
+  assert.equal(viewProblem(at(0.06), aspect, together), 'move-right');
+  assert.equal(viewProblem(at(0.94), aspect, together), 'move-left');
+  // And each still needs room above the head, and to be near enough.
+  assert.equal(viewProblem(at(0.3, -0.1), aspect, together), 'step-back');
+  assert.equal(viewProblem(standing((body) => scaled(body, 0.4)), aspect, together), 'come-closer');
+});
+
 test('a close-up of each hand covers the wrist and stays inside the picture', () => {
   const body = standing();
   const boxes = closeUpBoxes(body, aspect);

@@ -274,7 +274,7 @@ export class BodyGame {
     this.prompt.clear();
     this.setCount('');
     this.confetti.stop();
-    this.reader.forget();
+    for (const { reader } of this.players) reader.forget();
     this.openCameraThen(() => this.beginBodyCheck());
   }
 
@@ -389,6 +389,8 @@ export class BodyGame {
   setPlayers(count) {
     const wanted = Math.min(MOST_PEOPLE, Math.max(1, Math.round(Number(count)) || 1));
     this.players = Array.from({ length: wanted }, (_, index) => this.players[index] ?? { index, reader: index === 0 ? this.reader : new BodyReader({ size: this.settings.moveSize }), body: null });
+    // A game that's happy with the top half of the child is happy with the top half of each of them.
+    for (const { reader } of this.players) reader.upperBodyOnly = this.reader.upperBodyOnly;
     this.people = new People(wanted);
     this.camera.setPeople(wanted);
     document.body.dataset.players = String(wanted);
