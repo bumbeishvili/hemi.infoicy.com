@@ -4,3 +4,4 @@ __pycache__/
 playwright-report/
 .DS_Store
 .wrangler/
+.claude/
