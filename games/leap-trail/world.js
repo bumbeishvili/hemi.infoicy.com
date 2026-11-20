@@ -57,6 +57,17 @@ const VIEWS = {
   win: { at: [1.3, 1.75, 6.5], look: [0, 1.15, 0], fov: 32 },
 };
 
+// A picture taller than it's wide, as each half of the split screen is, would cut the runner off at its sides, so
+// there the camera stands further back. On the chooser the runner stays clear of the cards above and below, and in
+// the practice it's below the child's picture and the film, which are side by side along the top.
+const NARROW_VIEWS = {
+  choose: { at: [0, 1.6, 16], look: [0, 1.3, 0], fov: 30 },
+  // Looking down a little more, so the runners are above the child's picture and the film along the bottom.
+  run: { at: [0.7, 3.4, 7], look: [-0.05, -1.4, -12], fov: 62 },
+  practice: { at: [0.4, 3, 12.5], look: [0.4, 3, 0], fov: 30 },
+  win: { at: [1.3, 2, 10.5], look: [0, 1.35, 0], fov: 32 },
+};
+
 // Where and when the run is: a summer's day, autumn from level 7, and an autumn sunset at level 10. The
 // picture stays about as bright in each, and it's chosen as a run starts, never changed during one.
 const AUTUMN_TREES = { round: ['#e8923a', '#d9673b', '#f0b847'], pines: ['#3f9a58', '#4aa862'], tufts: ['#f2a54a', '#e07b3c'] };
@@ -1127,11 +1138,17 @@ export class World {
   setView(name, { snap = false } = {}) {
     this.view = name;
     if (snap) {
-      this.cameraAt.set(...VIEWS[name].at);
-      this.cameraLook.set(...VIEWS[name].look);
-      this.camera.fov = VIEWS[name].fov;
+      const view = this.framing(name);
+      this.cameraAt.set(...view.at);
+      this.cameraLook.set(...view.look);
+      this.camera.fov = view.fov;
       this.camera.updateProjectionMatrix();
     }
+  }
+
+  /** Where the camera stands for a view, which is further back in a picture that's taller than it's wide. */
+  framing(name) {
+    return (this.camera.aspect < 1 && NARROW_VIEWS[name]) || VIEWS[name];
   }
 
   setRunner(spec) {
@@ -2028,7 +2045,7 @@ export class World {
   }
 
   updateCamera(dt) {
-    const view = VIEWS[this.view];
+    const view = this.framing(this.view);
     const rate = this.view === 'run' ? 3.2 : 2.2;
     // In a run, the camera goes some of the way across with the runner, so all three lanes stay in view.
     const follow = this.view === 'run' ? this.runnerX * CAMERA_FOLLOWS : 0;

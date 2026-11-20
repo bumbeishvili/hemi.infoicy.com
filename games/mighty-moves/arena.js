@@ -42,6 +42,15 @@ const VIEWS = {
   win: { at: [0.9, 1.75, 5.6], look: [-1.1, 1.2, 0], fov: 30 },
 };
 
+// A picture taller than it's wide, as each half of the split screen is, would cut the fighters off at its sides,
+// so there the camera stands further back. On the chooser the fighter also stays clear of the cards above and below.
+const NARROW_VIEWS = {
+  fight: { at: [-5.6, 2.9, 8.6], look: [0, 1.1, -0.4], fov: 40 },
+  choose: { at: [-1.35, 1.6, 16], look: [-1.35, 1.3, 0], fov: 30 },
+  intro: { at: [0, 2.3, 14], look: [0, 1.25, 0], fov: 32 },
+  win: { at: [1.6, 2, 9.6], look: [-1.1, 1.2, 0], fov: 32 },
+};
+
 /* ------------------------------- one fighter on the stage ------------------------------- */
 
 /** Chooses what a fighter's body is doing, from its moves and its reactions. */
@@ -787,11 +796,17 @@ export class Arena {
   setView(name, { snap = false } = {}) {
     this.view = name;
     if (snap) {
-      this.cameraAt.set(...VIEWS[name].at);
-      this.cameraLook.set(...VIEWS[name].look);
-      this.camera.fov = VIEWS[name].fov;
+      const view = this.framing(name);
+      this.cameraAt.set(...view.at);
+      this.cameraLook.set(...view.look);
+      this.camera.fov = view.fov;
       this.camera.updateProjectionMatrix();
     }
+  }
+
+  /** Where the camera stands for a view, which is further back in a picture that's taller than it's wide. */
+  framing(name) {
+    return this.camera.aspect < 1 ? NARROW_VIEWS[name] : VIEWS[name];
   }
 
   /** Puts a fighter on the stage in place of whoever was there. which is 'player' or 'npc'. */
@@ -1174,7 +1189,7 @@ export class Arena {
   }
 
   updateCamera(dt) {
-    const view = VIEWS[this.view];
+    const view = this.framing(this.view);
     const rate = this.view === 'fight' ? 3.4 : 2.2;
     this.cameraAt.x = damp(this.cameraAt.x, view.at[0], rate, dt);
     this.cameraAt.y = damp(this.cameraAt.y, view.at[1], rate, dt);

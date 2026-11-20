@@ -607,6 +607,8 @@ export class World {
     const look = scratch.w;
     let fov = 58;
     let tip = 0;
+    // Taller than it is wide, as a seat on the split screen is: some views are framed differently there.
+    const narrow = camera.aspect < 1;
     if (this.view === 'play') {
       // Behind and above the bike, looking up the road past it.
       // In the air it looks further up the road and a little higher: what goes by right under a bike that's
@@ -624,12 +626,23 @@ export class World {
       look.set(front.x, frontHigh + 1.0 + up * 0.45, front.z);
       tip = this.reducedMotion ? 0 : roll * CAMERA_TIP;
     } else if (this.view === 'warmup') {
-      // From behind, so that the child's left is the bike's left, with the bike to the right of the picture.
-      const back = placeAt(shape, s - 6.4, -1.9, scratch.a);
-      at.set(back.x, back.y + 2.0, back.z);
-      const front = placeAt(shape, s + 6, -1.9, scratch.b);
-      look.set(front.x, front.y + 1.15, front.z);
+      // From behind, so that the child's left is the bike's left, with the bike to the right of the picture. In a
+      // picture taller than it is wide, as in a seat on the split screen, there's no room to the right of the
+      // child's own picture: the bike is in the middle, under it and the coach's film.
+      const across = narrow ? 0 : -1.9;
+      const back = placeAt(shape, s - (narrow ? 9.2 : 6.4), across, scratch.a);
+      at.set(back.x, back.y + (narrow ? 2.4 : 2.0), back.z);
+      const front = placeAt(shape, s + 6, across, scratch.b);
+      look.set(front.x, front.y + (narrow ? 2.8 : 1.15), front.z);
       fov = 40;
+    } else if (this.view === 'finish' && narrow) {
+      // In a narrow picture there's no room beside the finish card: the bike is seen from straight behind, in
+      // the middle, as it rolls on to its friends.
+      const back = placeAt(shape, s - 8, 0, scratch.a);
+      at.set(back.x, back.y + 2.6, back.z);
+      const front = placeAt(shape, s + 9, 0, scratch.b);
+      look.set(front.x, front.y + 2.9, front.z);
+      fov = 50;
     } else if (this.view === 'finish') {
       // Still from behind, a little nearer and to one side, so the bike is to the left of the finish card and
       // the friends at the top are ahead of it. The camera never swings round: that would sweep the whole
@@ -646,6 +659,14 @@ export class World {
       const side = placeAt(shape, s + 1.6, -2.2, scratch.b);
       look.set(side.x, side.y + 1.0, side.z);
       fov = 40;
+    } else if (narrow) {
+      // Choosing who rides, in a narrow picture, where the rider's name is above the bike and two rows of
+      // riders below it: the same, from further away, so that the whole rider is between them.
+      const front = placeAt(shape, s + 9.3, 4.9, scratch.a);
+      at.set(front.x, front.y + 1.7, front.z);
+      const side = placeAt(shape, s + 0.2, -0.9, scratch.b);
+      look.set(side.x, side.y + 0.75, side.z);
+      fov = 36;
     } else {
       // Choosing who rides: the bike from in front and to one side.
       const front = placeAt(shape, s + 6.2, 3.3, scratch.a);

@@ -1,8 +1,12 @@
 // Grown-ups' settings, shared between the games, and which level each game is on (core/levels.js).
 // Nothing about the child or their hands is ever stored.
 import { OPEN_RULES } from './hands.js';
+import { SEAT } from './seat.js';
 
 const STORAGE_KEY = 'camera-games-settings';
+// With several playing on one screen (core/seat.js), the first is the child whose settings these are. Each of the
+// others has settings of their own, which start as the child's: the hand they play with can be the other one.
+const ownKey = () => (SEAT && SEAT.index > 0 ? `${STORAGE_KEY}:player-${SEAT.index + 1}` : STORAGE_KEY);
 
 // The hands that can be chosen, for the panel.
 export const HAND_CHOICES = [['left', 'Left hand'], ['right', 'Right hand']];
@@ -72,7 +76,7 @@ export function appliesAtOnce(name, own = [], again = []) {
 export function loadSettings(gameDefaults = {}) {
   const defaults = { ...SHARED_DEFAULTS, ...gameDefaults };
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
+    const saved = JSON.parse(localStorage.getItem(ownKey()) ?? localStorage.getItem(STORAGE_KEY) ?? '{}');
     if (!HAND_CHOICES.some(([value]) => value === saved.hands)) delete saved.hands;
     dropOldDefaults(saved);
     return { ...defaults, ...saved, strictness: { ...defaults.strictness, ...saved.strictness } };
@@ -83,7 +87,7 @@ export function loadSettings(gameDefaults = {}) {
 
 export function saveSettings(settings) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    localStorage.setItem(ownKey(), JSON.stringify(settings));
   } catch {
     // Private windows can refuse storage. The defaults still work.
   }

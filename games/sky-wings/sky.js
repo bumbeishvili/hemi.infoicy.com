@@ -63,6 +63,14 @@ const VIEWS = {
   fly: { fov: FLY_FOV },
   win: { at: [9, 3.5, 13], look: [0, 0.5, 0], fov: 40 },
 };
+// The same, for a picture taller than it is wide, as a seat on the split screen is: the plane from further away
+// and in the middle, as there's no room beside the panels: between the pilot's name and the pilots to choose
+// from, and below the child's own picture and the coach's film in the lesson.
+const NARROW_VIEWS = {
+  ...VIEWS,
+  choose: { at: [0, 4.5, 30], look: [0, -0.8, 0], fov: 30 },
+  lesson: { at: [0, 3.6, 22], look: [0, 2.6, 0], fov: 34 },
+};
 
 /** A toy plane with the character sitting in it, whose arms can copy the child's. */
 class Plane {
@@ -475,6 +483,11 @@ export class Sky {
     return half * this.height;
   }
 
+  /** Where the camera is for a view, for the shape the picture is now. */
+  viewOf(name) {
+    return (this.camera.aspect < 1 ? NARROW_VIEWS : VIEWS)[name];
+  }
+
   setView(name, { snap = false } = {}) {
     if (this.view === 'fly' && name !== 'fly' && this.plane) {
       // Off from where the camera is now, rather than jumping.
@@ -486,9 +499,10 @@ export class Sky {
       this.camera.fov = FLY_FOV;
       this.camera.updateProjectionMatrix();
     } else if (snap) {
-      this.cameraAt.set(...VIEWS[name].at);
-      this.cameraLook.set(...VIEWS[name].look);
-      this.camera.fov = VIEWS[name].fov;
+      const view = this.viewOf(name);
+      this.cameraAt.set(...view.at);
+      this.cameraLook.set(...view.look);
+      this.camera.fov = view.fov;
       this.camera.updateProjectionMatrix();
     }
   }
@@ -1019,7 +1033,7 @@ export class Sky {
       camera.updateMatrixWorld();
       return;
     }
-    const view = VIEWS[this.view === 'fly' ? 'lesson' : this.view];
+    const view = this.viewOf(this.view === 'fly' ? 'lesson' : this.view);
     const rate = 2.4;
     this.cameraAt.x = damp(this.cameraAt.x, view.at[0], rate, dt);
     this.cameraAt.y = damp(this.cameraAt.y, view.at[1], rate, dt);

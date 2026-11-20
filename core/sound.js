@@ -1,6 +1,7 @@
 // The audio every game shares: the mixer, spoken lines and common effects. Spoken lines are
 // rendered ahead of time (see tools/), so nothing is generated while playing. Everything is
 // local: CREDITS.md says where each sound came from.
+import { SEAT, voiceDropped, voiceFree, voiceTaken } from './seat.js';
 
 const AUDIO_ROOT = new URL('./audio/', import.meta.url);
 
@@ -283,6 +284,9 @@ export class Sound {
   }
 
   sayClip(text, clip, ifQuiet) {
+    // With several playing on one screen, each in their own copy of the game, a line that would talk over
+    // another copy's isn't said: see core/seat.js.
+    if (SEAT && !voiceFree()) return false;
     if (!this.currentVoice) {
       this.speak(text, clip);
       return true;
@@ -304,6 +308,7 @@ export class Sound {
       this.setBackgroundLevel();
     };
     source.start(this.context.currentTime + after);
+    if (SEAT) voiceTaken(after + clip.duration);
     this.currentVoice = { source, text };
     this.setBackgroundLevel();
   }
@@ -312,7 +317,9 @@ export class Sound {
   sayWaitingLine() {
     const waiting = this.waitingLine;
     this.waitingLine = null;
-    if (waiting && performance.now() - waiting.at <= LINE_WAITS_AT_MOST_MS) this.speak(waiting.text, waiting.clip, LINE_PAUSE_SECONDS);
+    if (!waiting || performance.now() - waiting.at > LINE_WAITS_AT_MOST_MS) return;
+    if (SEAT && !voiceFree()) return;
+    this.speak(waiting.text, waiting.clip, LINE_PAUSE_SECONDS);
   }
 
   /** Only for when everything is stopping: a pause, a hidden tab, muting or a new language. */
@@ -323,6 +330,7 @@ export class Sound {
     this.currentVoice = null;
     speaking.source.onended = null;
     speaking.source.stop();
+    if (SEAT) voiceDropped();
     if (this.context) this.setBackgroundLevel();
   }
 

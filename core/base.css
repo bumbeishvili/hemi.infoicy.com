@@ -1422,6 +1422,45 @@ body:not([data-screen='countdown']) .level-new-now { display: none; }
   text-decoration: underline;
 }
 
+/* Playing on this computer, with the screen split: the links for how many, under making or joining a game. */
+.friends-seats {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+
+.friends-seat-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+a.friends-button {
+  display: inline-block;
+  text-decoration: none;
+}
+
+/* One of several on a split screen, a seat (core/seat.js): which player this is and where they stand, in place
+   of the code, the link and the name, which are for friends on their own computers. */
+.seat-banner {
+  padding: 6px 22px 8px;
+  border-radius: 999px;
+  background: var(--sun);
+  font-size: clamp(22px, 3.4vw, 34px);
+  font-weight: 700;
+}
+
+.seat-banner[hidden] { display: none; }
+
+html[data-seat] .friends-title,
+html[data-seat] .friends-code-row,
+html[data-seat] .friends-name,
+html[data-seat] #friends-lonely,
+html[data-seat] #friends-leave,
+html[data-seat] #friends-alone,
+html[data-seat] .friends-box > .small-print { display: none; }
+
 /* Once the box is open, the title card shows only that, over the game dimmed and blurred behind it. */
 body[data-friends-box] #screen-welcome {
   background: rgba(18, 48, 77, 0.55);

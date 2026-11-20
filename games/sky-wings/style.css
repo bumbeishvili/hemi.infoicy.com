@@ -24,6 +24,14 @@ body[data-screen='lesson'] .coach.is-visible { display: flex; }
 /* Big enough for a child across the room to see their arms in. */
 .body-frame { --camera-small: clamp(190px, 25vw, 350px); }
 
+/* In a seat on the split screen the plane is nearly as wide as the seat: a smaller film, so the wing's tip is clear of it. */
+html[data-seat] body[data-screen='fly'] .coach {
+  width: 150px;
+  min-width: 0;
+}
+
+html[data-seat] body[data-screen='fly'] .coach-text { font-size: 18px; }
+
 /* ---------- choosing ---------- */
 .choose-tip {
   font-size: clamp(16px, 1.7vw, 21px);

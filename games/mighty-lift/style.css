@@ -329,3 +329,22 @@ body[data-lift-crew][data-screen] .level-new-now,
 body[data-lift-crew][data-screen] .level-done { display: none; }
 /* With friends, each on their own computer, it's one at each camera, so the chooser doesn't ask how many. */
 body[data-friends-room] .group-choice { display: none; }
+
+/* ---------- in a seat of the split screen ---------- */
+/* Half a window is tall and narrow. The cards to choose from are shorter, so the lifter shows between them, and in
+   the warm-up the child's picture is a little smaller, along the top beside the film, with their lifter below. */
+html[data-seat] .fighter-card img {
+  width: auto;
+  height: 10vh;
+  max-height: none;
+}
+
+html[data-seat] body[data-screen='warmup'] .body-frame {
+  --warm-width: min(38vw, calc(36vh * var(--camera-aspect)));
+  top: 70px;
+}
+
+html[data-seat] body[data-screen='warmup'] .lift-meter {
+  top: 70px;
+  height: min(36vh, calc(38vw / var(--camera-aspect)));
+}

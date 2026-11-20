@@ -50,6 +50,16 @@ const VIEWS = {
   win: { at: [-0.1, 1.8, 7.4], look: [-0.5, 1.25, 0], fov: 30 },
 };
 
+// A picture taller than it's wide, as each half of the split screen is, would cut the yard off at its sides, so
+// there the camera stands further back. On the chooser the lifter stays clear of the cards above and below, and in
+// the warm-up it's below the child's picture and the film, which are side by side along the top.
+const NARROW_VIEWS = {
+  choose: { at: [LIFTER_AT[0], 1.6, 16], look: [LIFTER_AT[0], 1.3, 0], fov: 30 },
+  warmup: { at: [LIFTER_AT[0] + 0.4, 3, 12.5], look: [LIFTER_AT[0] + 0.4, 3, 0], fov: 30 },
+  play: { at: [0.1, 2.6, 15.5], look: [0.1, 1.7, 0], fov: 34 },
+  win: { at: [-1.4, 2, 11.5], look: [-1.4, 1.35, 0], fov: 32 },
+};
+
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const damp = (value, target, rate, dt) => value + (target - value) * (1 - Math.exp(-rate * dt));
 const UP = new THREE.Vector3(0, 1, 0);
@@ -769,11 +779,14 @@ export class World {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Where the camera is going. The warm-up has a view of its own when several stand side by side, and so has a game with three or four. */
+  /**
+   * Where the camera is going. The warm-up has a view of its own when several stand side by side, and so has a game
+   * with three or four. A picture taller than it's wide has its own, further back.
+   */
   get viewNow() {
     if (this.beside && this.view === 'warmup') return VIEWS.warmupBeside;
     if (this.beside && this.view === 'play' && this.mates.length >= 2) return VIEWS.playBeside;
-    return VIEWS[this.view];
+    return (this.camera.aspect < 1 && NARROW_VIEWS[this.view]) || VIEWS[this.view];
   }
 
   /** Where a place in the yard is on the screen, in pixels, and whether it's behind the camera. */

@@ -244,7 +244,7 @@ Tested in [test/e2e/loading.spec.js](test/e2e/loading.spec.js), in all 28 games,
 
 ## Several people in front of one camera
 
-A game is for one child unless a grown-up says otherwise. In a game that several can play at one screen, a row asks **How many are playing?**, from 1 to 4, and it always starts at 1: someone standing nearby in the picture, a parent or a therapist, is never taken for a player unless someone says so. The number isn't saved, so the next visit starts at one again. The row is on the chooser of a whole-body game and on the title card of a hand game ([core/group-choice.js](core/group-choice.js)). So far those games are **Swamp Splash**, where each stands and jumps (see [below](#swamp-splash)), **Hat Chase**, where they march together (see [below](#hat-chase)), **Mighty Lift**, where they lift one big weight between them (see [below](#several-lifting-in-front-of-one-camera-in-mighty-lift)), and **Balloon Pop**, where each has a hand. The others are still for one child in front of the camera, with friends each on their own computer.
+A game is for one child unless a grown-up says otherwise. In a game that several can play at one screen, a row asks **How many are playing?**, from 1 to 4, and it always starts at 1: someone standing nearby in the picture, a parent or a therapist, is never taken for a player unless someone says so. The number isn't saved, so the next visit starts at one again. The row is on the chooser of a whole-body game and on the title card of a hand game ([core/group-choice.js](core/group-choice.js)). So far those games are **Swamp Splash**, where each stands and jumps (see [below](#swamp-splash)), **Hat Chase**, where they march together (see [below](#hat-chase)), **Mighty Lift**, where they lift one big weight between them (see [below](#several-lifting-in-front-of-one-camera-in-mighty-lift)), and **Balloon Pop**, where each has a hand. In every game that can be played with friends, two can also play each other on one screen split in two: see [Two on one screen](#two-on-one-screen-with-the-screen-split).
 
 **In a whole-body game:**
 
@@ -269,6 +269,23 @@ A game is for one child unless a grown-up says otherwise. In a game that several
 - **Not tested with real people.** The photos are of one hand, shown several times over: no two real people have held their hands up to one camera with it.
 
 Tested in [test/unit/people.test.js](test/unit/people.test.js), [test/unit/hand-group.test.js](test/unit/hand-group.test.js), [test/e2e/swamp-splash/group.spec.js](test/e2e/swamp-splash/group.spec.js), [test/e2e/mighty-lift/group.spec.js](test/e2e/mighty-lift/group.spec.js) and [test/e2e/balloon-pop/group.spec.js](test/e2e/balloon-pop/group.spec.js).
+
+## Two on one screen, with the screen split
+
+Every game that can be played with friends on their own computers can also be played by two on one computer, with one camera. On the title card, under **Play with friends**, **2 players** under "or on this computer" opens [together.html](together.html), which shows the game twice, side by side.
+
+- **Each half is the whole game,** as a friend on their own computer has it: a seat ([core/seat.js](core/seat.js)). The two play each other through the game's own way of playing with friends, together or against each other in the games that have both, with the same waiting at the start, counting down together, and finish cards. Each has their own view: their own car, plane, ship or fighter, with the other's in it.
+- **The camera's picture is shared out** down the middle. Whoever is in the left half of the picture, as the players see themselves, is the player in the left half of the screen, and nothing else tells them apart, so each stays on their own side. Each seat's mirror shows its own half, and its tracker is only ever given that half ([core/camera.js](core/camera.js)).
+- **The room is in the page** ([core/local-room.js](core/local-room.js)), with the same rules as the server's ([server/race-room.js](server/race-room.js)). Nothing is sent anywhere, and it works with no internet.
+- **Each presses their own start button,** in their own half, and in a whole-body game chooses their own character. The seat on the left is the one whose choices count, as whoever makes a game with friends is: its level, how long the game is, and together or against each other.
+- **Settings:** the left seat's are the child's own. The right seat's player has settings of their own, which start as the child's and are kept apart from them, so that they can play with the other hand.
+- **Voices take turns:** only one seat speaks at a time, and a line that would talk over the other seat's isn't said. Each seat's other sounds play as usual.
+- **All games,** in either half, leaves with the whole page.
+- **A half of the screen is tall and narrow,** and the games were laid out for a wide one. The hand games fit as they were. Six whole-body games (Mighty Moves, Mighty Lift, Leap Trail, Moto Mountain, Rooftop Rope and Sky Wings) have camera views of their own for a picture that's taller than it is wide, so that the player's character is in sight on the chooser, in the warm-up and in play, and a few of their panels are smaller in a seat. A single player in a window that's taller than it is wide gets those views too. Flap, Little Chick! is left as it is, a band across the bottom of its half: showing it bigger would show less of what's coming.
+- **For two.** Each seat runs its own tracker. With two, on the computer this was built on and with the test camera, each tracker looked about 12 times a second, against 19 for the game on its own, and each half drew 58 pictures a second. With three it was 4 or 5 looks a second, and with four 3, which is too slow to play: so the screen is only split in two.
+- **Not tested with real people.** Photos of hands and footage of one filmed person, shown once in each half of the test camera, stood in for them. The mouth game was only tried with the drawn face and the stand-in for its tracker, which doesn't look at the picture at all, so its half of the picture is untested.
+
+Tested in [test/unit/same-screen.test.js](test/unit/same-screen.test.js), [test/e2e/together/split.spec.js](test/e2e/together/split.spec.js), which plays a race for two through to its finish cards, and [test/e2e/together/every-game.spec.js](test/e2e/together/every-game.spec.js), which opens each of the 22 games on a split screen.
 
 ## Choices made for these children
 

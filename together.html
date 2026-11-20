@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- This page only shows copies of a game from this site, side by side: nothing else can be put in it. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; frame-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Camera Games: together on one screen</title>
+  <meta name="description" content="Several play each other on one screen, with one camera: the screen is split, and each player has a part of it and of the camera's picture.">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9C%8B%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="core/base.css">
+  <link rel="stylesheet" href="core/together.css">
+  <script type="module" src="core/together.js"></script>
+</head>
+<body class="together">
+  <main id="seats" class="seats" aria-label="The players’ parts of the screen"></main>
+  <div id="no-game" class="no-game card" hidden>
+    <h1>That isn’t a game several can play on one screen</h1>
+    <a class="big-button" href="index.html">All games</a>
+  </div>
+</body>
+</html>

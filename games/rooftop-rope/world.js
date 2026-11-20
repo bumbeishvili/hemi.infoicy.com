@@ -622,17 +622,31 @@ export class World {
     const high = dropped && this.fallFrom ? this.fallFrom.y : this.walkerAt.y;
     const down = Math.max(0, high - here.y);
     let fov = 56;
+    // Taller than it is wide, as a seat on the split screen is: there's no room beside the panels, so the walker
+    // is in the middle, under them, seen from further away.
+    const narrow = camera.aspect < 1;
     if (this.view === 'play') {
       // Behind and above the walker, a little to one side, looking along the rope to the next rooftop.
       // Up on its wheel the walker is higher, and so is the camera, by most of that.
       const lift = walker.lift;
       at.set(here.x + 1.4, high + 2.7 + lift * 0.8, here.z + 6.2);
       look.set(here.x, high + 0.9 + lift * 0.6 - down * 0.8, here.z - 7 + Math.min(1, down / 4) * 5.5);
+    } else if (this.view === 'warmup' && narrow) {
+      // Below the child's own picture and the coach's film.
+      at.set(here.x, high + 2.2, here.z + 8);
+      look.set(here.x, high + 2.64, here.z - 5);
+      fov = 40;
     } else if (this.view === 'warmup') {
       // From behind, so the child's left is the walker's left, with the walker to the right of the picture.
       at.set(here.x - 0.85, high + 1.7, here.z + 7);
       look.set(here.x - 0.85, high + 1.0, here.z - 5);
       fov = 40;
+    } else if (this.view === 'finish' && narrow) {
+      // In a narrow picture there's no room beside the finish card: the walker is low in the middle, mostly
+      // below it.
+      at.set(here.x, high + 2.6, here.z + 8);
+      look.set(here.x, high + 4.0, here.z - 8);
+      fov = 50;
     } else if (this.view === 'finish') {
       // Still from behind, to one side, so the walker is to the left of the finish card.
       at.set(here.x + 3.2, high + 2.3, here.z + 6.4);
@@ -643,6 +657,12 @@ export class World {
       at.set(here.x + 2.4, high + 1.9, here.z + 6.2);
       look.set(here.x + 3.4, high + 1.0, here.z - 6);
       fov = 42;
+    } else if (narrow) {
+      // Choosing who walks, between the walker's name above and two rows of walkers below, and a little to the
+      // left, clear of the card on the right.
+      at.set(here.x + 0.6, high + 2.6, here.z + 13);
+      look.set(here.x + 0.5, high + 0.48, here.z - 4);
+      fov = 40;
     } else {
       // Choosing who walks: from behind and a little above, in the middle.
       at.set(here.x + 0.6, high + 2.0, here.z + 5.6);

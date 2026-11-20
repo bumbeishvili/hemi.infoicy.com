@@ -7,9 +7,15 @@
 // dimmed and blurred behind it: making a game, or typing a friend's 3-letter code, which joins as soon as it's
 // typed. Then the code, who's here, a name if they'd like one, and the game's own start button, moved in under
 // them. Back, or leaving, goes back to the usual title card.
+//
+// The box also has the way to play on this computer, two in front of one camera with the screen split between
+// them: a link to together.html, which shows a copy of the game for each. In one
+// of those copies, a seat (core/seat.js), the box is open from the start and already in the room the seats
+// share, and it says which player this is and where they stand in place of the code and the name.
 import { byId as characterWithId, ROSTER } from './body/roster.js';
-import { CODE_LENGTH, validCode } from '../server/race-room.js';
+import { CODE_LENGTH, mostIn, validCode } from '../server/race-room.js';
 import { codeInLink, FriendsRoom, linkFor, newCode } from './friends.js';
+import { MOST_SEATS, SEAT, placeOf, seatName } from './seat.js';
 
 const NAME_KEY = 'camera-games-race-name';
 const NOBODY = 'There’s no game with that code just now. Check it with your friend.';
@@ -51,7 +57,26 @@ const teamChoice = (words) => `
         <p id="friends-teams-whose" class="friends-teams-whose" hidden></p>
       </fieldset>`;
 
-const box = (words, teams) => `
+/** The game's own folder, as in /games/mighty-lift/index.html, which is what together.html is told to show. */
+const gameFolder = () => location.pathname.split('/').filter(Boolean).at(location.pathname.endsWith('/') ? -1 : -2) ?? '';
+
+// Playing on this computer, with the screen split: a link for each number of players there can be, which is two.
+const seatLinks = (game) => {
+  const page = new URL('../together.html', import.meta.url);
+  const debug = new URLSearchParams(location.search).has('debug') ? '&debug' : '';
+  const links = [];
+  for (let players = 2; players <= Math.min(MOST_SEATS, mostIn(game)); players += 1) {
+    links.push(`<a class="friends-button" href="${page.pathname}?game=${gameFolder()}&players=${players}${debug}">${players} players</a>`);
+  }
+  return `
+      <div id="friends-seats" class="friends-seats">
+        <p class="friends-or">or on this computer</p>
+        <div class="friends-seat-links">${links.join('')}</div>
+        <p class="friends-how">With one camera: the screen is split, and each player has a part of it, and of the camera’s picture.</p>
+      </div>`;
+};
+
+const box = (words, teams, seats) => `
   <button id="friends-toggle" class="friends-toggle" type="button" aria-expanded="false" aria-controls="friends-box">${words.toggle}</button>
   <div id="friends-box" class="friends-box" hidden>
     <h2 class="friends-title">${words.toggle}</h2>
@@ -60,10 +85,11 @@ const box = (words, teams) => `
       <p class="friends-or">or</p>
       <form id="friends-join" class="friends-join">
         <label class="friends-field">${words.codeLabel} <input id="friends-code" maxlength="${CODE_LENGTH}" autocomplete="off" spellcheck="false" autocapitalize="characters"></label>
-      </form>
+      </form>${seats}
       <button id="friends-back" class="friends-link" type="button">Back</button>
     </div>
     <div id="friends-in" class="friends-in" hidden>
+      <p id="seat-banner" class="seat-banner" hidden></p>
       <div class="friends-code-row">
         <p class="friends-code-line">${words.codeName} <strong id="friends-code-shown"></strong></p>
         <button id="friends-copy" class="friends-button" type="button">Copy the link</button>
@@ -128,7 +154,7 @@ export class FriendsPanel {
 
     const friends = document.createElement('div');
     friends.className = 'friends';
-    friends.innerHTML = box(words, teams);
+    friends.innerHTML = box(words, teams, SEAT ? '' : seatLinks(game));
     startAfter.after(friends);
     this.friendsBox = friends;
     // The game's own start button, which goes into the box while in a race, and back again after.
@@ -188,12 +214,33 @@ export class FriendsPanel {
       go?.();
     });
 
+    if (SEAT) {
+      this.takeSeat();
+      return;
+    }
     // A link from a friend goes straight in.
     const code = codeInLink(location.hash, linkKey);
     if (code) {
       this.openBox(true);
       this.join(code);
     }
+  }
+
+  /**
+   * One of several on one screen: straight into the room the seats share, as its player, by number. The first
+   * seat goes in first, so that it's the one whose choices count, as whoever makes a game with friends is.
+   */
+  takeSeat() {
+    const { index, code, host } = SEAT;
+    byId('friends-name').value = seatName(index);
+    const banner = byId('seat-banner');
+    banner.hidden = false;
+    banner.textContent = `${seatName(index)}, ${placeOf(index)}`;
+    byId('friends-how').textContent = 'Stand in your own part of the camera’s picture. Then each of you presses the button in your own part of the screen.';
+    document.querySelector('#screen-friends h2').textContent = 'Waiting for the others';
+    this.openBox(true);
+    if (index === 0) this.join(code);
+    else host.hosted.then(() => this.join(code));
   }
 
   get name() {
@@ -240,7 +287,8 @@ export class FriendsPanel {
     whose.hidden = !theirs;
     const host = room.members.find((member) => member.host);
     whose.textContent = theirs ? `${host?.name || 'Whoever made the game'} chose.` : '';
-    byId('friends-how').innerHTML = this.together && words.howTogether ? words.howTogether : words.how;
+    // A seat on a split screen has its own words there: see takeSeat.
+    if (!SEAT) byId('friends-how').innerHTML = this.together && words.howTogether ? words.howTogether : words.how;
     this.friendsBox.dataset.team = chosen;
   }
 
@@ -262,7 +310,8 @@ export class FriendsPanel {
 
   /** making is a new game, which gets another code if this one is in use. */
   join(code, { making = false } = {}) {
-    saveName(this.name);
+    // A seat's name is its player's number, which isn't the name to keep for playing with friends.
+    if (!SEAT) saveName(this.name);
     this.room.join(code, this.hello(), { making });
     history.replaceState(null, '', `#${this.linkKey}=${code}`);
   }

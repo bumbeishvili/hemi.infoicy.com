@@ -1,6 +1,7 @@
 // Opens the webcam and passes frames to a tracking worker, one at a time.
 // A frame is only sent once the previous result is back, so a slow computer drops
 // frames instead of falling further and further behind the child's real movements.
+import { SEAT, sliceOf } from './seat.js';
 
 export class CameraProblem extends Error {
   constructor(kind, cause) {
@@ -53,6 +54,9 @@ export class TrackingCamera {
     this.lastResultAt = 0;
     this.delegate = null;
     this.people = 1; // How many people the tracker is to look for: see setPeople.
+    // Which part of the camera's own picture is this camera's, as shares of its width: all of it, or, for one of
+    // several playing on one screen, their own strip of it. See core/seat.js.
+    this.cut = SEAT ? sliceOf(SEAT.index, SEAT.count) : { from: 0, to: 1 };
     // How far the camera and its tracker have got, each from 0 to 1, for the bar on the loading card
     // (core/loading.js), which hears of each change through onProgress.
     this.progress = { camera: 0, tracker: 0 };
@@ -66,7 +70,15 @@ export class TrackingCamera {
   }
 
   get aspect() {
-    return this.video.videoWidth / this.video.videoHeight || 16 / 9;
+    const { width, height } = this.region;
+    return width / height || 16 / 9;
+  }
+
+  /** This camera's part of the video, in the video's own pixels: { left, width, height }. */
+  get region() {
+    const { videoWidth, videoHeight } = this.video;
+    const left = Math.round(videoWidth * this.cut.from);
+    return { left, width: Math.round(videoWidth * this.cut.to) - left, height: videoHeight };
   }
 
   /**
@@ -121,6 +133,9 @@ export class TrackingCamera {
       throw explainCameraError(error);
     }
     this.video.srcObject = this.stream;
+    // One of several playing on one screen sees their own strip of the picture, which fills their mirror: the
+    // video is as tall as its frame and that many times as wide, and slides across to their part.
+    if (SEAT) this.video.style.objectPosition = `${(this.cut.from / (1 - (this.cut.to - this.cut.from))) * 100}% 50%`;
     await this.video.play();
     this.reached('camera', 1);
   }
@@ -168,10 +183,11 @@ export class TrackingCamera {
     const { video } = this;
     if (!this.busy && video.readyState >= 2 && video.videoWidth > 0) {
       this.busy = true;
-      const width = Math.min(this.trackingWidth, video.videoWidth);
-      const height = Math.round((width * video.videoHeight) / video.videoWidth);
+      const region = this.region;
+      const width = Math.min(this.trackingWidth, region.width);
+      const height = Math.round((width * region.height) / region.width);
       try {
-        const bitmap = await createImageBitmap(video, {
+        const bitmap = await createImageBitmap(video, region.left, 0, region.width, region.height, {
           resizeWidth: width,
           resizeHeight: height,
           resizeQuality: 'medium',

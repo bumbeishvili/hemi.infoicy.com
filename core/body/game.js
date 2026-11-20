@@ -363,10 +363,11 @@ export class BodyGame {
     const box = boxes.find(({ side }) => side === this.nextHand) ?? boxes[0];
     this.nextHand = this.nextHand === 'left' ? 'right' : 'left';
     if (!box) return [];
-    const { videoWidth: width, videoHeight: height } = video;
+    // The camera's own part of the video, which is all of it unless this is one of several on one screen.
+    const { left, width, height } = this.camera.region;
     const bitmap = await createImageBitmap(
       video,
-      Math.round(box.x * width),
+      left + Math.round(box.x * width),
       Math.round(box.y * height),
       Math.max(1, Math.round(box.width * width)),
       Math.max(1, Math.round(box.height * height)),

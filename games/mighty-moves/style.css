@@ -328,3 +328,17 @@ body[data-place='snow'] .corner-name { text-shadow: 0 2px 0 rgba(18, 48, 77, 0.8
   box-shadow: inset 0 0 0 0.09em #d68f00, 0 1px 2px rgba(18, 48, 77, 0.35);
 }
 .finish-prize { white-space: nowrap; }
+
+/* ---------- in a seat of the split screen ---------- */
+/* Half a window is tall and narrow: the cards to choose from are shorter, so the fighter shows between them, and
+   the cards of moves done at the end are smaller, so the buttons under them fit on the screen. */
+html[data-seat] .fighter-card img {
+  width: auto;
+  height: 10vh;
+  max-height: none;
+}
+
+html[data-seat] .finish-tally { gap: 6px; }
+html[data-seat] .finish-tally .tally-card { width: 72px; padding: 2px 2px 5px; font-size: 12px; }
+html[data-seat] .finish-tally .tally-card svg { width: 32px; height: 32px; }
+html[data-seat] .finish-tally .tally-card strong { font-size: 20px; }

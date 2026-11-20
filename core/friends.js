@@ -8,6 +8,7 @@
 // as where each car or plane is, the name typed and who drives or flies. The camera picture never leaves the
 // computer, and nothing is sent at all unless a grown-up makes or joins one. How it looks is in friends-ui.js.
 import { makeCode, validCode } from '../server/race-room.js';
+import { SEAT, SeatSocket } from './seat.js';
 
 // The server: the one on Cloudflare, or tools/race-server.mjs when the games are on this computer, on the port
 // after theirs: 8643 for the usual 8642.
@@ -29,9 +30,12 @@ const SHOW_BEHIND_MS = 120; // Friends are shown this far in the past, so there'
 const GUESS_AHEAD_MS = 500; // With nothing new for a while, they carry on this far the way they were going.
 const KEEP_SAMPLES = 30;
 
+// Several seats on one screen share what a page keeps, so each has an id of its own: see core/seat.js.
+const idKey = (game, code) => `${ID_KEY}:${game}:${code}${SEAT ? `:${SEAT.index}` : ''}`;
+
 function savedId(game, code) {
   try {
-    return sessionStorage.getItem(`${ID_KEY}:${game}:${code}`);
+    return sessionStorage.getItem(idKey(game, code));
   } catch {
     return null;
   }
@@ -39,8 +43,8 @@ function savedId(game, code) {
 
 function saveId(game, code, id) {
   try {
-    if (id) sessionStorage.setItem(`${ID_KEY}:${game}:${code}`, id);
-    else sessionStorage.removeItem(`${ID_KEY}:${game}:${code}`);
+    if (id) sessionStorage.setItem(idKey(game, code), id);
+    else sessionStorage.removeItem(idKey(game, code));
   } catch {
     // Private windows can refuse. Coming back after a reload is then as someone new.
   }
@@ -204,7 +208,8 @@ export class FriendsRoom {
     try {
       // Coming back after losing the connection, with the same id, so friends still see the same car.
       const asking = this.you ? `?was=${encodeURIComponent(this.you)}` : this.making ? '?make=1' : '';
-      socket = new WebSocket(`${RACE_SERVER}/room/${this.game ? `${this.game}/` : ''}${this.code}${asking}`);
+      // One of several on one screen is in a room kept in the page, not on the server: see core/seat.js.
+      socket = new (SEAT ? SeatSocket : WebSocket)(`${RACE_SERVER}/room/${this.game ? `${this.game}/` : ''}${this.code}${asking}`);
     } catch {
       this.reconnect();
       return;
