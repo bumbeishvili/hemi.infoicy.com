@@ -1198,11 +1198,6 @@ export class Cage {
     this.friend.setExpression('happy');
   }
 
-  /** Where the friend's head is, in the world. */
-  headPoint(target) {
-    return this.friend.head.localToWorld(target.set(0, 0.5, 0));
-  }
-
   update(dt) {
     this.time += dt;
     const { pose, friend, reducedMotion } = this;

@@ -3,7 +3,7 @@
 // tracker.
 import { openGame, shot } from '../helpers.js';
 import {
-  choose, expect, expectSoon, flagPixels, GAME, GENTLE, gloveFrom, isPaper, leadHands, NO_HAND, ONE_HAND, OPEN, record, recorded,
+  choose, expect, expectSoon, flagPixels, GAME, GENTLE, gloveFrom, isPaper, leadHands, NO_HAND, ONE_HAND, record, recorded,
   screenPixels, show, skipTo, startPlaying, state, stopHands, test, waitForHand, waitForScreen, waitForState,
 } from './helpers.js';
 

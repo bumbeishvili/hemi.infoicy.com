@@ -6,7 +6,7 @@
 // Nothing flashes: a piece is a small part of the screen, pictures fade in and out rather than cutting, a piece going
 // in is a few small stars, and whatever comes and goes fades or grows.
 import { INK } from '../../core/glove.js';
-import { EXTRAS, FRAME_EDGE, LABELS, TABLE } from './puzzle.js';
+import { EXTRAS, LABELS, TABLE } from './puzzle.js';
 import { drawPicture, PICTURE } from './pictures.js';
 
 const LABEL_SECONDS = 2.6;

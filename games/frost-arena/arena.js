@@ -584,11 +584,6 @@ export class Match {
     return Math.max(0, this.goal - this.score[0]);
   }
 
-  /** Those still in, on a team. */
-  inPlay(team) {
-    return this.troopers.filter((each) => each.team === team && each.state === 'in');
-  }
-
   /**
    * Who someone is up against: everyone still in who isn't on their team, apart from one this child has just
    * tagged out, before their own game has said so, and one whose hands are out of the picture.

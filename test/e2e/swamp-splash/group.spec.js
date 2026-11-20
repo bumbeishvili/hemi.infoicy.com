@@ -2,7 +2,7 @@
 // character of their own, side by side, each one's jumps are followed on their own, and all the mud lands on the
 // one window. In place of the webcam there is footage of real people side by side, read by the real tracker:
 // see showPeople in test/e2e/fake-camera.js.
-import { expect, GAME, openSwamp, test, waitForScreen } from './helpers.js';
+import { expect, openSwamp, test, waitForScreen } from './helpers.js';
 
 // A person standing still, and one doing three burpees over and over, each ending in a real jump. Each clip is
 // cut around where its person stands in it.

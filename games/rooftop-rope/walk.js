@@ -270,10 +270,6 @@ export const WOBBLES = { soon: 5, later: 9, never: Infinity };
 // go back up: the crossing is over, and is to be tried again. With any number it always goes back up, which is
 // how the game was to begin with, when nothing in it could be lost.
 export const DROPS = { three: 3, five: 5, any: Infinity };
-// Which foot lifts: taking turns, a rope each; always standing on the leg being worked on; always lifting
-// that leg's foot; or whichever the child likes.
-export const WHICH = ['turns', 'stand', 'lift', 'any'];
-
 export const NEW_THINGS = {
   2: [{ id: 'star', mark: '⭐', name: 'Gold stars', nameKa: 'ოქროს ვარსკვლავები' }],
   3: [{ id: 'balloon', mark: '🎈', name: 'Balloons: lift higher to pop them', nameKa: 'ბუშტები: ფეხი უფრო მაღლა ასწიე' }],

@@ -47,7 +47,6 @@ export const UPRIGHT = {
 // How far the hand can be tipped towards the camera and still count as held up, in degrees, as a grown-up chooses:
 // a little asks only that the wrist isn't right down, and right up asks for a hand held flat to the camera.
 export const TIP_LIMITS = { little: 50, more: 40, upright: 30 };
-export const TIP_NAMES = Object.keys(TIP_LIMITS);
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 

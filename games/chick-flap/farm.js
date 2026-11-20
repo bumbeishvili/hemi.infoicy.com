@@ -21,7 +21,6 @@ import { clampLevel, ramp } from '../../core/levels.js';
 
 // How long the way home is, as a grown-up chooses: how many things are in the way.
 export const WAYS = { short: 8, medium: 12, long: 16 };
-export const WAY_NAMES = Object.keys(WAYS);
 // What the fox does, as a grown-up chooses. He can catch the chick, which is how the game comes. Or he never
 // can: a flap that was too early or too small has the chick tumble over the thing and him come nearer, with the
 // mother hen there before he gets it. Or the chick waits there for another flap, and he keeps his distance.

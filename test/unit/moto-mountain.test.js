@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { BEND_COUNTS, BIKE, HELP, LEAN, Leaner, NEW_THINGS, PACES, ROAD, Ride, STEER, WARM, Warmup, layOut, leanOf, newAt, rideLevel, rollFor, thingsUpTo, turnOf } from '../../games/moto-mountain/ride.js';
 import { FULL_CURVE, curveAt, nearestApproach, nearestTo, placeAt, shapeOf } from '../../games/moto-mountain/road.js';
-import { RAD, STEP, angleFor, bodyLeaning, measuredLeaner, planOf, ride, seeded } from './moto-rider.js';
+import { RAD, STEP, bodyLeaning, measuredLeaner, planOf, ride, seeded } from './moto-rider.js';
 
 const near = (actual, expected, within, message) => assert.ok(Math.abs(actual - expected) <= within, `${message ?? ''} expected about ${expected}, got ${actual}`);
 const types = (events) => events.map(({ type }) => type);

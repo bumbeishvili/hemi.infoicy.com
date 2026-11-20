@@ -1,7 +1,7 @@
 // Leap Trail's levels: what level 10 brings, that it can still be finished and is still safe to look
 // at, and that finishing a run moves on a level. Nobody can lose a run, so every finish is a win.
 import { expect, shot, test, waitForScreen } from '../helpers.js';
-import { bodyDoes, nextObstacleIs, openTrail, reachRun, runState, standAcross, standInView } from './helpers.js';
+import { bodyDoes, nextObstacleIs, reachRun, runState, standAcross, standInView } from './helpers.js';
 
 const TOP = { levels: { 'leap-trail': 10 } };
 

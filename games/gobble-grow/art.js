@@ -361,8 +361,6 @@ const BODIES = {
   },
 };
 
-export const CREATURES = Object.keys(BODIES);
-
 /**
  * Draws one of the ten creatures. mouth is how open its mouth is, from 0 to 1, facing 1 for looking right and -1
  * for left, and happy has its eyes shut and smiling.
@@ -773,8 +771,6 @@ export function drawFood(ctx, id, x, y, r, { time = 0, turn = 0, alpha = 1 } = {
   ctx.restore();
 }
 
-export const FOOD_NAMES = Object.keys(FOODS);
-
 /* ---------- everyday things, for how big the child has got ---------- */
 
 const THINGS = {
@@ -896,8 +892,6 @@ export function drawThing(ctx, id, x, y, r) {
   THINGS[id](ctx);
   ctx.restore();
 }
-
-export const THING_NAMES = Object.keys(THINGS);
 
 /* ---------- the ten worlds, behind everything ---------- */
 

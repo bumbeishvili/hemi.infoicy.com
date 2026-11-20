@@ -43,7 +43,6 @@ export const TURN = {
 // the hand shows. On photos a palm squeezed to 80% of its width read as 35°, to 60% as 50°, and the back of the hand
 // at 45% of its width as 120°.
 export const TURN_TARGETS = { little: 35, more: 50, over: 110 };
-export const TURN_NAMES = Object.keys(TURN_TARGETS);
 // A little water comes from this share of the turn that's wanted, and all of it there. Below it, none at all, so a
 // hand turned back stops it.
 const TRICKLE_FROM = 0.85;

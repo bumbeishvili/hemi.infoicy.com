@@ -8,7 +8,7 @@ import { Rally } from '../../games/bounce-back/rally.js';
 import {
   advanceBall, AIM, aimAt, aimAtLevel, APEX, ballFor, BALLS, bounceNewAt, COURT, courtLevel, crossingSeconds, EXTRAS,
   gravityFor, heightAtNet, HELP, keepOnSide, LABELS, missAfterRange, modeWord, NET_CLEARANCE, NEWS, newsIsOn, OFF_THE_NET,
-  PACES, RACKET, readMode, shotTo, solveShot, spreadFor, teamHits, touches,
+  PACES, RACKET, readMode, shotTo, spreadFor, teamHits, touches,
 } from '../../games/bounce-back/rules.js';
 
 const LEVELS = Array.from({ length: 10 }, (_, index) => index + 1);

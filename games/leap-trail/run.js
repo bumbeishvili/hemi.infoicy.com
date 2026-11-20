@@ -189,7 +189,6 @@ export function paceAt(pace, level = 1, { gentle = false } = {}) {
 const FIRST_OBSTACLE_SECONDS = 3;
 const AFTER_LAST_SECONDS = 1.5;
 const STOP_GAP = 1.5; // Metres short of an obstacle where the fighter stops to wait.
-const BRAKE_RATE = 1.1; // Slowing down, as a share of what's left to go, each tenth of a second.
 const SPEED_CHANGE = 2.2;
 const SHORTEST_HOP = 0.62; // Seconds, for a move that isn't clearing anything.
 const LOWEST_JUMP = 1.4;

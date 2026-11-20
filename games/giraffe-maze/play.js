@@ -546,13 +546,6 @@ export class MazeRun {
     return point;
   }
 
-  /** How many steps the character is from the friend still to find, along the paths, or -1. */
-  stepsToFriend() {
-    const lost = this.layout.lost.find((each) => !each.found);
-    if (!lost) return -1;
-    return distances(this.layout.maze, this.walker.a, (a, d) => this.layout.maze.isOpen(a, d))[lost.cell];
-  }
-
   /** Everything still to pick up in this maze. */
   get itemsLeft() {
     return this.layout.items.filter((item) => !item.gone && !item.opened);

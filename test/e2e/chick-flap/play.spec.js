@@ -6,7 +6,6 @@ import { shot } from '../helpers.js';
 import { DOWN, expect, expectSoon, flapHands, GAME, hands, labelShown, openGame, show, startPlaying, state, stopHands, test, untilNear, UP, waitForScreen } from './helpers.js';
 
 const INTRO = 'Flap home, little chick! The fox is behind you!';
-const FLAP_HINT = 'Lift your hands to flap!';
 const BOTH_HINT = 'Flap both wings together!';
 const RESTING = 'Resting is OK. Flap when you’re ready.';
 const FINISH = 'Home safe! What a flyer!';
