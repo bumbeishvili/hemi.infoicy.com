@@ -1073,8 +1073,7 @@ class MightyMoves extends BodyGame {
     // A fight that's won moves on a level, and one that's lost stays on it. Fighting a friend is on the host's
     // level, so it doesn't move anyone's own level on.
     if (this.fight.friend || this.fight.ally) {
-      this.levels.last = null;
-      this.levelUi.refresh();
+      this.finishFriendsLevel(won, this.friends.current?.level);
     } else {
       this.finishLevel(won);
       // Lost to the computer: the same level again, and the big button says so.

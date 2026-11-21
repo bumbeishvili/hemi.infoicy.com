@@ -725,8 +725,7 @@ class MotoMountain extends BodyGame {
     // move anyone's own level on.
     const passed = !raced || stats.place <= PODIUM;
     if (this.friends.current) {
-      this.levels.last = null;
-      this.levelUi.refresh();
+      this.finishFriendsLevel(passed, this.friends.current.level);
     } else {
       this.finishLevel(passed);
     }

@@ -10,6 +10,7 @@
 //   settingChanged(change)        one of the settings has changed
 //
 // A game's screens are its own, apart from welcome, choose, loading, problem and bodycheck.
+import { SEAT } from '../seat.js';
 import { CameraProblem, TrackingCamera } from '../camera.js';
 import { groupChoice as groupChoiceFor } from '../group-choice.js';
 import { Confetti, PromptBox } from '../hud.js';
@@ -204,6 +205,18 @@ export class BodyGame {
     this.levelUnderway = true;
     this.levelUi.refresh();
     return this.level;
+  }
+
+  /**
+   * A game with friends calls this at its finish, in place of finishLevel: it's on the host's level, played, and
+   * moves nobody's own level on, unless the two are on one split screen, where it moves on as it does for one.
+   */
+  finishFriendsLevel(won, played) {
+    this.levelUnderway = false;
+    if (SEAT && played) return this.levelUi.showResult(this.levels.completeTogether(won, played));
+    this.levels.last = null;
+    this.levelUi.refresh();
+    return null;
   }
 
   /** A game calls this at its finish. A level that's won moves on to the next one. */

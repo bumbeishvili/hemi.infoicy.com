@@ -717,8 +717,7 @@ class RooftopRope extends BodyGame {
     // A crossing that got to the last rooftop moves on a level, and one that ended in the net is to be tried
     // again. With friends it's the host's level, so it doesn't move anyone's own level on.
     if (this.friends.current) {
-      this.levels.last = null;
-      this.levelUi.refresh();
+      this.finishFriendsLevel(!lost, this.friends.current.level);
     } else {
       this.finishLevel(!lost);
     }

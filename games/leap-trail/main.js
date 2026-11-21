@@ -1119,8 +1119,7 @@ class LeapTrail extends BodyGame {
     // with friends is on the host's level, so it doesn't move anyone's own level on.
     const { lost } = this.run;
     if (this.friends.current) {
-      this.levels.last = null;
-      this.levelUi.refresh();
+      this.finishFriendsLevel(!lost, this.friends.current.level);
     } else {
       this.finishLevel(!lost);
     }

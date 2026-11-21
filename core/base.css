@@ -1593,6 +1593,10 @@ body[data-screen='waiting'] #screen-friends { display: grid; }
 body[data-friends-race][data-screen] .level-now,
 body[data-friends-race][data-screen] .level-new-now,
 body[data-friends-race][data-screen] .level-done { display: none; }
+/* Except for two on one split screen, where the level moves on as it does for one: see core/seat.js. */
+html[data-seat] body[data-friends-race][data-screen='countdown'] .level-now,
+html[data-seat] body[data-friends-race][data-screen='countdown'] .level-new-now { display: block; }
+html[data-seat] body[data-friends-race][data-screen] .level-done { display: grid; }
 
 /* ---------- how many are playing in front of this camera, on the card of a game several can play ---------- */
 .group-choice {

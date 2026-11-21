@@ -30,6 +30,7 @@
 //
 // A prompt from a game can say it asks for the open move, as asks: 'open'. When a grown-up has chosen a hand shape
 // for that move (see core/shapes.js), it's asked for in that shape's words instead.
+import { SEAT } from './seat.js';
 import { CameraProblem, TrackingCamera } from './camera.js';
 import { groupChoice, showGroupChoice, watchGroupChoice } from './group-choice.js';
 import { MOST_PLAYERS } from './hand-group.js';
@@ -532,7 +533,12 @@ export class GameSession {
     this.hud.prompt.clear();
     this.hud.setCount('');
     this.hud.showSummary(this.stats, this.monitor.side, summary);
-    if (summary.countsForLevel === false) {
+    // Two on one split screen play each other as friends do, but on one computer, where the level moves on as it
+    // does for one child: see completeTogether in core/levels.js.
+    const together = SEAT ? this.game.friends?.current : null;
+    if (together && summary.countsForLevel === false) {
+      this.levelUi.showResult(this.levels.completeTogether(summary.won !== false, together.level));
+    } else if (summary.countsForLevel === false) {
       this.levels.last = null;
       this.levelUi.refresh();
     } else {

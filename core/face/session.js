@@ -28,6 +28,7 @@
 //
 // The tests can't show the tracker a real face, as there are no photos of faces in this folder. So, only with
 // ?debug in the address, a stand-in for the tracker can be given as window.__faceTracker: see test/e2e/fake-face.js.
+import { SEAT } from '../seat.js';
 import { CameraProblem, TrackingCamera } from '../camera.js';
 import { Levels, mountLevels } from '../levels.js';
 import { openingBar, watchLoading } from '../loading.js';
@@ -389,7 +390,12 @@ export class FaceSession {
     // A game that was lost isn't cheered, as in the hand games: no fanfare, no clapping and no confetti.
     this.sound.finish(summary.line ?? this.finishLine, { lost: summary.won === false });
     this.hud.showSummary(this.stats, summary);
-    if (summary.countsForLevel === false) {
+    // Two on one split screen play each other as friends do, but on one computer, where the level moves on as it
+    // does for one child: see completeTogether in core/levels.js.
+    const together = SEAT ? this.game.friends?.current : null;
+    if (together && summary.countsForLevel === false) {
+      this.levelUi.showResult(this.levels.completeTogether(summary.won !== false, together.level));
+    } else if (summary.countsForLevel === false) {
       this.levels.last = null;
       this.levelUi.refresh();
     } else {

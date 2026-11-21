@@ -61,6 +61,16 @@ export class Levels {
   }
 
   /**
+   * At the end of a game with friends, for one of two on one split screen (core/seat.js): played is the level
+   * the left seat's player chose, which both played, and from then on it's this seat's level too, moving on as
+   * it does for one child. Elsewhere, a game with friends moves nobody's own level on.
+   */
+  completeTogether(won, played) {
+    if (this.current !== played) this.choose(played);
+    return this.complete(won, played);
+  }
+
+  /**
    * At the end of a game. played is the level that was played. A level that's won moves on to the next
    * one, up to the last. If a grown-up chose another level while it was being played, that's the next one.
    */

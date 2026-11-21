@@ -962,9 +962,7 @@ class MightyLift extends BodyGame {
     // several play at one camera.
     const { lost } = lifting;
     if (this.friends.current || this.sideBySide) {
-      this.levelUnderway = false;
-      this.levels.last = null;
-      this.levelUi.refresh();
+      this.finishFriendsLevel(!lost, this.friends.current?.level);
     } else {
       this.finishLevel(!lost);
     }

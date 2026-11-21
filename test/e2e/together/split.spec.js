@@ -140,6 +140,27 @@ test('a race for two on one screen: they count down together, each drives their 
   await expect(right.locator('.friends-results li .friends-who')).toHaveText(['Player 1', 'You']);
   await page.screenshot({ path: 'test-results/screens/together-finish.png' });
 
+  // The level moves on for both, as it does for one child, and the next race is on it.
+  for (const seat of [left, right]) {
+    await expect(seat.locator('#level-done-text')).toBeVisible();
+    await expect(seat.locator('#level-done-text')).toHaveText('Level 1 done! Next: level 2');
+    await expect(seat.locator('#play-again')).toHaveText('Next level');
+  }
+  for (const seat of [left, right]) await seat.locator('#play-again').click();
+  await waitForScreen(left, 'playing');
+  await waitForScreen(right, 'playing');
+  for (const seat of [left, right]) expect(await seat.evaluate(() => window.__game.race.level)).toBe(2);
+  // Both finish again, and the cards say level 2 is done.
+  for (const seat of [left, right]) {
+    await seat.evaluate(() => {
+      const { race } = window.__game;
+      race.distance = race.raceDistance - 8;
+    });
+  }
+  await waitForScreen(left, 'finish');
+  await waitForScreen(right, 'finish');
+  for (const seat of [left, right]) await expect(seat.locator('#level-done-text')).toHaveText('Level 2 done! Next: level 3');
+
   // All games, in one seat, takes the whole page there, not just that seat.
   await left.locator('#screen-finish a.all-games, #screen-finish a[href$="index.html"]').first().click();
   await expect(page).toHaveURL(/\/index\.html$/);
@@ -167,6 +188,25 @@ test('the second player\'s settings are their own: the hand they play with can b
   await page.goto('/games/high-five-racers/index.html?debug');
   await expect(page.locator('#start')).toBeVisible();
   expect(await page.evaluate(() => window.__game.monitor.side)).toBe('right');
+});
+
+test('in a whole-body game on a split screen too, a game played to its end moves the level on for both', async ({ page }) => {
+  test.setTimeout(300_000);
+  const seats = await openTogether(page, 'mighty-lift', 2, { liftClock: 'no' });
+  // A filmed person in each half of the camera's picture, arms down.
+  for (const seat of seats) await seat.evaluate(() => window.__camera.showPeople([{ name: 'lifts', from: 0.6, playing: false }, { name: 'lifts', from: 0.6, playing: false }]));
+  for (const seat of seats) await seat.locator('#start').click();
+  for (const seat of seats) await waitForScreen(seat, 'choose');
+  for (const seat of seats) await seat.locator('#lift-start').click();
+  for (const seat of seats) await waitForScreen(seat, 'warmup', 90_000);
+  for (const seat of seats) await seat.locator('#warm-skip').click();
+  for (const seat of seats) await waitForScreen(seat, 'playing', 90_000);
+  for (const seat of seats) await seat.evaluate(() => window.__game.lifting.finish());
+  for (const seat of seats) {
+    await waitForScreen(seat, 'finish');
+    await expect(seat.locator('#level-done-text')).toHaveText('Level 1 done! Next: level 2');
+    expect(await seat.evaluate(() => window.__game.game.levels.current)).toBe(2);
+  }
 });
 
 test('only one seat speaks at a time, so their voices never talk over each other', async ({ page }) => {

@@ -893,8 +893,7 @@ class SkyWings extends BodyGame {
     // Dropping them all moves on a level, and being shot down, on the harder settings, doesn't. Flying with
     // friends is on the host's level, so it doesn't move anyone's own level on.
     if (this.friends.current) {
-      this.levels.last = null;
-      this.levelUi.refresh();
+      this.finishFriendsLevel(won, this.friends.current.level);
     } else {
       this.finishLevel(won);
     }
