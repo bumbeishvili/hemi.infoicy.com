@@ -1217,6 +1217,24 @@ test('flying home together, a chick too far ahead of the last one waits for it, 
   assert.equal(race.chick.flockWait, false);
 });
 
+test('racing on one screen in one picture, the two are kept together as a flock is, so both are on the screen, but nobody waits at the door', () => {
+  const farm = new Farm({ level: 1, things: WAYS.short, kept: true, friends: true, random: seededRandom(6) });
+  const friend = { x: 0, home: false };
+  farm.begin();
+  for (let t = 0; t < 8; t += DT) farm.update(DT, { flock: [friend] });
+  assert.ok(Math.abs(farm.chick.x - FLOCK.leash) < 0.05, `${farm.chick.x}`);
+  assert.equal(farm.chick.flockWait, true);
+  // A leash ahead or behind, the other chick is on the screen, which shows more ahead than behind.
+  assert.ok(FLOCK.leash < AHEAD);
+  // At the hen house, the first home is home, whoever else is still on the way.
+  const home = new Farm({ level: 1, things: WAYS.short, kept: true, friends: true, random: seededRandom(6) });
+  home.begin();
+  home.chick.x = home.end - HOME.door - 0.2;
+  const behind = { x: home.chick.x - 1, home: false };
+  for (let t = 0; t < 6 && home.chick.state !== 'home'; t += DT) home.update(DT, { flock: [behind] });
+  assert.equal(home.chick.state, 'home');
+});
+
 test('together, a chick the flock has waited ten seconds for is carried up to it by the mother hen', () => {
   const { farm, thing, heard } = farmWith('fence', { together: true, friends: true });
   const ahead = { x: thing.x1 + 12, home: false };

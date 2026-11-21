@@ -66,7 +66,7 @@ test('friends race out of the host\'s mazes: each sees the others, each has all 
   await openGame(page, { mazeReach: 'lots', mazes: 2, mazeSize: 'medium', levels: { [GAME]: 6 } }, GAME);
   const code = await makeGame(page, 'Ana');
   expect(page.url()).toContain(`#maze=${code}`);
-  await expect(page.locator('.friends-how')).toContainText('the first one out of the last maze wins');
+  await expect(page.locator('#friends-how')).toContainText('the first one out of the last maze wins');
 
   // The friend has their own size, number of mazes and character, but races in the host's.
   const ben = await secondPlayer(browser);

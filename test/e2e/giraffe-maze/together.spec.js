@@ -142,7 +142,7 @@ test('together, as the game comes: whoever finds the way out takes the other on 
   const code = await makeGame(page, 'Ana');
   // Whoever made the game chooses, and it comes as together.
   await expect(page.locator('input[name="friends-team"][value="together"]')).toBeChecked();
-  await expect(page.locator('.friends-how')).toContainText('Look for the way out together');
+  await expect(page.locator('#friends-how')).toContainText('Look for the way out together');
   // Ben's own choice is a race, but it's Ana's game: he's shown hers, and can't change it.
   const ben = await secondPlayer(browser);
   await joinGame(ben.page, code, { mazeFriends: 'against', fighter: 'kit' }, 'Ben');
@@ -247,7 +247,7 @@ test('against each other, a grown-up\'s choice in the friends box, it\'s the rac
   await page.locator('input[name="friends-team"][value="against"]').check();
   // The friend is shown at once, and it's kept with Ana's settings, in the grown-ups' panel too.
   await expect(ben.page.locator('input[name="friends-team"][value="against"]')).toBeChecked();
-  await expect(ben.page.locator('.friends-how')).toContainText('the first one out of the last maze wins');
+  await expect(ben.page.locator('#friends-how')).toContainText('the first one out of the last maze wins');
   expect(await page.evaluate(() => window.__game.session.settings.mazeFriends)).toBe('against');
   await expect(page.locator('input[name="mazeFriends"][value="against"]')).toBeChecked();
   expect(await ben.page.evaluate(() => window.__game.session.settings.mazeFriends)).toBe('together');

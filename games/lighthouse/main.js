@@ -12,6 +12,7 @@ import { seededRandom, Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
 import { Glove } from '../../core/glove.js';
 import { GameSession } from '../../core/session.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { LampRoom } from './lamp-room.js';
@@ -546,7 +547,8 @@ class LighthouseGame {
     if (list.hidden) return;
     const portraits = this.session.portraits ?? {};
     const you = this.friends.room.you;
-    const mine = { id: you, name: 'You', who: (characterWithId(this.session.settings.fighter) ?? ROSTER[0]).id };
+    // Two in one picture on one screen both see this list, so the first player is Player 1 in it, not You.
+    const mine = { id: you, name: SEAT?.onePicture ? seatName(SEAT.index) : 'You', who: (characterWithId(this.session.settings.fighter) ?? ROSTER[0]).id };
     const theirs = current.friends.filter((friend) => !friend.gone).map((friend) => ({ id: friend.id, name: friend.spec.name, who: friend.spec.id }));
     const everyone = [mine, ...theirs].map((each) => ({ ...each, share: this.shareOf(this.tally.get(each.id) ?? 0) })).sort((a, b) => b.share - a.share);
     const key = everyone.map(({ id, share }) => `${id}:${share}`).join(',');

@@ -825,8 +825,9 @@ export class GardenView {
 
   /**
    * A watering can, held by its handle at (x, y) and tipped by tip, from 0 to 1, with the glove holding it on top.
-   * look is { body, ink, alpha } for a friend's, which is grey. sprinkler gives it a big green rose, with a ring for
-   * how long that has left.
+   * look is { body, ink, glove, alpha } for a friend's, which is grey and see-through, or for the second player's,
+   * playing in one picture on one screen, which is solid, in their own blue, and has a blue tag too. sprinkler gives
+   * it a big green rose, with a ring for how long that has left.
    */
   drawCan({ x, y, tip = 0, side = 1, glove = null, look = null, name = null, sprinkler = null }) {
     const { ctx, palmSize } = this;
@@ -882,7 +883,7 @@ export class GardenView {
     ctx.restore();
     if (glove?.visible) {
       ctx.save();
-      ctx.globalAlpha = alpha * (look ? 0.75 : 0.92);
+      ctx.globalAlpha = alpha * (look && !look.solid ? 0.75 : 0.92);
       glove.draw(ctx, palmSize * 0.85, look ? { fill: look.glove, ink: look.ink } : null);
       ctx.restore();
     }
@@ -896,7 +897,7 @@ export class GardenView {
       ctx.stroke();
       ctx.restore();
     }
-    if (name) this.drawTag(name, x, y - palmSize * 1.3, alpha);
+    if (name) this.drawTag(name, x, y - palmSize * 1.3, alpha, look?.tag);
   }
 
   /** A bee flying in to its flower from the side, staying a moment, and off up to the tally with the honey. */
@@ -976,18 +977,19 @@ export class GardenView {
     }
   }
 
-  drawTag(text, x, y, alpha = 1) {
+  /** A name over a can, white, or in a colour of its own with white writing. */
+  drawTag(text, x, y, alpha = 1, colour = null) {
     const { ctx, palmSize } = this;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.font = `600 ${Math.round(Math.max(13, palmSize * 0.36))}px Fredoka, sans-serif`;
     const wide = ctx.measureText(text).width + 18;
     const high = Math.max(22, palmSize * 0.56);
-    ctx.fillStyle = 'rgb(255 255 255 / 0.92)';
+    ctx.fillStyle = colour ?? 'rgb(255 255 255 / 0.92)';
     ctx.beginPath();
     ctx.roundRect(x - wide / 2, y - high, wide, high, high / 2);
     ctx.fill();
-    ctx.fillStyle = INK;
+    ctx.fillStyle = colour ? '#ffffff' : INK;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(text, x, y - high / 2 + 1);

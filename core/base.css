@@ -1598,6 +1598,43 @@ html[data-seat] body[data-friends-race][data-screen='countdown'] .level-now,
 html[data-seat] body[data-friends-race][data-screen='countdown'] .level-new-now { display: block; }
 html[data-seat] body[data-friends-race][data-screen] .level-done { display: grid; }
 
+/*
+ * Two playing in one picture, in the first player's game across the whole screen (see core/one-picture.js): that
+ * player's own things stay in their own half, as big as the second player's are in theirs and where they are, as
+ * in a mirror.
+ */
+html[data-picture='one'] :is(.camera-frame, .coach, .tally, .hands-bar, [data-own]) {
+  left: var(--own-left) !important;
+  top: var(--own-top) !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: var(--own-width) !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
+  transform: none !important;
+}
+
+/* A game's own things, marked data-own, are as tall as the other player's too. */
+html[data-picture='one'] [data-own] { height: var(--own-height) !important; }
+
+/* A row of things, as a mirror image too: what's at its end nearest the edge of the screen stays nearest it. */
+html[data-picture='one'] :is(.hands-bar, .tally) { flex-direction: row-reverse; }
+
+html[data-picture='one'] .prompt {
+  left: var(--own-middle) !important;
+  top: var(--own-top) !important;
+  right: auto !important;
+  bottom: auto !important;
+  max-width: calc(50vw - 32px);
+}
+
+/* What's sized by the screen's width inside them, by the width of their own half, which is half the screen's. */
+html[data-picture='one'] .prompt { font-size: clamp(22px, 1.65vw, 42px); }
+html[data-picture='one'] .coach-text { font-size: clamp(22px, 1.45vw, 42px); }
+html[data-picture='one'] .coach-effort { height: clamp(12px, 0.75vw, 20px); }
+html[data-picture='one'] .tally-item { width: clamp(38px, 2.1vw, 54px); height: clamp(38px, 2.1vw, 54px); }
+
 /* ---------- how many are playing in front of this camera, on the card of a game several can play ---------- */
 .group-choice {
   display: flex;

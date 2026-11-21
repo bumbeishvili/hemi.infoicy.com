@@ -825,9 +825,11 @@ export class World {
   /**
    * Friends' characters, each with a weight of their own, beside the child's. team has their ropes go to the same
    * ring. beside is for several lifting in front of one camera: the child's own lifter is the first of them, and
-   * they all stand left to right, as they do in front of it. Otherwise the child's lifter is where it always is.
+   * they all stand left to right, as they do in front of it. inOrder stands them so without that, for friends whose
+   * own games follow them: two on one screen in one picture (core/one-picture.js). Otherwise the child's lifter is
+   * where it always is.
    */
-  setMates(specs, { hands = ['right'], level = 1, team = false, beside = false } = {}) {
+  setMates(specs, { hands = ['right'], level = 1, team = false, beside = false, inOrder = beside } = {}) {
     for (const mate of this.mates) mate.dispose();
     this.mates = specs.map((spec) => {
       const mate = new Lifter(spec, this.scene);
@@ -839,7 +841,7 @@ export class World {
     });
     this.team = team && specs.length > 0;
     this.beside = beside && specs.length > 0;
-    const places = this.beside
+    const places = inOrder && specs.length > 0
       ? BESIDE[Math.min(4, specs.length + 1)]
       : [[...HOME, 1], ...specs.map((_, index) => [...MATE_SLOTS[index % MATE_SLOTS.length], MATE_SIZE])];
     [this.lifter, ...this.mates].forEach((lifter, index) => {

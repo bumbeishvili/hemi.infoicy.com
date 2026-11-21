@@ -236,7 +236,7 @@ export class FriendsPanel {
     const banner = byId('seat-banner');
     banner.hidden = false;
     banner.textContent = `${seatName(index)}, ${placeOf(index)}`;
-    byId('friends-how').textContent = 'Stand in your own part of the camera’s picture. Then each of you presses the button in your own part of the screen.';
+    byId('friends-how').textContent = `Stand in your own part of the camera’s picture. Then each of you presses the button in your own part of the screen.${SEAT.onePicture ? ' While you play, you’re both in one picture.' : ''}`;
     document.querySelector('#screen-friends h2').textContent = 'Waiting for the others';
     this.openBox(true);
     if (index === 0) this.join(code);

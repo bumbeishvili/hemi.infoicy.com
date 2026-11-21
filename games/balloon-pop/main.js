@@ -6,6 +6,7 @@ import { Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
 import { Glove } from '../../core/glove.js';
 import { GameSession } from '../../core/session.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { DID_IT_TOGETHER, Sound } from '../../core/sound.js';
 import { BalloonField } from './balloons.js';
 import { MathsDeck } from './maths.js';
@@ -364,7 +365,8 @@ class BalloonGame {
     list.hidden = !current || !this.timed;
     if (list.hidden) return;
     const portraits = this.session.portraits ?? {};
-    const mine = { id: this.friends.room.you, name: 'You', driver: this.session.settings.fighter, n: this.field.total };
+    // Two in one picture on one screen both see this list, so the first player is Player 1 in it, not You.
+    const mine = { id: this.friends.room.you, name: SEAT?.onePicture ? seatName(SEAT.index) : 'You', driver: this.session.settings.fighter, n: this.field.total };
     const theirs = current.friends.filter((friend) => !friend.gone).map((friend) => ({ id: friend.id, name: friend.spec.name, driver: friend.spec.id, n: this.scores.get(friend.id) ?? 0 }));
     // Against each other the most comes first. Together nobody is ahead: the child, then their friends.
     const everyone = this.team ? [mine, ...theirs] : [mine, ...theirs].sort((a, b) => b.n - a.n);
@@ -820,7 +822,7 @@ new GameSession({
         <ol id="pop-scores" class="pop-scores" hidden></ol>
       </div>
       <div id="maths-question" class="maths-question" aria-live="polite"></div>
-      <div class="pop-demo" aria-hidden="true">
+      <div class="pop-demo" data-own aria-hidden="true">
         <svg viewBox="0 0 220 220">
           <g class="demo-balloon">
             <path class="demo-string" d="M150 112q-10 22 2 44" />

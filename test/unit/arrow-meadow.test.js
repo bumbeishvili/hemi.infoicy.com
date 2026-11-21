@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   ANGLES, BOW, EXTRAS, FRIEND_ZONES, friendTarget, flightAt, GOALS, GRAVITY, gripAt, HELP, HELP_NAMES, inMill, LABELS, Meadow, meadowLevel,
-  meadowNewAt, MERCY, MIN_DRAW, NEWS, newsIsOn, PARTY_SECONDS, seeded, shotFor, SPEED, speedFor, STARS, teamSlots, WORLD,
+  meadowNewAt, MERCY, MIN_DRAW, NEWS, newsIsOn, PARTY_SECONDS, seeded, shotFor, SPEED, speedFor, STAND_APART, STARS, teamSlots, WORLD,
 } from '../../games/arrow-meadow/meadow.js';
 
 const FRAME = 1 / 60;
@@ -852,6 +852,42 @@ test('against each other, everyone has the same targets one after another, in a 
   // Another seed, other places.
   const other = lane('c', 32);
   assert.notDeepEqual([other.live[0].x, other.live[0].y], [order[0][2], order[0][3]]);
+});
+
+test('two on one screen in one picture, each archer shoots from where they stand, and against each other a friend\'s target shows too, for their arrows alone', () => {
+  const close = (actual, expected, within, message) => assert.ok(Math.abs(actual - expected) <= within, `${message ?? 'value'}: ${actual} is not ${expected}`);
+  // Ana is the first player, at the usual place, and Ben the second, a step in front of her, each one's targets as
+  // much further on as they stand.
+  const ana = makeMeadow({ goal: 6, me: 'a', race: { seed: 31 }, level: 1 });
+  const ben = makeMeadow({ goal: 6, me: 'b', race: { seed: 31 }, level: 1, stand: STAND_APART, ahead: STAND_APART });
+  run(ana, 2, () => ana.live.length);
+  run(ben, 2, () => ben.live.length);
+  close(ben.live[0].x - ana.live[0].x, STAND_APART, 1e-9, 'Ben\'s targets are a step further on');
+  close(ben.trace(0.3, 0.8).shot.x0 - ana.trace(0.3, 0.8).shot.x0, STAND_APART, 1e-9, 'and he shoots from a step further on');
+  close(shotFor(0.3, 0.8, 0, STAND_APART).x0, gripAt(0.3, STAND_APART).x, 1e-9);
+  // Ben's target shows in Ana's meadow, where his game has it, and it's never one Ana's aim is helped to.
+  ana.showLane('b', 0, STAND_APART);
+  run(ana, 1, () => ana.targets.some((target) => target.lane === 'b'));
+  const his = ana.targets.find((target) => target.lane === 'b');
+  close(his.x, ben.live[0].x, 1e-9);
+  assert.deepEqual(ana.live.map(({ lane }) => lane ?? null), [null]);
+  // An arrow of Ana's goes through it, as it isn't hers.
+  const aimAtHis = ben.solve(ben.live[0], 0.8);
+  assert.notEqual(aimAtHis, null);
+  const through = ana.trace(aimAtHis, 0.8, { stand: STAND_APART }).end;
+  assert.notEqual(through.target, his);
+  // One of Ben's, shown in Ana's meadow, stops in it, and his next comes once his game says he has hit it.
+  const ghost = ana.loose(aimAtHis, 0.8, { ghost: true, by: 'b', stand: STAND_APART, lane: 'b' });
+  run(ana, 4, () => ghost.state !== 'flying');
+  assert.equal(ghost.state, 'gone', 'it stopped in his target');
+  assert.equal(ana.stats.hits, 0);
+  ana.showLane('b', 1, STAND_APART);
+  assert.equal(his.state, 'hit');
+  run(ana, 3, () => ana.targets.some((target) => target.lane === 'b' && target.k === 1));
+  const next = ana.targets.find((target) => target.lane === 'b' && target.k === 1);
+  close(next.x, friendTarget(31, 1, 1, 1).x + STAND_APART, 1e-9);
+  // On their own, and with friends on their own computers, everyone stands where they always did.
+  assert.equal(makeMeadow({ goal: 6, race: { seed: 31 } }).stand, 0);
 });
 
 /* ---------- its words, and where it's listed ---------- */

@@ -7,6 +7,7 @@ import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
 import { Glove } from '../../core/glove.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { Court } from './court.js';
@@ -166,18 +167,31 @@ class BounceGame {
     this.opponent = them;
     this.court.myGlove = this.gloves[this.session.settings.hands];
     this.court.setPlayers({
-      [this.mine]: { spec: me, art: myArt, kind: 'child', name: '', mine: true },
+      // In one picture both players are on the screen, so each has their name over their racket.
+      [this.mine]: { spec: me, art: myArt, kind: 'child', name: this.onePicture ? seatName(SEAT.index) : '', mine: true },
       [other]: { spec: them, art: theirArt, kind: friend ? 'remote' : 'computer', name: friend ? them.name : them.name, mine: false },
     });
     this.updateFlip();
     this.showPlayers();
   }
 
-  /** The child's own half is on the side of the hand they play with. flip is 1 when side A is on the left. */
+  /**
+   * The child's own half is on the side of the hand they play with. flip is 1 when side A is on the left. Two in one
+   * picture each have the half on their own side of the screen, whatever hand they play with: the first player
+   * the left, and the second the right.
+   */
   updateFlip() {
-    const hand = this.session.settings.hands;
-    this.court.setFlip((this.mine === 'A') === (hand === 'left') ? 1 : -1);
-    document.body.dataset.side = hand;
+    const side = this.onePicture ? (SEAT.index === 0 ? 'left' : 'right') : this.session.settings.hands;
+    this.court.setFlip((this.mine === 'A') === (side === 'left') ? 1 : -1);
+    document.body.dataset.side = side;
+  }
+
+  /**
+   * Whether two are playing on one screen, in one picture: the first player's game across the whole screen, with
+   * the second in it as a friend. See core/one-picture.js.
+   */
+  get onePicture() {
+    return Boolean(SEAT?.onePicture) && this.mode !== 'solo';
   }
 
   /** The sides of the score board, as they are on the court. */
@@ -187,7 +201,7 @@ class BounceGame {
 
   showPlayers() {
     const portraits = this.session.portraits ?? {};
-    const sides = { [this.mine]: { name: 'You', id: this.myCharacter().id }, [otherSide(this.mine)]: { name: this.opponent.name, id: this.opponent.id } };
+    const sides = { [this.mine]: { name: this.onePicture ? seatName(SEAT.index) : 'You', id: this.myCharacter().id }, [otherSide(this.mine)]: { name: this.opponent.name, id: this.opponent.id } };
     const left = this.leftSide;
     for (const [element, side] of [['score-left', left], ['score-right', otherSide(left)]]) {
       const box = byId(element);
@@ -404,16 +418,23 @@ class BounceGame {
     if (this.gameOver() && this.session.screen === 'playing') this.session.finish();
   }
 
-  /** The glove follows the hand in play, on the child's own half of the court. */
+  /**
+   * The glove follows the hand in play, on the child's own half of the court. In one picture the player's part of
+   * the camera's picture is across their own half of the screen, so neither has to reach over to the other's side.
+   */
   followHand(dt, snapshot) {
     const { court } = this;
     const side = snapshot.side;
+    const left = court.at(signOf(this.mine), 0).x < court.cx;
+    const [from, across] = !this.onePicture ? [0, court.width] : left ? [0, court.cx] : [court.cx, court.width - court.cx];
     for (const [hand, glove] of Object.entries(this.gloves)) {
       if (hand !== side) {
         glove.hide();
         continue;
       }
-      glove.follow(snapshot[side], dt, { aspect: this.session.camera.aspect, palmSize: court.palmSize, width: court.width, height: court.height });
+      glove.x -= from;
+      glove.follow(snapshot[side], dt, { aspect: this.session.camera.aspect, palmSize: court.palmSize, width: across, height: court.height });
+      glove.x += from;
       if (!glove.visible) continue;
       const net = court.at(signOf(this.mine) * 0.08, 0).x;
       if (net > court.cx) glove.x = Math.max(glove.x, net);
@@ -784,7 +805,7 @@ new GameSession({
         <p id="score-goal" class="score-goal">First to 5</p>
         <div class="chip chip-prizes"><span class="chip-label">Prizes</span><span id="chip-prizes" class="chip-value">0</span></div>
       </div>
-      <div class="bounce-film" aria-hidden="true">
+      <div class="bounce-film" data-own aria-hidden="true">
         <svg viewBox="0 0 220 140">
           <path class="film-court" d="M6 118h208" />
           <path class="film-net" d="M110 118V80" />

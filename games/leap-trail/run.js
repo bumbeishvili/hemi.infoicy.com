@@ -163,16 +163,23 @@ export function trailLevel(level = 1, { gentle = false } = {}) {
 // it. And nobody is hurried: a runner behind is never made faster, as that would leave less time for each move.
 export const PACK = { ahead: 30, slack: 30, slowest: 0.5 };
 
+// Two on one screen in one picture (core/one-picture.js), together or against each other, run side by side: the
+// picture follows the first player's runner, and one more than a few metres behind it would be behind the camera.
+// So a runner in front waits for the other, easing off from a metre ahead to a stop at three, which with the time
+// it takes to slow down leaves it four or five metres on.
+export const PICTURE_PACK = { ahead: 1, slack: 2, slowest: 0 };
+
 /**
  * How much of the trail's pace a runner in a pack runs at. mine is how far it has run, and others how far each
- * friend who's still here has, in metres. With no friends left it's a runner on its own.
+ * friend who's still here has, in metres. With no friends left it's a runner on its own. rule is PACK, or
+ * PICTURE_PACK for two in one picture.
  */
-export function packPace(mine, others) {
+export function packPace(mine, others, rule = PACK) {
   const far = others.filter(Number.isFinite);
   if (!far.length) return 1;
   const ahead = mine - Math.min(...far);
-  if (ahead <= PACK.ahead) return 1;
-  return 1 - (1 - PACK.slowest) * Math.min(1, (ahead - PACK.ahead) / PACK.slack);
+  if (ahead <= rule.ahead) return 1;
+  return 1 - (1 - rule.slowest) * Math.min(1, (ahead - rule.ahead) / rule.slack);
 }
 
 /** A level, run with friends: the same obstacles, places and coins, without the extras that would need sharing. */

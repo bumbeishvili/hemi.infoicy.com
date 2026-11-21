@@ -5,24 +5,37 @@
 .seats {
   position: fixed;
   inset: 0;
-  display: grid;
-  gap: 6px;
-  grid-auto-rows: 1fr;
-}
-
-.seats[data-players='2'] { grid-template-columns: 1fr 1fr; }
-
-/* A window that's taller than it's wide has two one above the other. */
-@media (orientation: portrait) {
-  .seats[data-players='2'] { grid-template-columns: 1fr; }
 }
 
 .seat {
+  position: absolute;
+  top: 0;
   display: block;
-  width: 100%;
+  width: calc(50% - 3px);
   height: 100%;
   border: 0;
   background: #cfeeff;
+  transition: width 0.6s ease-in-out, height 0.6s ease-in-out;
+}
+
+.seat:nth-child(1) { left: 0; z-index: 2; }
+.seat:nth-child(2) { right: 0; z-index: 1; }
+
+/*
+ * In a game both play in one picture, while they play: the left player's game spreads over the whole screen, and
+ * the other's goes on under it, unseen, as each player is in the first one's picture. See OWN_VIEW in seat.js.
+ */
+.seats[data-view='one'] .seat:nth-child(1) { width: 100%; }
+
+/* A window that's taller than it's wide has two one above the other. */
+@media (orientation: portrait) {
+  .seat { width: 100%; height: calc(50% - 3px); }
+  .seat:nth-child(2) { top: auto; bottom: 0; }
+  .seats[data-view='one'] .seat:nth-child(1) { height: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seat { transition: none; }
 }
 
 .no-game {

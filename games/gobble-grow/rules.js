@@ -173,9 +173,12 @@ export class Soup {
    * level is the world, from 1 to 10, and bites how much there is to eat in it. seed lays the things out. auto has
    * the creature swim to the food by itself, for playing with the mouth alone, and head is how far the head has to
    * move otherwise. team is how many are playing together, eating from the same soup and growing as one, or 0.
+   * shared is for two against each other on one screen, in one picture (core/one-picture.js): one soup, where what
+   * one eats is gone for the other, as together, but each grows by their own bites, and their share of it wins.
+   * centre is how far across from the middle the creature's own place is then, so the two start apart.
    * onEvent hears what happens, each as { type, ... }: spawn, gulp, chomp, grew, unlock, bump, toobig, taken, won.
    */
-  constructor({ level = 1, bites = 12, seed = 1, auto = false, head = 'medium', team = 0, gentle = false, onEvent = () => {} } = {}) {
+  constructor({ level = 1, bites = 12, seed = 1, auto = false, head = 'medium', team = 0, shared = false, centre = 0, gentle = false, onEvent = () => {} } = {}) {
     // Bigger things only catch a creature the child steers, on their own. Swimming by itself, it can't get away.
     this.danger = !gentle && !auto && team === 0;
     this.plan = soupLevel(level, { gentle: !this.danger });
@@ -184,13 +187,15 @@ export class Soup {
     this.auto = auto;
     this.head = HEAD[head] ?? HEAD.medium;
     this.together = team > 0;
+    this.shared = shared && !this.together;
     this.bites = bites;
     this.goal = this.together ? teamGoal(bites, team) : bites;
     this.onEvent = onEvent;
     this.lead = this.plan.cross * LEAD;
     this.time = this.lead;
-    this.creature = { x: HOME.x, y: HOME.y, r: START_R, facing: 1, holding: null, heldFor: 0 };
-    this.home = { ...HOME }; // Where the creature would be with nothing nudging it.
+    this.centre = { x: HOME.x + centre, y: HOME.y }; // Where the creature is with the head in the middle.
+    this.creature = { x: this.centre.x, y: this.centre.y, r: START_R, facing: 1, holding: null, heldFor: 0 };
+    this.home = { ...this.centre }; // Where the creature would be with nothing nudging it.
     this.push = { x: 0, y: 0 };
     this.foods = [];
     this.gone = new Set(); // The things that have been eaten, by anyone.
@@ -321,7 +326,7 @@ export class Soup {
       if (!best || keen < best.keen) best = { food, far, keen };
     }
     this.chasing = best?.food ?? null;
-    if (!best) return HOME;
+    if (!best) return this.centre;
     // Up beside it, rather than on top of it, so that it can be seen going in.
     const { food, far } = best;
     const keep = creature.r * 0.9 + food.r * 0.3;
@@ -347,8 +352,8 @@ export class Soup {
     } else if (input.seen && input.steer) {
       // Where the face is, from the middle of the picture, is where the creature goes, from the middle of the field.
       const wanted = {
-        x: HOME.x + (input.steer.x / this.head.x) * (FIELD.wide / 2),
-        y: HOME.y + (input.steer.y / this.head.y) * (FIELD.tall / 2),
+        x: this.centre.x + (input.steer.x / this.head.x) * (FIELD.wide / 2),
+        y: this.centre.y + (input.steer.y / this.head.y) * (FIELD.tall / 2),
       };
       const blend = 1 - Math.exp(-dt * FOLLOW_RATE);
       home.x += (wanted.x - home.x) * blend;
@@ -492,8 +497,8 @@ export class Soup {
     this.gone.add(food.id);
     if (still) this.stats.autoChomps += 1;
     this.stats.byKind[food.kind] += 1;
-    // Together, a bite counts once the server says whose it was: see claimed.
-    if (!this.together) {
+    // Together, and in one soup two share, a bite counts once the server says whose it was: see claimed.
+    if (!this.together && !this.shared) {
       this.eaten += 1;
       this.count();
     }
@@ -518,10 +523,11 @@ export class Soup {
    * Playing together: the server says thing k went to someone, as theirs was the first mouth to it. mine says it
    * was this child's. Either way it's one more bite for everyone's creature. A thing that went to a friend is
    * gone from here too, even out of this child's own mouth, if both went for it at once. at is where the friend's
-   * creature is, for it to be seen going there.
+   * creature is, for it to be seen going there. In one soup two share against each other, only this child's own
+   * bites count, for their own creature.
    */
   claimed(id, mine, at = null) {
-    if (!this.together || this.counted?.has(id)) return;
+    if (!(this.together || this.shared) || this.counted?.has(id)) return;
     (this.counted ??= new Set()).add(id);
     this.gone.add(id);
     if (mine) {
@@ -533,7 +539,7 @@ export class Soup {
       if (food) Object.assign(food, { state: 'taken', takenAt: this.time, takenTo: at });
       this.emit('taken', { food: food ?? null, id });
     }
-    this.count();
+    if (mine || this.together) this.count();
   }
 
   /**

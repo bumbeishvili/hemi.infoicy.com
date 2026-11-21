@@ -664,6 +664,31 @@ test('together, a bite counts for everyone once the server says whose it was, an
   assert.equal(soup.eaten, 1);
 });
 
+test('two against each other on one screen in one picture share one soup: what one eats is gone for both, and each grows by their own bites', () => {
+  const made = emptySoup({ bites: 8, shared: true, centre: -FIELD.wide / 8 });
+  const { soup, count } = made;
+  assert.equal(soup.goal, 8, 'their own share');
+  near(soup.creature.x, FIELD.wide / 2 - FIELD.wide / 8, 1e-9, 'a little to the first player\'s side');
+  const food = putFood(soup);
+  bite(soup);
+  assert.equal(count('chomp'), 1);
+  assert.equal(soup.total, 0, 'not a bite until the server has said whose it was');
+  soup.claimed(food.id, true);
+  assert.deepEqual([soup.eaten, soup.total], [1, 1]);
+  near(soup.creature.r, radiusAt(1 / 8), 1e-9);
+  // The other player's bite is gone from this soup, and this creature is no bigger for it.
+  soup.claimed(4321, false);
+  assert.deepEqual([soup.eaten, soup.total], [1, 1]);
+  assert.ok(soup.gone.has(4321));
+  near(soup.creature.r, radiusAt(1 / 8), 1e-9);
+  // Their own share eaten, they've grown up.
+  for (let id = 1; id < 8; id += 1) soup.claimed(9000 + id, true);
+  assert.equal(soup.won, true);
+  // Together it's as it was, and on their own nothing is claimed.
+  assert.equal(emptySoup({ bites: 8, team: 2, shared: true }).soup.shared, false);
+  assert.equal(emptySoup({ bites: 8 }).soup.shared, false);
+});
+
 test('together, a thing a friend got to first goes to them, even out of this child\'s mouth, and is nobody\'s twice', () => {
   const { soup, events, count } = emptySoup({ bites: 8, team: 2 });
   const food = putFood(soup);

@@ -11,6 +11,7 @@ import { FriendsPanel, time } from '../../core/friends-ui.js';
 import { LOOKS, paintFruit } from '../../core/fruit.js';
 import { Glove } from '../../core/glove.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { giraffePixels, renderGiraffe } from '../giraffe-garden/giraffe.js';
@@ -686,7 +687,8 @@ class PuzzleGame {
     const { puzzle } = this;
     const portraits = this.session.portraits ?? {};
     const you = this.friends.room.you;
-    const mine = { id: you, name: 'You', who: (characterWithId(this.settings.fighter) ?? ROSTER[0]).id, n: this.team ? puzzle.tally.get(you) ?? 0 : puzzle.stats.placed };
+    // Two in one picture on one screen both see this list, so the first player is Player 1 in it, not You.
+    const mine = { id: you, name: SEAT?.onePicture ? seatName(SEAT.index) : 'You', who: (characterWithId(this.settings.fighter) ?? ROSTER[0]).id, n: this.team ? puzzle.tally.get(you) ?? 0 : puzzle.stats.placed };
     const theirs = this.friendHands.map((friend) => ({ id: friend.id, name: friend.name, who: friend.who, n: this.team ? puzzle.tally.get(friend.id) ?? 0 : friend.n }));
     const everyone = [mine, ...theirs].sort((a, b) => b.n - a.n);
     const key = everyone.map(({ id, n }) => `${id}:${n}`).join(',');

@@ -18,6 +18,7 @@ import { ROSTER, byId as characterById } from '../../core/body/roster.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { seededRandom } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
+import { SEAT } from '../../core/seat.js';
 import { Arms, HEIGHTS, HOLDS, LIFT_COUNTS, Lifting, Partner, Warmup, armHeights, newAt as newAtLevel, thingsUpTo } from './lift.js';
 import { LiftSound } from './lift-sound.js';
 import { Mate, armMessage, finishMessage, mateArms, scoreRows, someoneFreedAll } from './team.js';
@@ -1033,7 +1034,9 @@ class MightyLift extends BodyGame {
   setUpMates(friendly) {
     this.mates = (friendly?.friends ?? []).map((friend) => new Mate(friend));
     if (this.sideBySide) this.standCrew(this.lifting.levelNumber);
-    else this.world.setMates(this.mates.map(({ friend }) => friend.spec), { level: friendly?.level ?? 1, team: this.team });
+    // Two on one screen in one picture (core/one-picture.js) stand side by side as they stand in front of the camera,
+    // the first player on the left, as several at one camera do.
+    else this.world.setMates(this.mates.map(({ friend }) => friend.spec), { level: friendly?.level ?? 1, team: this.team, inOrder: Boolean(SEAT?.onePicture) });
     for (const mark of this.markMates) mark.remove();
     this.markMates = this.mates.map(({ friend }) => {
       const root = document.createElement('div');
@@ -1168,7 +1171,7 @@ mountBodyShell({
       ${groupChoice()}
       <button id="lift-start" class="big-button" type="button">Let’s lift!</button>`,
   hud: `
-  <div id="lift-meter" class="lift-meter" data-zone="middle" aria-hidden="true">
+  <div id="lift-meter" class="lift-meter" data-zone="middle" data-own aria-hidden="true">
     <div class="meter-zone meter-zone-up"></div>
     <div class="meter-middle"></div>
     <div id="meter-dot" class="meter-dot"></div>

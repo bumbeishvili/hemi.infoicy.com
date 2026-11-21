@@ -33,6 +33,23 @@ export class LocalRooms {
   }
 
   /**
+   * How the seats are shown, in a game they play in one picture: 'one' once everyone in the room is under way,
+   * from the moment they're all sent off, and until the host's game is over, or 'split' while they get ready and
+   * at the end. was is how they're shown now, so that one who finishes first doesn't split the screen while the
+   * host still plays.
+   */
+  view(was = 'split') {
+    for (const { players } of this.rooms.values()) {
+      const everyone = [...players].map(({ meta }) => meta).filter((meta) => meta?.id);
+      if (everyone.length < 2) continue;
+      const host = everyone.reduce((first, meta) => (meta.joined < first.joined ? meta : first));
+      if (!host.racing) return 'split';
+      return was === 'one' || everyone.every(({ racing }) => racing) ? 'one' : 'split';
+    }
+    return 'split';
+  }
+
+  /**
    * A copy of the game connects, as it would to the server: path is /room/<game>/<CODE>, or /room/<CODE> for High
    * Five Racers, and was the id it had, if it's coming back. client is { hear(text), closed() }: what the room
    * says to it, and that the room has let it go. Returns { say(text), leave() } for what it says to the room, or

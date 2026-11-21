@@ -9,7 +9,7 @@
 // With friends, everyone slices from the same fruit, and friends' gloves are here too, in light grey with
 // their names: see setShared, and together.js.
 import { LOOKS, paintFruit } from '../../core/fruit.js';
-import { Glove, INK } from '../../core/glove.js';
+import { Glove, INK, SECOND_PLAYER, inOnePicture, secondPlayerLook } from '../../core/glove.js';
 import { GOLDEN_COINS, NEW_THINGS, POWER_SECONDS, fairAt, nearestOnPath } from './orders.js';
 import { flightAt, rounded, THROW_AHEAD_MS } from './together.js';
 
@@ -963,9 +963,12 @@ export class SmoothieField {
 
     this.drawExtras(ctx);
     this.drawBigGlove(ctx);
-    this.drawFriendsGloves(ctx);
+    // A friend's glove goes under the child's own, but the second player's in one picture goes over the first's.
+    const over = inOnePicture();
+    if (!over) this.drawFriendsGloves(ctx);
     this.gloves.left.draw(ctx, this.palmSize);
     this.gloves.right.draw(ctx, this.palmSize);
+    if (over) this.drawFriendsGloves(ctx);
     this.drawPowers(ctx);
     this.drawFlying(ctx);
     const [label] = this.labels;
@@ -974,14 +977,17 @@ export class SmoothieField {
 
   /**
    * Friends' gloves, playing on their own computers, where their hands really are, in light grey under the
-   * child's own, with each friend's name over theirs. They're only there to see: they slice nothing here.
+   * child's own, with each friend's name over theirs. They're only there to see: they slice nothing here. Two
+   * playing in one picture on one screen, the friend is the second player, right there playing too, so theirs is
+   * in their own blue.
    */
   drawFriendsGloves(ctx) {
     const { palmSize } = this;
+    const second = inOnePicture();
     for (const { glove, name, fade } of this.friendsGloves) {
       if (!glove.visible || fade < 0.02) continue;
       // Solid, as a see-through one shows its outline through itself, and only fading as it comes and goes.
-      glove.draw(ctx, palmSize, { ...FRIEND_GLOVE, alpha: fade });
+      glove.draw(ctx, palmSize, second ? secondPlayerLook(glove, fade) : { ...FRIEND_GLOVE, alpha: fade });
       ctx.save();
       ctx.globalAlpha = fade;
       ctx.font = `700 ${Math.round(palmSize * 0.32)}px Fredoka, sans-serif`;
@@ -989,7 +995,7 @@ export class SmoothieField {
       ctx.textBaseline = 'bottom';
       const y = glove.y - palmSize * 1.55;
       const wide = ctx.measureText(name).width + palmSize * 0.4;
-      ctx.fillStyle = 'rgba(18, 48, 77, 0.72)';
+      ctx.fillStyle = second ? SECOND_PLAYER.tag : 'rgba(18, 48, 77, 0.72)';
       ctx.beginPath();
       ctx.roundRect(glove.x - wide / 2, y - palmSize * 0.42, wide, palmSize * 0.48, palmSize * 0.24);
       ctx.fill();

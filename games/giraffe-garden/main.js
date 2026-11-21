@@ -7,8 +7,9 @@ import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
-import { Glove } from '../../core/glove.js';
+import { Glove, SECOND_PLAYER, inOnePicture } from '../../core/glove.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { flowFor, TURN_TARGETS, TurnReader } from '../../core/turn.js';
@@ -55,6 +56,9 @@ const GARDEN_WORDS = {
 // points, which go smoothly from one to the next. Whether it can be seen changes half way.
 const CAN_TRACK = { lerp: ['u', 'y', 'tip', 'f'], lists: ['p'], steps: ['v'] };
 const FRIEND_CAN = { body: '#c9d3df', ink: '#7f8a99', glove: '#e3e8ee' };
+// The second player's can, playing in one picture on one screen, where it's in the first player's garden as a friend's
+// is: solid, in their own blue, as their glove is in the other hand games.
+const SECOND_CAN = { body: '#8d98ee', ink: SECOND_PLAYER.ink, glove: SECOND_PLAYER.open, tag: SECOND_PLAYER.tag, solid: true };
 const CAN_FADE_RATE = 8; // How quickly a friend's can fades in and out, as their hand comes and goes.
 const CAN_QUIET_MS = 1500; // A friend's can nothing has come from for this long, as in their hand check, fades away.
 const round2 = (value) => Math.round(value * 100) / 100;
@@ -466,15 +470,21 @@ class GardenGame {
     const side = this.session.settings.hands;
     const glove = this.gloves[side];
     const cans = [];
-    // Friends' cans first, grey and see-through, under the child's own.
+    // Friends' cans first, grey and see-through, under the child's own. Two in one picture on one screen, the second
+    // player's is solid, in their own blue, and over the first's.
+    const second = inOnePicture();
+    const friends = [];
     for (const each of this.friendCans) {
       if (!each.at || each.fade < 0.02) continue;
-      cans.push({ x: each.x, y: each.y, tip: each.at.tip, side: each.side, glove: each.glove, look: { ...FRIEND_CAN, alpha: each.fade * 0.85 }, name: each.name });
+      const look = second ? { ...SECOND_CAN, alpha: each.fade } : { ...FRIEND_CAN, alpha: each.fade * 0.85 };
+      friends.push({ x: each.x, y: each.y, tip: each.at.tip, side: each.side, glove: each.glove, look, name: each.name });
     }
+    if (!second) cans.push(...friends);
     if (glove.visible) {
       const { sprinkler } = garden;
       cans.push({ x: glove.x, y: glove.y, tip: this.tip, side: this.spoutSide, glove, sprinkler: sprinkler?.taken && sprinkler.left > 0 ? sprinkler.left / 8 : null });
     }
+    if (second) cans.push(...friends);
     view.render({ garden, cans, side, waving: this.session.screen !== 'playing' || this.session.playSeconds < 3 });
   }
 
@@ -584,7 +594,8 @@ class GardenGame {
     if (list.hidden) return;
     const portraits = this.session.portraits ?? {};
     const you = this.friends.room.you;
-    const mine = { id: you, name: 'You', who: (characterWithId(this.session.settings.fighter) ?? ROSTER[0]).id };
+    // Two in one picture on one screen both see this list, so the first player is Player 1 in it, not You.
+    const mine = { id: you, name: SEAT?.onePicture ? seatName(SEAT.index) : 'You', who: (characterWithId(this.session.settings.fighter) ?? ROSTER[0]).id };
     const theirs = current.friends.filter((friend) => !friend.gone).map((friend) => ({ id: friend.id, name: friend.spec.name, who: friend.spec.id }));
     const everyone = [mine, ...theirs].map((each) => ({ ...each, share: this.shareOf(this.garden.tally.get(each.id) ?? 0) })).sort((a, b) => b.share - a.share);
     const key = everyone.map(({ id, share }) => `${id}:${share}`).join(',');

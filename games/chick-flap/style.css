@@ -206,3 +206,26 @@ body[data-flap-wings='both'][data-hands] .summary tr > :nth-child(2),
 body[data-flap-wings='both'][data-hands] .summary tr > :nth-child(3) { display: table-cell; }
 body[data-flap-wings='one'] .summary tr:has(#sum-left-together) { display: none; }
 .finish-way { font-size: clamp(15px, 1.7vw, 19px); font-weight: 600; color: var(--ink-soft); }
+
+/*
+ * Two in one picture (core/one-picture.js). Each player's own things are in their own half: the mirror at the outer
+ * top corner, their way home and corn beside it, their wing gauges along the bottom and the film at its inner end.
+ * Giraffe's words, which are for both, go in the middle under the band. These are the second player's, in the game
+ * under the picture; the first player's are their mirror image.
+ */
+html[data-picture='one'] .story { top: 96px; transform: translateX(-50%); }
+html[data-picture='under'] body[data-screen] .story.is-visible { display: none; }
+html[data-picture='under'] body .flap-hud { left: auto; right: calc(70px + var(--camera-small) + 12px); }
+/* The first player's, sized by the width of their half of the screen, as the second player's are by theirs. */
+html[data-picture='one'] .flap-hud .chip { min-width: clamp(58px, 3.5vw, 92px); }
+html[data-picture='one'] .flap-hud .chip-label { font-size: clamp(12px, 0.6vw, 15px); }
+html[data-picture='one'] .flap-hud .chip-value { font-size: clamp(19px, 1.15vw, 30px); }
+html[data-picture='one'] .chip-corn { min-width: clamp(64px, 3.5vw, 96px); }
+html[data-picture='one'] .flap-way { width: clamp(120px, 7vw, 210px); }
+html[data-picture='one'] .flap-way-chick { font-size: clamp(16px, 0.85vw, 22px); }
+html[data-picture='one'] .flap-way-home { font-size: clamp(18px, 0.95vw, 24px); }
+html[data-picture='one'] .flap-wings { gap: clamp(10px, 1.2vw, 34px); }
+html[data-picture='one'] .flap-wing { min-width: clamp(128px, 6vw, 170px); }
+html[data-picture='one'] .flap-wing svg { width: clamp(52px, 2.6vw, 74px); }
+html[data-picture='one'] .flap-wing-name { font-size: clamp(12px, 0.58vw, 15px); }
+html[data-picture='one'] .flap-wing-count { font-size: clamp(20px, 1.1vw, 30px); }

@@ -5,7 +5,7 @@
 //
 // Nothing flashes: a piece is a small part of the screen, pictures fade in and out rather than cutting, a piece going
 // in is a few small stars, and whatever comes and goes fades or grows.
-import { INK } from '../../core/glove.js';
+import { INK, SECOND_PLAYER, inOnePicture, secondPlayerLook } from '../../core/glove.js';
 import { EXTRAS, LABELS, TABLE } from './puzzle.js';
 import { drawPicture, PICTURE } from './pictures.js';
 
@@ -518,8 +518,14 @@ export class PuzzleView {
     }
     for (const piece of round.pieces) if (piece.floating && piece.state === 'loose') this.drawFloating(piece, puzzle, coming);
     if (round.magnet?.state === 'waiting') this.drawMagnetBubble(round.magnet, coming);
-    for (const piece of round.pieces) if (piece.state === 'held' && piece !== mine) this.drawPiece(piece, { lift: 1, ring: '#b8c4d0' });
-    for (const friend of model.friends ?? []) this.drawFriend(friend);
+    // Friends' pieces and gloves under the child's own. Two in one picture on one screen, the second player's are
+    // over the first's, in their own blue, so they're never hidden under them.
+    const second = inOnePicture();
+    const friends = () => {
+      for (const piece of round.pieces) if (piece.state === 'held' && piece !== mine) this.drawPiece(piece, { lift: 1, ring: second ? SECOND_PLAYER.open : '#b8c4d0' });
+      for (const friend of model.friends ?? []) this.drawFriend(friend, second && round.pieces.some((piece) => piece.state === 'held' && piece.holder === friend.id));
+    };
+    if (!second) friends();
     if (mine) this.drawPiece(mine, { lift: 1, ring: COLOURS.held });
     const { glove } = model;
     if (glove?.visible) {
@@ -527,6 +533,7 @@ export class PuzzleView {
       // With a piece in the hand, the glove is see-through, so the piece shows under it.
       this.drawGlove(glove, model.offset, mine ? 0.62 : 1);
     }
+    if (second) friends();
     this.drawEffects();
     this.drawFlying();
     for (const label of this.labels) this.drawLabel(label);
@@ -882,11 +889,17 @@ export class PuzzleView {
     ctx.restore();
   }
 
-  /** A friend's glove, in grey, with their name over it, fading in and out as their hand comes and goes. */
-  drawFriend({ glove, name, fade = 1 }) {
+  /**
+   * A friend's glove, in grey, with their name over it, fading in and out as their hand comes and goes. Two in one
+   * picture on one screen, the second player's is in their own blue, and solid unless holding a piece, as the
+   * child's own is: holding says so.
+   */
+  drawFriend({ glove, name, fade = 1 }, holding = false) {
     if (!glove.visible || fade < 0.02) return;
     const { ctx, palmSize } = this;
-    this.drawGlove(glove, { x: 0, y: 0 }, Math.min(0.9, fade), FRIEND_GLOVE);
+    const second = inOnePicture();
+    if (second) this.drawGlove(glove, { x: 0, y: 0 }, fade * (holding ? 0.62 : 1), secondPlayerLook(glove));
+    else this.drawGlove(glove, { x: 0, y: 0 }, Math.min(0.9, fade), FRIEND_GLOVE);
     if (!name) return;
     ctx.save();
     ctx.globalAlpha = fade;
@@ -895,11 +908,11 @@ export class PuzzleView {
     ctx.textBaseline = 'middle';
     const y = glove.y - palmSize * 1.7;
     const wide = ctx.measureText(name).width + palmSize * 0.5;
-    ctx.fillStyle = 'rgb(255 255 255 / 0.92)';
+    ctx.fillStyle = second ? SECOND_PLAYER.tag : 'rgb(255 255 255 / 0.92)';
     ctx.beginPath();
     ctx.roundRect(glove.x - wide / 2, y - palmSize * 0.3, wide, palmSize * 0.6, palmSize * 0.3);
     ctx.fill();
-    ctx.fillStyle = INK;
+    ctx.fillStyle = second ? '#ffffff' : INK;
     ctx.fillText(name, glove.x, y + 1);
     ctx.restore();
   }

@@ -76,10 +76,17 @@ export function appliesAtOnce(name, own = [], again = []) {
 export function loadSettings(gameDefaults = {}) {
   const defaults = { ...SHARED_DEFAULTS, ...gameDefaults };
   try {
-    const saved = JSON.parse(localStorage.getItem(ownKey()) ?? localStorage.getItem(STORAGE_KEY) ?? '{}');
+    const own = localStorage.getItem(ownKey());
+    const saved = JSON.parse(own ?? localStorage.getItem(STORAGE_KEY) ?? '{}');
     if (!HAND_CHOICES.some(([value]) => value === saved.hands)) delete saved.hands;
     dropOldDefaults(saved);
-    return { ...defaults, ...saved, strictness: { ...defaults.strictness, ...saved.strictness } };
+    const settings = { ...defaults, ...saved, strictness: { ...defaults.strictness, ...saved.strictness } };
+    // A second player on one screen who hasn't chosen yet starts as someone other than the first player, so the
+    // two characters are told apart when both are in one picture.
+    if (SEAT?.index > 0 && own === null) {
+      for (const key of ['fighter', 'driver']) if (key in settings) settings[key] = settings[key] === 'giraffe' ? 'truffle' : 'giraffe';
+    }
+    return settings;
   } catch {
     return structuredClone(defaults);
   }

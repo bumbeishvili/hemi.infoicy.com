@@ -8,6 +8,7 @@ import { Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
 import { Glove } from '../../core/glove.js';
 import { GameSession } from '../../core/session.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { Stand, newAt, pointsFor } from './orders.js';
@@ -715,7 +716,9 @@ class SmoothieGame {
   sendFriends({ hand = true } = {}) {
     const ms = this.sinceGo;
     if (hand) this.friends.sendMove('hand', this.handState(), ms);
-    else this.friends.sendMove('hand', { x: 0, y: 0, v: 0, o: 0, p: [] }, ms);
+    // Not before "GO!", when the time since it is still counted from the last one, or from the page opening: a
+    // friend's game would take every glove after it for an old one, and show none for as long again.
+    else if (this.inRound) this.friends.sendMove('hand', { x: 0, y: 0, v: 0, o: 0, p: [] }, ms);
     if (this.isRunner) this.friends.sendMove('stand', this.standState(), this.clock());
     if (this.points !== this.sentPoints) {
       this.sentPoints = this.points;
@@ -788,7 +791,8 @@ class SmoothieGame {
     list.hidden = !current;
     if (list.hidden) return;
     const portraits = this.session.portraits ?? {};
-    const mine = { id: this.friends.room.you, name: 'You', driver: this.session.settings.fighter, n: this.points };
+    // Two in one picture on one screen both see this list, so the first player is Player 1 in it, not You.
+    const mine = { id: this.friends.room.you, name: SEAT?.onePicture ? seatName(SEAT.index) : 'You', driver: this.session.settings.fighter, n: this.points };
     const theirs = current.friends.filter((friend) => !friend.gone).map((friend) => ({ id: friend.id, name: friend.spec.name, driver: friend.spec.id, n: this.scores.get(friend.id) ?? 0 }));
     const everyone = [mine, ...theirs].sort((a, b) => b.n - a.n);
     const key = everyone.map(({ id, n }) => `${id}:${n}`).join(',');
@@ -835,7 +839,7 @@ new GameSession({
       ${STORY_BOX}
       <div id="order" class="order" aria-hidden="true"></div>
       <div id="patience" class="patience" aria-hidden="true" hidden><span id="patience-fill" class="patience-fill"></span></div>
-      <div class="film" aria-hidden="true">
+      <div class="film" data-own aria-hidden="true">
         <svg viewBox="0 0 220 220">
           <g class="film-apple">
             <circle cx="150" cy="90" r="34" />

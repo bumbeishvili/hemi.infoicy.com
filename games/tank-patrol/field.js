@@ -97,6 +97,8 @@ export class Field {
     this.friendTank = null;
     this.friendName = '';
     this.friendShots = [];
+    // Two on one screen, in one picture: where the friend's crosshair is, as their game says, or null.
+    this.friendAim = null;
     this.points = [];
     this.robots = new Map();
     this.loot = new Loot(this.scene, this.softShadow, this.reducedMotion);
@@ -1005,6 +1007,16 @@ export class Field {
         line = { from: this.project(muzzle.x, muzzle.y, muzzle.z), to: spot, reachShare: clamp(GUN.range / Math.max(0.01, away), 0, 1) };
       }
     }
+    // Two on one screen, in one picture: the friend's crosshair as well, in the colour of their tank, with a line
+    // from their tank to it, so they can see where they point and drive.
+    const aim = this.friendAim;
+    const friendMark = aim && friend && this.friendTank?.visible ? {
+      ...this.project(aim.x, heightAt(aim.x, aim.z) + 0.2, aim.z),
+      from: this.project(friend.x, friend.y + 2.6, friend.z),
+      look: aim.look,
+      radius: this.markSize * CROSSHAIR_SHARE * 0.85,
+      colour: PAINTS.friend.main,
+    } : null;
     const target = patrol.locked;
     marks.draw({
       range: { points, look },
@@ -1014,6 +1026,7 @@ export class Field {
       sleeping,
       labels,
       line,
+      friendMark,
       crosshair: spot ? {
         x: spot.x,
         y: spot.y,

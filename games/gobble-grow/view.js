@@ -197,8 +197,9 @@ export class GobbleView {
   /* ---------- a world being played ---------- */
 
   /**
-   * model is { soup, mouth, friends, hud }: the soup, how open the child's mouth is from 0 to 1, each friend as
-   * { x, y, r, mouth, facing, name, form }, in the field's places, and hud, whether to show the ladder.
+   * model is { soup, mouth, friends, hud, name }: the soup, how open the child's mouth is from 0 to 1, each friend as
+   * { x, y, r, mouth, facing, name, form, solid }, in the field's places, hud, whether to show the ladder, and name,
+   * the child's own over their creature, two on one screen in one picture, where a friend's is solid too.
    */
   render(model) {
     const { ctx, ratio } = this;
@@ -272,7 +273,7 @@ export class GobbleView {
     for (const friend of friends) {
       const { x, y } = this.at(friend.x, friend.y);
       const size = friend.r * scale;
-      drawCreature(ctx, friend.form ?? world.id, x, y, size, { facing: friend.facing ?? 1, mouth: friend.mouth ?? 0, time: time + 2, alpha: 0.62 * fade });
+      drawCreature(ctx, friend.form ?? world.id, x, y, size, { facing: friend.facing ?? 1, mouth: friend.mouth ?? 0, time: time + 2, alpha: (friend.solid ? 1 : 0.62) * fade });
       if (friend.name) this.pill(friend.name, x, y - size * 1.35 - 6, { size: Math.max(13, this.height * 0.02), alpha: 0.9 * fade });
     }
 
@@ -293,6 +294,7 @@ export class GobbleView {
       return;
     }
     drawCreature(ctx, world.id, x, y + bob, size, { facing: creature.facing, mouth, time, happy: soup.won });
+    if (model.name) this.pill(model.name, x, y + bob - size * 1.35 - 6, { size: Math.max(13, this.height * 0.02), alpha: 0.9 * fade });
     const held = creature.holding;
     if (held) {
       const into = mouthOf(world.id, x, y + bob, size, creature.facing, mouth);

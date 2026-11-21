@@ -167,3 +167,15 @@ body[data-maths='on'] .demo-number { display: inline; }
 .pop-score-name { min-width: 4em; }
 
 .pop-score { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/*
+ * Two in one picture on one screen (core/one-picture.js): how many are popped and the time go one under the other,
+ * clear of the first player's mirror, the sum goes at the top in the middle, between the two players' mirrors, a little
+ * smaller, so it sits on neither, and each player's little film, which shows until they've popped one, is at the outer
+ * side of their own half, beside their hand meter. The films are the second player's, in the game under the picture;
+ * the first player's are their mirror image.
+ */
+html[data-picture='one'] .hud-top .chips { flex-direction: column; align-items: stretch; }
+html[data-picture='one'] .maths-question { left: 50%; top: 12px; transform: translateX(-50%); font-size: clamp(38px, 4.4vw, 72px); }
+html[data-picture='under'] body[data-hands='right'] .pop-demo { left: auto; right: calc(24px + var(--meter-size)); }
+html[data-picture='under'] body[data-hands='left'] .pop-demo { left: calc(24px + var(--meter-size)); }

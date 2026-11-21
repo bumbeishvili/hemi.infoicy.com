@@ -106,3 +106,12 @@ body[data-friends-race] .finish-ladder { display: none; }
 @media (max-height: 560px) {
   .gobble-hud .chip-you { display: none; }
 }
+
+/*
+ * Two in one picture (core/one-picture.js). What both share goes along the top in the middle. Each player's own
+ * things are in their own half: the mirror at the outer top corner with the mouth meter beside it, as they are,
+ * what they're told along the bottom, and the film at its inner end, clear of the ladder down the side. These are
+ * the second player's, in the game under the picture; the first player's are their mirror image.
+ */
+html[data-picture='one'] .gobble-hud { left: 50%; transform: translateX(-50%); }
+html[data-picture='under'] body .gobble-film { left: 16px; right: auto; }

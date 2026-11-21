@@ -10,6 +10,7 @@ import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterById } from '../../core/body/roster.js';
 import { Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { Duel, battleSeconds, wrap } from './duel.js';
@@ -93,6 +94,15 @@ const clock = (seconds) => {
   const whole = Math.max(0, Math.ceil(seconds));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 };
+
+/**
+ * Two on one screen, in one picture (core/one-picture.js): the second player sees their crosshair only in the first
+ * player's game, which isn't told where it is, as a friend's game on another computer isn't. So each game leaves
+ * where its child's crosshair is here, in the page that holds both games, for the other to show. Nothing more goes
+ * anywhere. null anywhere else.
+ */
+const AIMS = SEAT?.onePicture ? (SEAT.host.tankAims ??= []) : null;
+const AIM_FRESH_MS = 500; // A crosshair left longer ago than this is from a game that has stopped.
 
 const byId = (id) => document.getElementById(id);
 const HEART = '<svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21C5 15.500 2 12 2 8a5.500 5.500 0 0 1 10-3 5.500 5.500 0 0 1 10 3c0 4-3 7.500-10 13z"/></svg>';
@@ -274,6 +284,8 @@ class TankGame {
       });
       this.field.friendName = rival.spec.name;
       byId('battle-name').textContent = rival.spec.name;
+      // In one picture both are in front of it, so each score has a name.
+      byId('battle-me').textContent = AIMS ? seatName(SEAT.index) : 'You';
     } else {
       this.patrol = new Patrol({
         tanks: settings.tanks,
@@ -681,6 +693,7 @@ class TankGame {
     const pointer = field.steer(dt, snapshot);
     if (this.battle || this.team) this.followFriend(dt);
     patrol.update(dt, { hand, pointer });
+    this.shareAim();
     if (this.battle) this.updateBattle();
     if (this.team) this.updateTeam();
     if (this.team) this.watchFriendLost();
@@ -745,10 +758,24 @@ class TankGame {
       patrol.hand = hand;
       patrol.closedFor = hand === 'closed' ? patrol.closedFor + dt : 0;
       patrol.aim(dt, hand, pointer);
+      this.shareAim();
       field.update(dt, hand);
     } else {
       field.update(dt, 'none');
     }
+  }
+
+  /**
+   * Two on one screen, in one picture: where this child's crosshair is, left for the other game, and where the
+   * friend's is, from theirs, for the field to show. See AIMS.
+   */
+  shareAim(playing = true) {
+    if (!AIMS) return;
+    const { patrol, field } = this;
+    const withFriend = playing && Boolean(this.battle || this.team);
+    AIMS[SEAT.index] = withFriend && patrol.crosshair.seen ? { x: patrol.crosshair.x, z: patrol.crosshair.z, look: patrol.look, at: Date.now() } : null;
+    const theirs = withFriend ? AIMS[1 - SEAT.index] : null;
+    field.friendAim = theirs && Date.now() - theirs.at < AIM_FRESH_MS ? theirs : null;
   }
 
   render() {
@@ -789,6 +816,7 @@ class TankGame {
     const { sound } = this.session;
     sound.stopPatrol();
     this.story.hide();
+    this.shareAim(false);
     this.field.showMarks = false;
     this.field.update(0, 'none');
     // The friend's finish card fills in with how this child did.
@@ -854,8 +882,8 @@ new GameSession({
         <div class="chips">
           <div class="chip chip-solo"><span class="chip-label">Tanks left</span><span id="chip-left" class="chip-value">6</span></div>
           <div class="chip chip-solo"><span id="chip-stopped-label" class="chip-label">Stopped</span><span id="chip-stopped" class="chip-value">0</span></div>
-          <div class="chip chip-hearts chip-solo"><span class="chip-label">Hearts</span><span id="chip-hearts" class="chip-value"></span></div>
-          <div id="chip-mine" class="chip chip-battle is-mine" hidden><span class="chip-label">${TANK_MARK}You</span><span id="battle-mine" class="chip-value">0</span></div>
+          <div class="chip chip-hearts chip-solo" data-own><span class="chip-label">Hearts</span><span id="chip-hearts" class="chip-value"></span></div>
+          <div id="chip-mine" class="chip chip-battle is-mine" hidden><span class="chip-label">${TANK_MARK}<span id="battle-me" class="battle-name">You</span></span><span id="battle-mine" class="chip-value">0</span></div>
           <div id="chip-theirs" class="chip chip-battle is-friend" hidden><span class="chip-label">${TANK_MARK}<span id="battle-name" class="battle-name"></span></span><span id="battle-theirs" class="chip-value">0</span></div>
           <div id="chip-time-box" class="chip chip-time" hidden><span class="chip-label">Time</span><span id="chip-time" class="chip-value">2:00</span></div>
         </div>
@@ -866,7 +894,7 @@ new GameSession({
         </div>
       </div>
       ${STORY_BOX}
-      <div class="film" aria-hidden="true">
+      <div class="film" data-own aria-hidden="true">
         <svg viewBox="0 0 220 220">
           <rect class="film-ground" width="220" height="220" />
           <path class="film-road" d="M30 140L100 92L190 50" />

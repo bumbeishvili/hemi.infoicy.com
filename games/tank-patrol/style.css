@@ -295,3 +295,37 @@ body[data-battle] .chip-solo { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .chip-battle.is-up .chip-value { animation: none; }
 }
+
+/*
+ * Two in one picture (core/one-picture.js). What both share goes along the top in the middle: the scores, or the
+ * tanks left and stopped, and Giraffe's box under them. Each player's own things are in their own half: the mirror
+ * at the outer top corner with what they're told under it, together their hearts beside the mirror, their hand's
+ * meter at the outer bottom corner and the film at the inner one. These are the second player's, in the game under
+ * the picture, which is narrow enough for the narrow window's rules above; the first player's are their mirror image.
+ */
+html[data-picture='one'] .hud-top { left: 0; right: 0; margin: 0 auto; }
+html[data-picture='one'] .story { left: 50%; transform: translateX(-50%); }
+html[data-picture='under'] body[data-screen] .story.is-visible { display: none; }
+html[data-picture] body .hands-bar { justify-content: flex-end; }
+html[data-picture='under'] body[data-screen] .camera-frame { top: 12px; left: auto; right: 68px; }
+html[data-picture='under'] body[data-screen] .film { left: 16px; right: auto; }
+html[data-picture='under'] body[data-screen] .chip-hearts {
+  position: fixed;
+  top: 12px;
+  right: calc(68px + var(--camera-small) + 10px);
+}
+html[data-picture='one'] body[data-screen] .chip-hearts { position: fixed; }
+/* Sized by the width of a half of the screen, as the second player's are in theirs. */
+html[data-picture='one'] .chip-hearts .chip-label { font-size: clamp(12px, 0.6vw, 15px); }
+html[data-picture='one'] .chip-hearts .chip-value { font-size: clamp(19px, 1.15vw, 30px); }
+html[data-picture='under'] body[data-screen='playing'] .prompt,
+html[data-picture='under'] body[data-screen='playing']:has(.story.is-visible) .prompt {
+  top: calc(12px + var(--camera-small) / var(--camera-aspect) + 12px);
+  bottom: auto;
+  left: 60%;
+  max-width: 70vw;
+  font-size: clamp(18px, 3.2vw, 30px);
+}
+html[data-picture='one'] body[data-screen='playing'] .prompt,
+html[data-picture='one'] body[data-screen='playing']:has(.story.is-visible) .prompt { font-size: clamp(18px, 1.6vw, 30px); }
+

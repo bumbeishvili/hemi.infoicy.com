@@ -12,6 +12,7 @@ import { FaceSession } from '../../core/face/session.js';
 import { Track } from '../../core/friends.js';
 import { FriendsPanel, time as clockTime } from '../../core/friends-ui.js';
 import { LAST_LEVEL } from '../../core/levels.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { Sound } from '../../core/sound.js';
 import { BITES, FIELD, gobbleNewAt, HEAD_NAMES, LIVES, radiusAt, SAFE_SECONDS, Soup } from './rules.js';
 import { GobbleView, nowLine } from './view.js';
@@ -35,6 +36,8 @@ const GOBBLED_SECONDS = 1.6; // A moment to see the creature gobbled up, before 
 const GOBBLED = (name) => `${name} gobbled you up!`;
 const LOST_LINE = 'So close! Try again!'; // One of the lines every game has: see SO_CLOSE in core/sound.js.
 const KEEP_AWAY_WITHIN = 0.4; // How near a bigger thing has to come for the label to say to keep away, in field heights.
+// Two in one picture: how far to its player's side of the middle each creature's own place is, in field heights.
+const APART = FIELD.wide / 8;
 const LABELS = {
   tooBig: ['Too big for now!', 'ჯერ ძალიან დიდია!'],
   canEat: ['Now you can eat this!', 'ახლა ამის ჭამაც შეგიძლია!'],
@@ -76,6 +79,8 @@ class GobbleGame {
     this.session = session;
     const { settings } = session;
     this.view = new GobbleView(byId('game'), { language: () => settings.language });
+    // The mouth meter is each player's own, two on one screen in one picture, as a hand meter is: see core/one-picture.js.
+    document.querySelector('.mouth-bar')?.setAttribute('data-own', '');
     this.team = false;
     this.friendsOn = false;
     this.tracks = new Map();
@@ -163,6 +168,9 @@ class GobbleGame {
   stage(level, { friendly = null } = {}) {
     const { settings } = this;
     const team = friendly?.team ? friendly.racers.length : 0;
+    // Two in one picture: each creature has its own place a little to its player's side, and against each other
+    // they share one soup: see Soup.
+    const onePicture = Boolean(friendly && SEAT?.onePicture);
     this.soup = new Soup({
       level,
       bites: friendly ? (BITES.includes(friendly.length) ? friendly.length : 12) : this.bites,
@@ -170,6 +178,8 @@ class GobbleGame {
       auto: settings.gobbleMove === 'mouth',
       head: HEAD_NAMES.includes(settings.gobbleHead) ? settings.gobbleHead : 'medium',
       team,
+      shared: onePicture && !team,
+      centre: onePicture ? (SEAT.index === 0 ? -1 : 1) * APART : 0,
       // Bigger things that only nudge, as the soup always had them, if a grown-up chose it, and always with friends.
       gentle: settings.gobbleBig === 'gentle' || Boolean(friendly),
       onEvent: (event) => this.onSoup(event),
@@ -235,8 +245,8 @@ class GobbleGame {
       case 'gulp':
         sound.play('gulp', { gain: 0.5, rate: this.pitch * (0.95 + Math.random() * 0.1) });
         this.restFor = 0;
-        // Together, the server says whose it is: the first mouth to it.
-        if (this.team) this.friends.claim(event.food.id);
+        // Together, and in one soup two share, the server says whose it is: the first mouth to it.
+        if (this.team || this.soup.shared) this.friends.claim(event.food.id);
         break;
       case 'chomp': {
         const at = view.creatureAt ?? view.at(soup.creature.x, soup.creature.y);
@@ -414,7 +424,10 @@ class GobbleGame {
 
   render() {
     const { screen } = this.session;
-    this.view.render({ soup: this.soup, mouth: this.mouth ?? 0, friends: this.friendsShown(), hud: screen === 'playing' || screen === 'countdown' });
+    // Two in one picture, both creatures are there, so each has a name over it, and against each other its bites.
+    const named = this.friendsOn && SEAT?.onePicture && screen !== 'finish';
+    const name = named ? (this.team ? seatName(SEAT.index) : `${seatName(SEAT.index)} ${this.soup.eaten}`) : '';
+    this.view.render({ soup: this.soup, mouth: this.mouth ?? 0, friends: this.friendsShown(), hud: screen === 'playing' || screen === 'countdown', name });
   }
 
   /** The little film of what to do: until the first bite, or a while. */
@@ -459,7 +472,7 @@ class GobbleGame {
       if (!friend) return;
       friend.track.push(message, performance.now());
       friend.eaten = message.n;
-    } else if (message.t === 'claimed' && this.team) {
+    } else if (message.t === 'claimed' && (this.team || this.soup.shared)) {
       const mine = message.by === this.friends.room.you;
       const theirs = mine ? null : this.tracks.get(message.by)?.track.at(performance.now());
       this.soup.claimed(message.k, mine, theirs ? { x: theirs.x * FIELD.wide, y: theirs.y } : null);
@@ -486,6 +499,8 @@ class GobbleGame {
         mouth: at.m,
         facing: friend.facing ?? 1,
         name: this.team ? friend.spec.name : `${friend.spec.name} ${eaten}`,
+        // Two in one picture, the other player's creature is as plain to see as this child's.
+        solid: Boolean(SEAT?.onePicture),
       });
     }
     return shown;
@@ -556,7 +571,7 @@ new FaceSession({
         <div class="chip chip-you"><span class="chip-label">You are</span><span id="chip-you" class="chip-value"></span></div>
         <div id="chip-lives-box" class="chip chip-lives" hidden><span class="chip-label">Lives</span><span id="chip-lives" class="chip-value"></span></div>
       </div>
-      <div class="film gobble-film" aria-hidden="true">
+      <div class="film gobble-film" data-own aria-hidden="true">
         <svg viewBox="0 0 220 160">
           <circle class="film-food" cx="0" cy="0" r="13" />
           <g class="film-eater">

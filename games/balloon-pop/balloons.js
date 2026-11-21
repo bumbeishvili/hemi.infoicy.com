@@ -15,7 +15,7 @@
 //
 // Nothing flashes: seizures are more common in children with hemiplegia, so pops are small
 // bursts of colour and the screen itself never changes brightness. New things only move, grow or fade.
-import { Glove, INK, toScreen } from '../../core/glove.js';
+import { Glove, INK, SECOND_PLAYER, inOnePicture, secondPlayerLook, toScreen } from '../../core/glove.js';
 import {
   balloonLevel, BASKET_BALLOONS, BIG_SPLITS_INTO, BIRD, BUBBLE_REACH, FIRST_BASKET_AFTER, FIRST_POWER_AFTER, MAGNET,
   PACES, POWER_SECONDS, PRIZE, STAR_HOLD_SECONDS,
@@ -1753,14 +1753,16 @@ export class BalloonField {
   /**
    * Friends' gloves, playing on their own computers, where their hands really are, in light grey under the
    * child's own, with each friend's name over theirs. They're only there to see: they pop nothing here.
-   * main.js keeps friendsGloves up to date, as [{ glove, name, fade }].
+   * main.js keeps friendsGloves up to date, as [{ glove, name, fade }]. Two playing in one picture on one screen,
+   * the friend is the second player, right there playing too, so theirs is in their own blue, over the first's.
    */
   drawFriendsGloves() {
     const { ctx, palmSize } = this;
+    const second = inOnePicture();
     for (const { glove, name, fade } of this.friendsGloves ?? []) {
       if (!glove.visible || fade < 0.02) continue;
       // Solid, as a see-through one shows its outline through itself, and only fading as it comes and goes.
-      glove.draw(ctx, palmSize, { fill: '#e3e8ee', ink: '#9aa8b6', alpha: fade });
+      glove.draw(ctx, palmSize, second ? secondPlayerLook(glove, fade) : { fill: '#e3e8ee', ink: '#9aa8b6', alpha: fade });
       ctx.save();
       ctx.globalAlpha = fade;
       ctx.font = `700 ${Math.round(palmSize * 0.32)}px Fredoka, sans-serif`;
@@ -1768,7 +1770,7 @@ export class BalloonField {
       ctx.textBaseline = 'bottom';
       const y = glove.y - palmSize * 1.55;
       const wide = ctx.measureText(name).width + palmSize * 0.4;
-      ctx.fillStyle = 'rgba(18, 48, 77, 0.72)';
+      ctx.fillStyle = second ? SECOND_PLAYER.tag : 'rgba(18, 48, 77, 0.72)';
       ctx.beginPath();
       ctx.roundRect(glove.x - wide / 2, y - palmSize * 0.42, wide, palmSize * 0.48, palmSize * 0.24);
       ctx.fill();
@@ -1826,10 +1828,13 @@ export class BalloonField {
     }
     ctx.globalAlpha = 1;
 
-    this.drawFriendsGloves();
+    // A friend's glove goes under the child's own, but the second player's in one picture goes over the first's.
+    const over = inOnePicture();
+    if (!over) this.drawFriendsGloves();
     this.gloves.left.draw(ctx, this.palmSize);
     this.gloves.right.draw(ctx, this.palmSize);
     for (const glove of this.guests) glove.draw(ctx, this.palmSize, { ink: GUEST_INKS[(glove.place - 1) % GUEST_INKS.length] });
+    if (over) this.drawFriendsGloves();
     this.drawPower();
     if (this.bird) this.drawBird(this.bird);
     this.drawFlying();

@@ -16,6 +16,10 @@ const GROUND_AT = 0.8; // And how far down the ground is.
 const LABEL_SECONDS = 2.6;
 const CORN_FLY_SECONDS = 0.8;
 const CHICK_DRAWN = 1.18; // The chick is drawn a little bigger than it is, so its wings are easy to see.
+// Two on one screen, in one picture: the other player's chick runs a little further back across the track, so the
+// two are told apart even side by side. It's this much higher up the screen, in the chick's units, this much smaller,
+// and its name this much higher.
+const FAR_SIDE = { up: 0.28, smaller: 0.1, name: 0.5 };
 export const GIRAFFE_TALL = 1.9; // Giraffe's body by the hen house, in the chick's units, without his neck.
 
 // The sky and the land, which change a little as the levels go on: midday, late afternoon, and sunset at level 10.
@@ -217,10 +221,11 @@ export class FarmView {
   /* ---------- drawing ---------- */
 
   /**
-   * Draws everything. model is { farm, friends, waving }: the game as it is, the friends' chicks, each as { x, h,
-   * wings, state, name, look }, and whether Giraffe waves.
+   * Draws everything. model is { farm, friends, waving, name }: the game as it is, the friends' chicks, each as { x,
+   * h, wings, state, name, look, back }, back being 1 for one on the far side of the track, whether Giraffe waves,
+   * and name, the child's own over their chick, two on one screen in one picture.
    */
-  render({ farm, friends = [], waving = false } = {}) {
+  render({ farm, friends = [], waving = false, name = '' } = {}) {
     const { ctx, ratio } = this;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     const land = [...LANDS].reverse().find((each) => farm.level >= each.from) ?? LANDS[0];
@@ -239,6 +244,7 @@ export class FarmView {
     this.drawFox(farm, friends);
     for (const friend of friends) this.drawFriend(friend);
     this.drawChick(farm);
+    if (name && !(farm.chick.state === 'home' && farm.chick.x >= farm.end - 0.25)) this.drawName(name, farm.chick.x, farm.chick.h + 1.25);
     for (const thing of farm.things) if (thing.type === 'water') this.drawWaterFront(thing);
     for (const thing of farm.things) if (thing.type === 'zone') this.drawGust(thing);
     this.drawEffects();
@@ -977,8 +983,8 @@ export class FarmView {
       return;
     }
     if (fox.mode !== 'chase') return;
-    // Behind the last of the flock, if there is one.
-    const last = farm.together ? Math.min(chick.x, ...friends.map((friend) => friend.x)) : chick.x;
+    // Behind the last of the flock, if there is one, or of two kept together in one picture.
+    const last = farm.kept ? Math.min(chick.x, ...friends.map((friend) => friend.x)) : chick.x;
     const x = last - (this.foxGap ?? fox.gap) - 0.5;
     if (this.x(x) < -unit * 2) return;
     // With the chick in his paws he sits down, holding it up in front of him.
@@ -1028,21 +1034,28 @@ export class FarmView {
       drawHen(ctx, { time: this.time, flying: true });
       ctx.restore();
     }
-    this.drawOneChick({ x: friend.x, h: friend.h, state: friend.state, air: friend.air, t: this.time % 1, dizzy: 0, waiting: friend.waiting }, friend.wings, friend.look, friend.carried);
+    const back = friend.back ?? 0;
+    this.drawOneChick({ x: friend.x, h: friend.h, state: friend.state, air: friend.air, t: this.time % 1, dizzy: 0, waiting: friend.waiting }, friend.wings, friend.look, friend.carried, 0, back);
     ctx.restore();
-    if (!friend.name) return;
+    // One on the far side has its name higher, clear of the near one's when the two are side by side.
+    if (friend.name) this.drawName(friend.name, friend.x, friend.h + 1.25 + back * FAR_SIDE.name);
+  }
+
+  /** A name in a little white box, over a chick: this far along the track, and this high. */
+  drawName(name, along, high) {
+    const { ctx, unit } = this;
     ctx.save();
     ctx.font = `600 ${Math.round(Math.max(13, unit * 0.26))}px Fredoka, 'Noto Sans Georgian', sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const wide = ctx.measureText(friend.name).width + unit * 0.3;
-    const y = this.y(friend.h + 1.25);
+    const wide = ctx.measureText(name).width + unit * 0.3;
+    const [x, y] = [this.x(along), this.y(high)];
     ctx.fillStyle = 'rgb(255 255 255 / 0.9)';
     ctx.beginPath();
     ctx.roundRect(x - wide / 2, y - unit * 0.2, wide, unit * 0.4, unit * 0.2);
     ctx.fill();
     ctx.fillStyle = INK;
-    ctx.fillText(friend.name, x, y + 1);
+    ctx.fillText(name, x, y + 1);
     ctx.restore();
   }
 
@@ -1088,8 +1101,11 @@ export class FarmView {
     }
   }
 
-  /** A chick, the child's or a friend's: running, flying, waiting, tumbling, in the water, riding or cheering. */
-  drawOneChick(chick, wings, look, carried = false, open = 0) {
+  /**
+   * A chick, the child's or a friend's: running, flying, waiting, tumbling, in the water, riding or cheering. back is
+   * 1 for one on the far side of the track: see FAR_SIDE.
+   */
+  drawOneChick(chick, wings, look, carried = false, open = 0, back = 0) {
     const { ctx, unit } = this;
     let pose = chick.air ? 'fly' : 'run';
     let turn = 0;
@@ -1111,16 +1127,18 @@ export class FarmView {
       pose = 'wait';
     }
     if (carried) high += 0.62;
+    const up = back * FAR_SIDE.up;
+    const size = CHICK_DRAWN * (1 - back * FAR_SIDE.smaller);
     ctx.save();
     // A soft shadow on the ground under it.
     if (chick.state !== 'splash' && pose !== 'sit') {
       ctx.fillStyle = `rgb(18 48 77 / ${(0.2 * clamp(1 - high / 5, 0.25, 1)).toFixed(3)})`;
       ctx.beginPath();
-      ctx.ellipse(this.x(chick.x), this.ground + unit * 0.02, unit * 0.34 * clamp(1 - high / 9, 0.5, 1), unit * 0.07, 0, 0, TAU);
+      ctx.ellipse(this.x(chick.x), this.ground - up * unit + unit * 0.02, unit * 0.34 * clamp(1 - high / 9, 0.5, 1), unit * 0.07, 0, 0, TAU);
       ctx.fill();
     }
-    ctx.translate(this.x(chick.x), this.y(high));
-    ctx.scale(unit * CHICK_DRAWN, unit * CHICK_DRAWN);
+    ctx.translate(this.x(chick.x), this.y(high + up));
+    ctx.scale(unit * size, unit * size);
     drawChick(ctx, { wings, pose, time: this.time, turn, look, open });
     ctx.restore();
   }

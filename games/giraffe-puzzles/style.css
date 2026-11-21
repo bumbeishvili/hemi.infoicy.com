@@ -167,3 +167,44 @@ body[data-screen='playing']:has(.story.is-visible) .prompt {
 .clock-meter { width: clamp(56px, 7vw, 96px); margin: 6px 0 4px; }
 .clock-meter span { width: 100%; background: #5aa9e6; transition: background-color 1.5s ease; }
 .chip-clock.is-low .clock-meter span { background: #e8743b; }
+
+/*
+ * Two in one picture on one screen (core/one-picture.js): each player's mirror and hand meter are at the inner side of
+ * their own half, by the middle of the band, with what they're asked under them, over the wall above the boards, so
+ * the pieces in place, the scores and the clock keep the left of the band, and Giraffe's words go to the right of it,
+ * up to the gear. What's asked is the size it is anywhere else, as there's room for it there. The rules under 'under'
+ * are for the second player's, in the game under the picture, where what isn't theirs is hidden, as it could show
+ * through with what is. The first player's are the mirror image of the second's, but for what they're asked, which
+ * keeps to its own side of the middle however long it is.
+ */
+html[data-picture='under'] body:not([data-screen='check']) .camera-frame { left: 12px; right: auto; }
+html[data-picture='under'] .hands-bar { left: calc(24px + var(--camera-small)); right: auto; }
+html[data-picture='under'] body[data-screen='playing'] .prompt,
+html[data-picture='under'] body[data-screen='playing']:is([data-prompt='table'], :has(.story.is-visible)) .prompt {
+  top: calc(30px + var(--camera-small) / var(--camera-aspect));
+  left: 12px;
+  transform: none;
+  max-width: calc(100vw - 24px);
+  padding: 10px 26px 12px;
+  font-size: clamp(22px, 3.3vw, 42px);
+}
+html[data-picture='under'] :is(.story, .puzzle-hud, .film) { display: none !important; }
+html[data-picture='one'] body[data-screen='playing'] .prompt,
+html[data-picture='one'] body[data-screen='playing']:is([data-prompt='table'], :has(.story.is-visible)) .prompt {
+  left: auto !important;
+  right: calc(50% + 15px) !important;
+  transform: none;
+  max-width: calc(50vw - 32px);
+  padding: 10px 26px 12px;
+  font-size: clamp(22px, 1.65vw, 42px);
+}
+/*
+ * The second player's meter ends 27px past the middle, after their mirror and meter, as big as in half the screen, and
+ * the first player's starts as far before it, so the pieces in place and the scores keep clear of it.
+ */
+html[data-picture='one'] body .story {
+  left: calc(50% + 39px + clamp(140px, 7.5vw, 230px) + clamp(66px, 3.5vw, 92px));
+  transform: none;
+  width: min(30vw, 360px, calc(50vw - 107px - clamp(140px, 7.5vw, 230px) - clamp(66px, 3.5vw, 92px)));
+}
+html[data-picture='one'] .puzzle-hud { max-width: calc(50vw - 63px - clamp(140px, 7.5vw, 230px) - clamp(66px, 3.5vw, 92px)); }

@@ -160,3 +160,19 @@ body[data-screen='playing'] .spider-dots { display: flex; }
   .spider-dots li { transition: none; }
   .chip-berries.is-caught { animation: none; }
 }
+
+/*
+ * Two in one picture on one screen (core/one-picture.js): what's said goes at the top in the middle, between the two
+ * players' mirrors, how many are home and everyone's scores go one under the other, clear of the first player's
+ * mirror, and each player's little film, which shows until they've brought one home, is at the outer side of their
+ * own half, over their hand meter and clear of what they're asked and the dots. In the game under the picture, the
+ * second player's, what they're asked goes in the middle of their half, as nothing is beside it, and their own copy of
+ * the words is hidden, as it could show through with what's theirs. The first player's own things are the mirror
+ * image of the second's.
+ */
+html[data-picture='one'] body .story { left: 50%; top: 12px; transform: translateX(-50%); }
+html[data-picture='one'] body[data-friends-race] :is(.hud-top .chips, .spider-scores) { flex-direction: column; align-items: flex-start; }
+html[data-picture='under'] .story { display: none !important; }
+html[data-picture='under'] body[data-screen='playing']:has(.story.is-visible) .prompt { left: 50%; max-width: calc(100vw - 32px); }
+html[data-picture='under'] body[data-hands='right'] .film { left: auto; right: 12px; bottom: 120px; }
+html[data-picture='under'] body[data-hands='left'] .film { bottom: 120px; }

@@ -11,7 +11,7 @@
 // With friends, each friend's glove is on the glass too, in light grey with their name over it, where
 // their hand is on their own window, and the mud their hand wipes comes off here as well, a patch at a
 // time, softly, as the server says it was theirs.
-import { Glove, INK, mixColours } from '../../core/glove.js';
+import { Glove, INK, SECOND_PLAYER, inOnePicture, mixColours, secondPlayerLook } from '../../core/glove.js';
 import { NEW_THINGS, POWER_SECONDS, PRIZE_READY_SECONDS } from './storm.js';
 
 const PALM_SHARE = 0.105;
@@ -745,9 +745,12 @@ export class LampRoom {
     this.drawShield(ctx);
     this.drawGull(ctx);
     this.drawLanternGlow(ctx);
-    this.drawFriendsGloves(ctx);
+    // A friend's glove goes under the child's own, but the second player's in one picture goes over the first's.
+    const over = inOnePicture();
+    if (!over) this.drawFriendsGloves(ctx);
     this.gloves.left.draw(ctx, this.palmSize);
     this.gloves.right.draw(ctx, this.palmSize);
+    if (over) this.drawFriendsGloves(ctx);
     this.drawFlying(ctx);
     this.drawLabels(ctx);
   }
@@ -755,14 +758,16 @@ export class LampRoom {
   /**
    * Friends' gloves, wiping on their own computers, where their hands are on their own windows, in light
    * grey under the child's own, with each friend's name over theirs. They're only there to see: the mud
-   * a friend wipes comes off as the server says it was theirs, with clearPatches.
+   * a friend wipes comes off as the server says it was theirs, with clearPatches. Two playing in one picture on one
+   * screen, the friend is the second player, right there playing too, so theirs is in their own blue.
    */
   drawFriendsGloves(ctx) {
     const { palmSize, height } = this;
+    const second = inOnePicture();
     for (const { glove, name, fade } of this.friendGloves) {
       if (!glove.visible || fade < 0.02) continue;
       // Solid, as a see-through one shows its outline through itself, and only fading as it comes and goes.
-      glove.draw(ctx, palmSize, { ...FRIEND_GLOVE, alpha: fade });
+      glove.draw(ctx, palmSize, second ? secondPlayerLook(glove, fade) : { ...FRIEND_GLOVE, alpha: fade });
       ctx.save();
       ctx.globalAlpha = fade;
       ctx.font = `700 ${Math.round(palmSize * 0.32)}px Fredoka, sans-serif`;
@@ -772,7 +777,7 @@ export class LampRoom {
       const above = glove.y - palmSize * 1.55;
       const y = above - palmSize * 0.42 < height * 0.24 ? glove.y + palmSize * 1.2 : above;
       const wide = ctx.measureText(name).width + palmSize * 0.4;
-      ctx.fillStyle = 'rgb(18 48 77 / 0.72)';
+      ctx.fillStyle = second ? SECOND_PLAYER.tag : 'rgb(18 48 77 / 0.72)';
       ctx.beginPath();
       ctx.roundRect(glove.x - wide / 2, y - palmSize * 0.42, wide, palmSize * 0.48, palmSize * 0.24);
       ctx.fill();

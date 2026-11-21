@@ -166,3 +166,19 @@ body[data-screen='welcome']:not([data-friends-box]) .arrow-film { display: block
 @media (prefers-reduced-motion: reduce) {
   .film-string-hand, .film-string-hand rect, .film-string-hand .film-finger, .film-string, .film-arrow, .film-limb, .film-star { animation-duration: 9s; }
 }
+
+/*
+ * Two in one picture (core/one-picture.js). What both share goes along the top in the middle: the targets hit, and
+ * Giraffe's words under them. Each player's own things are in their own half: the mirror at the outer top corner
+ * with the hand meter beside it, what they're told along the bottom, and the film at its inner end. These are the
+ * second player's, in the game under the picture; the first player's are their mirror image.
+ */
+html[data-picture='one'] .arrow-hud { left: 50%; right: auto; transform: translateX(-50%); flex-direction: row; }
+html[data-picture='one'] .story { top: 86px; }
+/* Giraffe's words are in the first player's game, which is the picture: the game under it keeps its own out of the way. */
+html[data-picture='under'] body[data-screen] .story.is-visible { display: none; }
+html[data-picture='under'] body:not([data-screen='check']) .camera-frame { left: auto; right: 70px; }
+html[data-picture='under'] body:not([data-screen='check']) .hands-bar { left: auto; right: calc(70px + var(--camera-small) + 12px); }
+html[data-picture='under'] body .arrow-film { left: 16px; right: auto; }
+html[data-picture='under'] body[data-screen='playing'] .prompt { font-size: clamp(20px, 3.2vw, 36px); }
+html[data-picture='one'] body[data-screen='playing'] .prompt { font-size: clamp(20px, 1.6vw, 36px); }

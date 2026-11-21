@@ -391,3 +391,18 @@ html[data-seat] body[data-screen='practice'] .move-meter {
   top: 70px;
   height: min(36vh, calc(38vw / var(--camera-aspect)));
 }
+
+/*
+ * Two in one picture (core/one-picture.js): each player's camera, move meter and coach at the outer side of their
+ * own half, so the middle of the screen, where the runners are side by side, stays clear. These are the second
+ * player's, in the game under the picture; the first player's are their mirror image.
+ */
+html[data-picture='under'] body[data-screen='countdown'] .body-frame,
+html[data-picture='under'] body[data-screen='run'] .body-frame {
+  left: auto;
+  right: calc(12px + max(170px, min(26vw, 52vh)) + 14px + clamp(30px, 3.4vw, 44px) + 14px);
+}
+html[data-picture='under'] body[data-screen] .move-meter {
+  left: auto;
+  right: calc(12px + max(170px, min(26vw, 52vh)) + 14px);
+}

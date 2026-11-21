@@ -1281,16 +1281,20 @@ export class Court {
     }
   }
 
-  /** A friend's name, over their glove, and the computer's over its head for the first moments. */
+  /**
+   * A friend's name, over their glove, and the computer's over its head for the first moments. The child's own has
+   * a name only when two are on one screen in one picture, and it's over their glove too.
+   */
   drawNames() {
     for (const side of ['A', 'B']) {
       const player = this.players[side];
-      if (!player || player.mine || !player.name) continue;
-      const showFor = player.kind === 'remote' ? Infinity : player.nameFor;
+      if (!player?.name) continue;
+      const always = player.kind === 'remote' || player.mine;
+      const showFor = always ? Infinity : player.nameFor;
       if (showFor <= 0) continue;
       const alpha = clamp(showFor, 0, 1);
       const { head } = this.pose(side);
-      const at = player.kind === 'remote' && player.glove.visible ? { x: player.glove.x, y: player.glove.y - this.palmSize * 1.6 } : { x: head.x, y: head.y - this.palmSize * 0.35 };
+      const at = always && player.glove.visible ? { x: player.glove.x, y: player.glove.y - this.palmSize * 1.6 } : { x: head.x, y: head.y - this.palmSize * 0.35 };
       this.drawTag(player.name, at, alpha);
     }
   }

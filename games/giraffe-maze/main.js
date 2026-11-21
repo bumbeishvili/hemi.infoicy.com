@@ -9,6 +9,7 @@ import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { Track } from '../../core/friends.js';
 import { FriendsPanel, time } from '../../core/friends-ui.js';
 import { Glove } from '../../core/glove.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { DID_IT_TOGETHER, Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
@@ -112,6 +113,7 @@ class MazeGame {
     this.mode = 'solo';
     this.team = false; // With friends, together: see prepare().
     this.carriedBy = ''; // Together, the friend who found the way out of the maze just left.
+    this.taken = new Map(); // Two in one picture, against each other: who was first out of each maze, by its number.
     this.resetCounts();
     byId('finish-hero')?.closest('.finish-hero')?.insertAdjacentHTML('afterend', '<p id="finish-team" class="finish-team" hidden></p><p id="finish-found" class="finish-found"></p><p id="finish-prizes" class="finish-prizes"></p>');
     this.friends = new FriendsPanel({
@@ -257,6 +259,16 @@ class MazeGame {
     return performance.now() - this.goAt;
   }
 
+  /**
+   * Whether two are playing a race on one screen, in one picture: the first player's game across the whole screen,
+   * with the second in it as a friend (see core/one-picture.js). One picture can't show a maze each, so the two
+   * race through the same mazes: the first out of each takes it, and brings the other on to the next with them, as
+   * together. Who that was comes from the room, so both games have the same, and the first out of the last maze wins.
+   */
+  get onePictureRace() {
+    return Boolean(SEAT?.onePicture) && this.mode === 'friends' && !this.team;
+  }
+
   /* ---------- a new game ---------- */
 
   /** A game on their own: a new maze for each friend to find, each with a friend who isn't the child's own character. */
@@ -274,6 +286,7 @@ class MazeGame {
     // Together, everyone looks for the way out of each maze, and whoever finds it takes the others on: see followTeam.
     this.team = Boolean(friendly?.team);
     this.carriedBy = '';
+    this.taken = new Map();
     document.body.toggleAttribute('data-friends-team', this.team);
     this.session.finishLine = this.team ? DID_IT_TOGETHER : friendly ? RACE_FINISH : FINISH;
     if (friendly) {
@@ -376,6 +389,8 @@ class MazeGame {
       // In a race, out of a maze: a cheer, and on the last one the time, which is the child's race time.
       onOut: (index, last) => {
         if (last) this.outMs = this.sinceGo;
+        // Two racing in one picture: this maze is this child's, unless the other was out first, as the room says.
+        if (this.onePictureRace) this.friends.claim(index);
         sound().play('found', { gain: 0.55 });
         sound().play('cheer', { gain: 0.16 });
         const way = this.run.layout.maze.centre(this.run.layout.goal);
@@ -437,7 +452,7 @@ class MazeGame {
     if (this.mode === 'friends') {
       this.friends.sendMove('walker', this.walkerState(input), this.sinceGo);
       this.updateFriends(dt);
-      if (this.team) this.followTeam();
+      if (this.team || this.onePictureRace) this.followTeam();
       this.showRace();
     }
     this.view.update(dt);
@@ -567,8 +582,16 @@ class MazeGame {
     };
   }
 
-  /** Something from a friend's game: where their character is, in whichever maze they've got to. */
+  /**
+   * Something from a friend's game: where their character is, in whichever maze they've got to. Or, two racing in
+   * one picture, who was first out of a maze, from the room, which says so to everyone.
+   */
   fromFriend(id, message) {
+    if (message.t === 'claimed' && this.onePictureRace) {
+      if (!this.taken.has(message.k)) this.taken.set(message.k, message.by);
+      this.showRace();
+      return;
+    }
     if (message.t !== 'walker' || this.session.screen !== 'playing') return;
     this.friendWalkers.get(id)?.track.push(message, performance.now());
   }
@@ -710,6 +733,9 @@ class MazeGame {
           power: run.power,
           stuck: run.stuck,
           alpha: left,
+          // Two in one picture, both are on the screen, so each has their name over them.
+          name: SEAT?.onePicture && this.mode === 'friends' ? seatName(SEAT.index) : undefined,
+          fade: left,
           followers: this.followersOf(run.trail, run.followers, run.stats.walked, run.moving),
         });
       }
@@ -819,13 +845,17 @@ class MazeGame {
     const you = this.friends.room.you;
     const { mazes } = this.run;
     const finishedAt = (id) => this.friends.results.get(id)?.ms ?? (id === you ? this.outMs : null) ?? Infinity;
+    // Two racing in one picture: each one's dots are the mazes they were first out of, and the flag is whoever was
+    // first out of the last, in the order they stand.
+    const race = this.onePictureRace;
+    const took = (id) => Array.from({ length: mazes }, (_, maze) => this.taken.get(maze) === id);
     // Against each other, everyone, whoever is furthest on first. Together they go on as one, so it's one line.
     const everyone = this.team
       ? [{ id: 'team', name: 'Together', who: '', out: this.mazesOut(you), at: Infinity }]
-      : [{ id: you, name: 'You', who: this.myCharacter().id }, ...current.friends.filter((friend) => !friend.gone).map((friend) => ({ id: friend.id, name: friend.spec.name, who: friend.spec.id }))]
-        .map((each) => ({ ...each, out: this.mazesOut(each.id), at: finishedAt(each.id) }))
-        .sort((a, b) => b.out - a.out || (a.at === b.at ? 0 : a.at < b.at ? -1 : 1));
-    const key = everyone.map(({ id, out }) => `${id}:${out}`).join(',');
+      : [{ id: you, name: race ? seatName(SEAT.index) : 'You', who: this.myCharacter().id }, ...current.friends.filter((friend) => !friend.gone).map((friend) => ({ id: friend.id, name: friend.spec.name, who: friend.spec.id }))]
+        .map((each) => (race ? { ...each, took: took(each.id), out: took(each.id)[mazes - 1] ? mazes : 0 } : { ...each, out: this.mazesOut(each.id), at: finishedAt(each.id) }))
+        .sort((a, b) => (race ? 0 : b.out - a.out || (a.at === b.at ? 0 : a.at < b.at ? -1 : 1)));
+    const key = everyone.map(({ id, out, took: dots }) => `${id}:${out}:${dots ?? ''}`).join(',');
     if (list.dataset.key === key) return;
     list.dataset.key = key;
     list.replaceChildren(...everyone.map((each) => {
@@ -846,7 +876,7 @@ class MazeGame {
       dots.setAttribute('aria-label', `${each.out} of ${mazes} mazes`);
       for (let maze = 0; maze < mazes; maze += 1) {
         const dot = document.createElement('i');
-        dot.classList.toggle('is-done', maze < each.out);
+        dot.classList.toggle('is-done', each.took ? each.took[maze] : maze < each.out);
         dots.append(dot);
       }
       row.append(face, name, dots);
@@ -868,7 +898,10 @@ class MazeGame {
     sound.stopLoop('birds');
     this.story.hide();
     // The race time is when the child's character got out of the last maze, not the moment after when this card comes.
-    if (this.mode === 'friends') this.friends.finished(this.outMs ?? this.sinceGo, { n: this.run.stats.fruit, w: 1 });
+    // Two racing in one picture, whoever was first out of the last maze has won, as the room says: the other is second.
+    const last = this.taken.get(this.run.mazes - 1);
+    const won = !this.onePictureRace || !last || last === this.friends.room.you;
+    if (this.mode === 'friends') this.friends.finished(this.outMs ?? this.sinceGo, { n: this.run.stats.fruit, w: won ? 1 : 0 });
     for (const glove of Object.values(this.gloves)) glove.hide();
     for (const friend of this.friendWalkers.values()) friend.shown = false;
   }
@@ -964,7 +997,7 @@ new GameSession({
         <ol id="maze-race" class="maze-race" aria-label="The race" hidden></ol>
       </div>
       ${STORY_BOX}
-      <div class="film maze-film" aria-hidden="true">
+      <div class="film maze-film" data-own aria-hidden="true">
         <svg viewBox="0 0 220 150">
           <path class="film-hedge" d="M8 62h132v-50h70v126H8z" />
           <path class="film-path" d="M8 84h150V30h30v86H8z" />

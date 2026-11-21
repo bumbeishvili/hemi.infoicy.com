@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { seededRandom } from '../../core/friends.js';
 import { Practice } from '../../games/leap-trail/practice.js';
 import { LANE_STEP, LaneReader, bodyAcross } from '../../games/leap-trail/lanes.js';
-import { ARCH_STARS, CHEST_COINS, GEM_COINS, GOLD_STARS, LANES, NEW_THINGS, OBSTACLES, PACES, PACK, POWERS, Run, fills, layCourse, newAt, newThingsAt, paceAt, packPace, powersFor, trailLevel } from '../../games/leap-trail/run.js';
+import { ARCH_STARS, CHEST_COINS, GEM_COINS, GOLD_STARS, LANES, NEW_THINGS, OBSTACLES, PACES, PACK, PICTURE_PACK, POWERS, Run, fills, layCourse, newAt, newThingsAt, paceAt, packPace, powersFor, trailLevel } from '../../games/leap-trail/run.js';
 
 function seeded(seed = 7) {
   let state = seed;
@@ -1431,6 +1431,19 @@ test('in a pack, a runner beside its friends or behind them runs at the trail\'s
   assert.equal(packPace(200, [NaN, undefined]), 1);
   // Nobody is hurried: however far behind the first, a runner is never made faster, which would leave less time for each move.
   for (const behind of [10, 40, 100, 1000]) assert.equal(packPace(200, [200 + behind]), 1, `${behind} metres behind`);
+});
+
+test('two in one picture keep together: the runner in front waits for the other, from a few metres ahead, to a stop', () => {
+  const at = (ahead) => packPace(500 + ahead, [500], PICTURE_PACK);
+  assert.equal(at(0), 1);
+  assert.equal(at(PICTURE_PACK.ahead), 1);
+  assert.ok(at(PICTURE_PACK.ahead + 1) < 1);
+  assert.equal(at(3), 0, 'stopped by three metres ahead, so the one behind stays just behind, where they\'re shown at the shoulder');
+  assert.equal(at(40), 0);
+  // The one behind is never hurried, as in any pack.
+  assert.equal(packPace(500, [504], PICTURE_PACK), 1);
+  // And on its own, as when the other has gone, it runs at the trail's pace.
+  assert.equal(packPace(500, [], PICTURE_PACK), 1);
 });
 
 test('the runner far in front of the last of its friends eases off, evenly, down to half the pace and no further', () => {

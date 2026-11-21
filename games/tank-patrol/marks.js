@@ -113,6 +113,7 @@ export class Marks {
     if (state.line) this.drawAimLine(state.line);
     for (const bar of state.bars) this.drawBar(bar);
     for (const sleep of state.sleeping) this.drawSleep(sleep);
+    if (state.friendMark) this.drawFriendMark(state.friendMark);
     if (state.crosshair) this.drawCrosshair(state.crosshair);
     for (const label of state.labels ?? []) this.drawLabel(label);
   }
@@ -326,18 +327,42 @@ export class Marks {
     }
   }
 
-  /** A closed hand: a marker lying on the ground, with arrows going in and one coming down on it. */
-  drawGoHere(x, y, R) {
+  /**
+   * Two on one screen, in one picture: the friend's crosshair, where their game says it is, all in the colour of
+   * their tank, with a dotted line to it from their tank. It has the same shapes as the child's own: a marker on
+   * the ground for a closed hand, and a sight for an open one.
+   */
+  drawFriendMark({ x, y, from, look, radius, colour }) {
+    if (look === 'lost') return;
+    const { ctx } = this;
+    ctx.save();
+    ctx.setLineDash([3, 13]);
+    inkLine(ctx, () => {
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(x, y);
+    }, colour, 5, 3);
+    ctx.setLineDash([]);
+    if (look === 'go') this.drawGoHere(x, y, radius, colour);
+    else this.drawSight(x, y, radius, look, false, colour);
+    ctx.restore();
+  }
+
+  /** A closed hand: a marker lying on the ground, with arrows going in and one coming down on it. colour is the friend's. */
+  drawGoHere(x, y, R, colour = GO) {
     const { ctx, time, reducedMotion } = this;
     const flat = (radius) => {
       ctx.beginPath();
       ctx.ellipse(x, y, radius, radius * SQUASH, 0, 0, TAU);
     };
     flat(R);
-    ctx.fillStyle = 'rgb(255 210 63 / 0.26)';
+    ctx.save();
+    ctx.globalAlpha = 0.26;
+    ctx.fillStyle = colour;
     ctx.fill();
-    inkLine(ctx, () => flat(R), GO, 7, 5);
-    inkLine(ctx, () => flat(R * 0.46), GO, 4, 4);
+    ctx.restore();
+    inkLine(ctx, () => flat(R), colour, 7, 5);
+    inkLine(ctx, () => flat(R * 0.46), colour, 4, 4);
 
     // Four arrows, going in towards the middle.
     const going = reducedMotion ? 0.4 : (time * 0.9) % 1;
@@ -356,7 +381,7 @@ export class Marks {
       ctx.lineTo(size, -size * 0.55);
       ctx.lineTo(0, size * 0.75);
       ctx.closePath();
-      ctx.fillStyle = GO;
+      ctx.fillStyle = colour;
       ctx.strokeStyle = INK;
       ctx.lineWidth = 3;
       ctx.fill();
@@ -377,17 +402,17 @@ export class Marks {
     ctx.lineTo(x - w * 0.42, tip - w * 1.05);
     ctx.lineTo(x - w, tip - w * 1.05);
     ctx.closePath();
-    ctx.fillStyle = GO;
+    ctx.fillStyle = colour;
     ctx.strokeStyle = INK;
     ctx.lineWidth = 4.5;
     ctx.fill();
     ctx.stroke();
   }
 
-  /** An open hand: a sight standing up, which goes green and spins when it's firing. */
-  drawSight(x, y, R, look, auto) {
+  /** An open hand: a sight standing up, which goes green and spins when it's firing. own is the friend's colour, for theirs. */
+  drawSight(x, y, R, look, auto, own = null) {
     const { ctx } = this;
-    const colour = look === 'firing' ? FIRING : look === 'far' ? FAR : READY;
+    const colour = own ?? (look === 'firing' ? FIRING : look === 'far' ? FAR : READY);
     ctx.save();
     ctx.translate(x, y);
     const circle = (radius) => {
@@ -396,8 +421,11 @@ export class Marks {
     };
     if (look === 'firing') {
       circle(R);
-      ctx.fillStyle = 'rgb(53 224 122 / 0.2)';
+      ctx.save();
+      ctx.globalAlpha = 0.2;
+      ctx.fillStyle = own ?? FIRING;
       ctx.fill();
+      ctx.restore();
     }
     circle(R);
     ctx.strokeStyle = INK;

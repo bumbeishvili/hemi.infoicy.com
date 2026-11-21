@@ -9,6 +9,7 @@ import { Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
 import { Glove } from '../../core/glove.js';
 import { GameSession } from '../../core/session.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { catchKey } from './friends.js';
@@ -421,7 +422,8 @@ class SpiderGame {
     if (list.hidden) return;
     const portraits = this.session.portraits ?? {};
     const you = this.friends.room.you;
-    const mine = { id: you, name: 'You', who: (characterById(this.session.settings.fighter) ?? ROSTER[0]).id, n: this.garden.mine };
+    // Two in one picture on one screen both see this list, so the first player is Player 1 in it, not You.
+    const mine = { id: you, name: SEAT?.onePicture ? seatName(SEAT.index) : 'You', who: (characterById(this.session.settings.fighter) ?? ROSTER[0]).id, n: this.garden.mine };
     const everyone = [mine, ...this.friendsGloves.map(({ id, name, who, n }) => ({ id, name, who, n }))].sort((a, b) => b.n - a.n);
     const key = everyone.map(({ id, n }) => `${id}:${n}`).join(',');
     if (list.dataset.key === key) return;
@@ -565,7 +567,7 @@ new GameSession({
       </div>
       <ol id="spider-dots" class="spider-dots" aria-hidden="true"></ol>
       ${STORY_BOX}
-      <div class="film" aria-hidden="true">
+      <div class="film" data-own aria-hidden="true">
         <svg viewBox="0 0 220 220">
           <g class="film-web">
             <circle cx="50" cy="96" r="34" />

@@ -11,6 +11,7 @@ import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { seededRandom, Track } from '../../core/friends.js';
 import { FriendsPanel, time as clockTime } from '../../core/friends-ui.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { GameSession } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
@@ -99,6 +100,7 @@ class FlapGame {
     this.shown = { left: 0, right: 0 }; // How far up each wing is drawn, which follows the hands smoothly.
     this.lastSnapshot = null;
     this.ghosts = [];
+    this.name = ''; // Two in one picture, the child's own name over their chick: see prepare.
     this.goAt = 0;
     this.team = false;
     this.farm = this.newFarm(session.level);
@@ -193,6 +195,8 @@ class FlapGame {
       single: this.single,
       together: Boolean(friendly?.team),
       friends: Boolean(friendly),
+      // Two racing in one picture are kept together, as a flock is: see Farm.
+      kept: Boolean(friendly && SEAT?.onePicture),
       random: friendly ? seededRandom(friendly.seed) : Math.random,
       onEvent: (event) => this.onFarm(event),
     });
@@ -264,12 +268,15 @@ class FlapGame {
     this.view.reset();
     this.resetCounts();
     this.story.hide();
-    // Each friend's chick, in a colour of its own, where their game says it is.
+    // Each friend's chick, in a colour of its own, where their game says it is. Two in one picture, the other
+    // player's is blue, as different from the yellow as can be, and runs on the far side of the track.
+    const onePicture = Boolean(friendly && SEAT?.onePicture);
     this.ghosts = (friendly?.friends ?? []).map((friend, index) => {
       const track = new Track(CHICK_TRACK);
       this.friends.follow(friend.id, track);
-      return { friend, track, look: CHICK_LOOKS[1 + (index % (CHICK_LOOKS.length - 1))], shown: null };
+      return { friend, track, look: onePicture ? CHICK_LOOKS[3] : CHICK_LOOKS[1 + (index % (CHICK_LOOKS.length - 1))], back: onePicture ? 1 : 0, shown: null };
     });
+    this.name = onePicture ? seatName(SEAT.index) : '';
     document.body.toggleAttribute('data-friends-race', Boolean(friendly));
     document.body.toggleAttribute('data-friends-team', this.team);
     // Corn only comes from level 2.
@@ -538,8 +545,9 @@ class FlapGame {
     const { screen } = this.session;
     this.view.render({
       farm: this.farm,
-      friends: this.ghosts.map((ghost) => ghost.shown).filter(Boolean),
+      friends: this.ghosts.filter((ghost) => ghost.shown).map((ghost) => ({ ...ghost.shown, back: ghost.back })),
       waving: screen !== 'playing' || this.farm.chick.x > this.farm.end - 9,
+      name: screen === 'playing' || screen === 'countdown' ? this.name : '',
     });
   }
 
@@ -702,7 +710,7 @@ new GameSession({
     heroNoun: 'flaps',
     extraRows: [{ id: 'flaps', label: 'Flaps' }, { id: 'held', label: 'Time held up' }, { id: 'together', label: 'Both wings together' }],
     hudTop: `
-      <div class="flap-hud">
+      <div class="flap-hud" data-own>
         <div class="chip chip-way">
           <span class="chip-label">Way home</span>
           <span class="chip-value"><span id="chip-way">0 of 12</span></span>
@@ -711,9 +719,9 @@ new GameSession({
         <div id="chip-corn-box" class="chip chip-corn" hidden><span class="chip-label">Corn</span><span id="chip-corn" class="chip-value">0</span></div>
       </div>
       ${STORY_BOX}
-      <div class="flap-wings" aria-hidden="true">${gauge('left', 'Left wing')}${gauge('right', 'Right wing')}
+      <div class="flap-wings" data-own aria-hidden="true">${gauge('left', 'Left wing')}${gauge('right', 'Right wing')}
       </div>
-      <div class="film flap-film" aria-hidden="true">
+      <div class="film flap-film" data-own aria-hidden="true">
         <svg viewBox="0 0 220 160">
           <rect class="film-grass" x="0" y="132" width="220" height="28" />
           <g transform="translate(-16 0)">

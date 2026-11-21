@@ -946,7 +946,9 @@ export class PaintView {
 
   /**
    * A glove on the screen, which is the brush: a ring for how big the brush is, the glove, and on its palm the
-   * paint that's on it, or a star with the stamp. down is the brush on the sheet, painting.
+   * paint that's on it, or a star with the stamp. down is the brush on the sheet, painting. look is { ink, glove,
+   * alpha } for a friend's, which is grey and see-through, or for the second player's, playing in one picture on one
+   * screen, which is solid, in their own blue, with a tag of the same blue.
    */
   drawGlove({ glove, x, y, look = null, name = null, down = false, colour = null, tool = 'paint', radius = 0, ring = null, ghost = false }, painting) {
     if (!glove?.visible && !ghost) return;
@@ -985,7 +987,7 @@ export class PaintView {
     if (glove?.visible && !ghost) {
       ctx.save();
       ctx.translate(x - glove.x, y - glove.y);
-      ctx.globalAlpha = alpha * (look ? 0.8 : 0.94);
+      ctx.globalAlpha = alpha * (look && !look.solid ? 0.8 : 0.94);
       glove.draw(ctx, palmSize, look ? { fill: look.glove, ink: look.ink } : null);
       ctx.restore();
     }
@@ -1008,7 +1010,7 @@ export class PaintView {
       ctx.restore();
     }
     ctx.restore();
-    if (name) this.drawTag(name, x, y - palmSize * 1.35, alpha);
+    if (name) this.drawTag(name, x, y - palmSize * 1.35, alpha, look?.tag);
   }
 
   /** Giraffe, beside the sheet on the side away from the child's hand, waving, cheering or watching. */
@@ -1102,18 +1104,19 @@ export class PaintView {
     }
   }
 
-  drawTag(text, x, y, alpha = 1) {
+  /** A name over a glove, white, or in a colour of its own with white writing. */
+  drawTag(text, x, y, alpha = 1, colour = null) {
     const { ctx, palmSize } = this;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.font = `600 ${Math.round(Math.max(13, palmSize * 0.4))}px Fredoka, sans-serif`;
     const wide = ctx.measureText(text).width + 18;
     const high = Math.max(22, palmSize * 0.62);
-    ctx.fillStyle = 'rgb(255 255 255 / 0.92)';
+    ctx.fillStyle = colour ?? 'rgb(255 255 255 / 0.92)';
     ctx.beginPath();
     ctx.roundRect(x - wide / 2, y - high, wide, high, high / 2);
     ctx.fill();
-    ctx.fillStyle = INK;
+    ctx.fillStyle = colour ? '#ffffff' : INK;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(text, x, y - high / 2 + 1);

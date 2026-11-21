@@ -100,3 +100,15 @@ body[data-hands='left'] .hands-bar { justify-content: flex-start; }
 
 .finish-story { margin: 0; font-size: clamp(17px, 2.1vw, 23px); font-weight: 600; text-align: center; }
 .finish-story[hidden] { display: none; }
+
+/*
+ * Two in one picture on one screen (core/one-picture.js): what the ships say goes at the top in the middle, between
+ * the two players' mirrors, and the little film over the first player's hand meter, in the corner off the glass, as
+ * big as each half would have it, so that neither sits on what's either player's own. In the game under the picture,
+ * what the second player is asked goes in the middle of their half, as nothing is beside it, and their own copy of the
+ * words and the film are hidden, as they could show through with what's theirs.
+ */
+html[data-picture='one'] body .story { left: 50%; top: 12px; transform: translateX(-50%); }
+html[data-picture='one'] .film { width: max(120px, min(11vw, 34vh)); bottom: calc(28px + var(--meter-size) * 1.25); }
+html[data-picture='under'] :is(.story, .film) { display: none !important; }
+html[data-picture='under'] body[data-screen='playing']:has(.story.is-visible) .prompt { left: 50%; max-width: calc(100vw - 32px); }

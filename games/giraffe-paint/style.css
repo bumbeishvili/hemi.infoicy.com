@@ -145,3 +145,36 @@ body[data-screen='playing']:has(.story.is-visible) .prompt { left: 50%; max-widt
 .rival-meter { width: clamp(64px, 8vw, 110px); margin: 6px 0 4px; }
 .rival-meter span { background: #9b7bd4; transition: background-color 1.5s ease; }
 .chip-rival.is-near .rival-meter span { background: #e8743b; }
+
+/*
+ * Two in one picture on one screen (core/one-picture.js): each player's mirror and hand meter are at the inner side of
+ * their own half, by the middle of the band, with what they're asked under them, so the parts painted, the scores and
+ * the little film keep the left of the band, and Giraffe's words go to the right of it, up to the gear. The mirrors
+ * are a little smaller than in half the screen, so they keep off the sheet at the top of the easel. The rules under
+ * 'under' are for the second player's, in the game under the picture, where what isn't theirs is hidden, as it could
+ * show through with what is. The first player's are the mirror image of the second's, but for what they're asked,
+ * which keeps to its own side of the middle however long it is.
+ */
+html[data-picture='under'] { --camera-small: 120px; }
+html[data-picture='under'] body:not([data-screen='check']) .camera-frame { left: 12px; right: auto; }
+html[data-picture='under'] .hands-bar { left: calc(24px + var(--camera-small)); right: auto; }
+html[data-picture='under'] body[data-screen='playing'] .prompt,
+html[data-picture='under'] body[data-screen='playing']:has(.story.is-visible) .prompt { left: 12px; transform: none; max-width: calc(100vw - 24px); }
+html[data-picture='under'] :is(.story, .paint-hud, .film) { display: none !important; }
+html[data-picture='one'] body[data-screen='playing'] .prompt,
+html[data-picture='one'] body[data-screen='playing']:has(.story.is-visible) .prompt {
+  left: auto !important;
+  right: calc(50% + 15px) !important;
+  transform: none;
+  max-width: calc(50vw - 32px);
+}
+/*
+ * The second player's meter ends 27px past the middle, after their mirror and meter, and the first player's starts as
+ * far before it, so the parts painted and the scores keep clear of it.
+ */
+html[data-picture='one'] body .story {
+  left: calc(50% + 39px + 120px + clamp(66px, 3.5vw, 92px));
+  transform: none;
+  width: min(30vw, 360px, calc(50vw - 107px - 120px - clamp(66px, 3.5vw, 92px)));
+}
+html[data-picture='one'] .paint-hud { max-width: calc(50vw - 63px - 120px - clamp(66px, 3.5vw, 92px)); }

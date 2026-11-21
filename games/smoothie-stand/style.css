@@ -149,3 +149,17 @@ body[data-screen='playing'] .order { display: flex; }
 .patience[data-low='yes'] .patience-fill { background: #f5a524; }
 /* A customer who couldn't wait: their ticket greys as they go. */
 .order.is-gone { opacity: 0.45; transition: opacity 1s linear; }
+
+/*
+ * Two in one picture on one screen (core/one-picture.js): what the customer says goes at the top in the middle,
+ * between the two players' mirrors, so it sits on neither, and each player's little film, which shows until they've
+ * sliced something on the order, is at the outer side of their own half, beside their hand meter. In the game under
+ * the picture, the second player's, what they're asked goes in the middle of their half, as nothing is beside it,
+ * and their own copy of the words is hidden, as it could show through with what's theirs. The first player's own
+ * things are the mirror image of the second's.
+ */
+html[data-picture='one'] body .story { left: 50%; top: 12px; transform: translateX(-50%); }
+html[data-picture='under'] .story { display: none !important; }
+html[data-picture='under'] body[data-screen='playing']:has(.story.is-visible) .prompt { left: 50%; max-width: calc(100vw - 32px); }
+html[data-picture='under'] body[data-hands='right'] .film { left: auto; right: calc(24px + var(--meter-size)); }
+html[data-picture='under'] body[data-hands='left'] .film { left: calc(24px + var(--meter-size)); }

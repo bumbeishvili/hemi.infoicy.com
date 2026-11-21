@@ -26,13 +26,29 @@ function readSeat() {
   const params = new URLSearchParams(here.search);
   const [index, count] = [Number(params.get('seat')), Number(params.get('seats'))];
   if (!Number.isInteger(index) || !Number.isInteger(count) || count < 2 || count > MOST_SEATS || index < 0 || index >= count) return null;
-  return { index, count, code: host.code, host };
+  return { index, count, code: host.code, host, onePicture: Boolean(host.onePicture) };
 }
 
 // Two, for now: each seat runs its own tracker, and three or four of those together are too slow to play with.
 export const MOST_SEATS = 2;
 
-/** This copy of the game's seat, { index, count, code, host }, counting from 0 at the left of the screen, or null. */
+/**
+ * The games where each player needs a picture of their own, so the screen stays split while they play. In these
+ * the picture follows the player as they steer, at their own speed or their own way, through a world bigger than
+ * the screen: a car, a bike, a plane, a ship, their own eyes in a yard, a walker as fast as their foot is high. Two
+ * players are soon in different places, and one picture can't show both.
+ *
+ * Every other game happens in one place they can both see: a ring, a court, a garden, a valley seen from above, a
+ * picture on an easel, or a trail that runs at the game's own pace. There both play in one picture while they play,
+ * the left player's game across the whole screen with the other in it as a friend is, and the screen is split only
+ * while each gets ready, for their own camera check, and at the end, for their own finish card: see together.js.
+ */
+export const OWN_VIEW = new Set(['high-five-racers', 'moto-mountain', 'sky-wings', 'frost-arena', 'cannon-bay', 'rooftop-rope']);
+
+/**
+ * This copy of the game's seat, { index, count, code, host, onePicture }, counting from 0 at the left of the
+ * screen, or null. onePicture is whether its game is one both play in one picture: see OWN_VIEW.
+ */
 export const SEAT = readSeat();
 
 /**

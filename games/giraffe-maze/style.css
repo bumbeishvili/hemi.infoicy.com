@@ -196,3 +196,12 @@ body:not([data-prizes='on']) tr:has(#sum-left-prizes) { display: none; }
 .sun-meter { width: clamp(64px, 8vw, 120px); margin: 0; }
 .sun-meter span { width: 100%; background: #f5b82e; transition: background-color 1.5s ease; }
 .chip-sun.is-low .sun-meter span { background: #e8743b; }
+
+/*
+ * Two in one picture (core/one-picture.js). What both share goes along the top in the middle: the fruit and the
+ * race. Each player's own things are in their own half: the mirror at the outer top corner with the hand meter
+ * beside it, as they are, and the film in the outer bottom corner. These are the second player's, in the game
+ * under the picture; the first player's are their mirror image.
+ */
+html[data-picture='one'] .maze-hud { left: 50%; transform: translateX(-50%); }
+html[data-picture='under'] body .maze-film { left: auto; right: 16px; }

@@ -14,6 +14,20 @@ const TIPS = [4, 8, 12, 16, 20];
 const GLOVE_COLOURS = { open: '#3ddc84', closed: '#ffc21a' };
 export const INK = '#12304d';
 
+/**
+ * The second player's glove, while two play in one picture on one screen (see core/one-picture.js), where it's in
+ * the first player's game as a friend's is: solid, and blue where the first player's is green, so that each knows
+ * their own at a glance. It's a deeper blue when it isn't open, as the first player's is yellow then, and its name is
+ * on a tag of the same blue.
+ */
+export const SECOND_PLAYER = { open: '#6f7cff', closed: '#4651cf', ink: INK, tag: '#3b45b5' };
+
+/** Whether this game is the one picture two play in on one screen, just now, where a friend is the second player. */
+export const inOnePicture = () => globalThis.document?.documentElement?.dataset.picture === 'one';
+
+/** How the second player's glove is drawn, open or not, fading only as it comes and goes. */
+export const secondPlayerLook = (glove, alpha = 1) => ({ fill: SECOND_PLAYER[glove.status === 'open' ? 'open' : 'closed'], ink: SECOND_PLAYER.ink, alpha });
+
 const channels = (hex) => [0, 2, 4].map((at) => parseInt(hex.slice(at + 1, at + 3), 16));
 
 /** A colour part of the way to another one. */

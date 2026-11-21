@@ -321,10 +321,14 @@ export class Farm {
    * level is the level played. things is how many things are in the way, fox what a flap that misses does
    * ('tumble' or 'wait'), and single the one hand that works both wings, 'left' or 'right', or null when each hand
    * is a wing, all as a grown-up chose. together is flying home with friends as one flock, and friends that there
-   * are friends at all. random lays out the track. onEvent hears what happens: see main.js.
+   * are friends at all. kept is for two racing home on one screen, in one picture (core/one-picture.js), which
+   * follows the first player's chick and can't show the two far apart: they're kept together as a flock is, a chick
+   * too far ahead waiting on the ground and the mother hen carrying up one waited for, but nobody waits at the door.
+   * random lays out the track. onEvent hears what happens: see main.js.
    */
-  constructor({ level = 1, things = WAYS.medium, fox = 'tumble', single = null, together = false, friends = false, random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ level = 1, things = WAYS.medium, fox = 'tumble', single = null, together = false, friends = false, kept = false, random = Math.random, onEvent = () => {} } = {}) {
     Object.assign(this, { single, together, friends, onEvent });
+    this.kept = together || kept;
     this.level = clampLevel(level);
     this.plan = farmLevel(level);
     this.gentle = fox === 'wait';
@@ -467,7 +471,7 @@ export class Farm {
     this.passThings();
     this.fox.sitting = Boolean(chick.waiting) || chick.flockWait || ['carried', 'door', 'home'].includes(chick.state);
     if (this.catches) this.hunt(dt);
-    if (this.together) this.keepWithFlock(dt);
+    if (this.kept) this.keepWithFlock(dt);
   }
 
   /**
@@ -644,7 +648,7 @@ export class Farm {
     const home = this.end - HOME.door;
     let to = Math.min(home, chick.x + this.plan.speed * (gust ? GUST.faster : 1) * dt);
     chick.flockWait = false;
-    if (this.together && !chick.air) {
+    if (this.kept && !chick.air) {
       const others = this.flock.filter((friend) => !friend.gone);
       const last = Math.min(Infinity, ...others.map((friend) => friend.x));
       const henComing = others.some((friend) => friend.carried && friend.x < chick.x);

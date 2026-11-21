@@ -23,6 +23,8 @@ const RINGS = [['#ffffff', 1], ['#2b3440', 0.8], ['#4dabf7', 0.6], ['#ff6b6b', 0
 const GOLDEN = [['#fff3bf', 1], ['#ffd23f', 0.8], ['#f59f00', 0.6], ['#ffd23f', 0.4], ['#fff3bf', 0.2]];
 const MARKS = { star: '⭐', trophy: '🏆' };
 const GHOST = { wood: '#9aa7b8', ink: '#6f7c8d' };
+// Two on one screen, in one picture: the other player's arrows, and the dots of their line, in a colour of their own.
+export const FRIEND_LOOK = { shaft: '#f8f0dc', ink: '#74491f', tip: '#ff6b6b', feather: '#ff922b', dot: '#ff922b' };
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const ease = (share) => share * share * (3 - 2 * share);
@@ -60,6 +62,7 @@ export class MeadowView {
     this.wanted = new Map();
     this.marks = Object.fromEntries(Object.entries(MARKS).map(([key, mark]) => [key, makeMark(mark)]));
     this.archer = null; // Giraffe's pictures, if they could be drawn.
+    this.friendArrows = null; // Two on one screen, in one picture: the colours of the other player's arrows.
     this.gladUntil = 0;
     this.partyUntil = 0;
     this.partyNext = 0;
@@ -433,9 +436,11 @@ export class MeadowView {
   /**
    * meadow is the rules, bow what the hands are asking for (see bow.js), and aim the arc an arrow let go now would
    * fly, from meadow.aimFor, or null: the whole of it once the bow is ready to shoot, and only the start of it
-   * until then. ghosts are friends' bows, each { angle, draw, nocked, name, alpha, row }.
+   * until then. ghosts are friends' bows, each { angle, draw, nocked, name, alpha, row }. Two on one screen, in one
+   * picture, archers are the other player's, drawn whole where they stand (see drawArcher), name is this child's,
+   * over their own archer, and tags are names over targets, each { x, y, r, text, row }.
    */
-  render({ meadow, bow = null, aim = null, ready = false, ghosts = [], playing = true }) {
+  render({ meadow, bow = null, aim = null, ready = false, ghosts = [], playing = true, archers = [], name = '', tags = [] }) {
     const { ctx } = this;
     ctx.setTransform(this.ratio, 0, 0, this.ratio, 0, 0);
     ctx.drawImage(this.baseFor(), 0, 0, this.width, this.height);
@@ -446,9 +451,11 @@ export class MeadowView {
     const targets = [...meadow.targets].sort((a, b) => a.id - b.id);
     for (const target of targets) this.drawApparatus(meadow, target);
     for (const target of targets) if (target.kind !== 'gift') this.drawTarget(meadow, target, ready && playing && aim?.target === target);
+    for (const tag of tags) this.drawTag(tag.text, this.at(tag.x, tag.y - tag.r - 0.035 - tag.row * 0.045));
     for (const arrow of meadow.arrows) if (arrow.state !== 'flying') this.drawArrow(arrow);
     for (const ghost of ghosts) this.drawGhostBow(ghost);
-    this.drawArcher(bow, aim, playing, ready);
+    for (const other of archers) this.drawArcher(other.bow, other.aim, playing, other.ready, other);
+    this.drawArcher(bow, aim, playing, ready, { name });
     for (const arrow of meadow.arrows) if (arrow.state === 'flying') this.drawArrow(arrow);
     this.drawEffects();
     this.drawFlying();
@@ -904,10 +911,13 @@ export class MeadowView {
 
   /* ---------- the archer, the bow and the dotted line ---------- */
 
-  /** Where the bow's parts are on the screen, tilted and drawn so far: its grip, tips, the string's nock and the way it points. */
-  bowShape(angle, pull) {
+  /**
+   * Where the bow's parts are on the screen, tilted and drawn so far: its grip, tips, the string's nock and the way it
+   * points. stand is how far in front of the usual place its archer stands: see STAND_APART in meadow.js.
+   */
+  bowShape(angle, pull, stand = 0) {
     const { scale: s } = this;
-    const held = gripAt(angle);
+    const held = gripAt(angle, stand);
     const grip = this.at(held.x, held.y);
     // The way the arrow points, on the screen.
     const dir = { x: Math.cos(angle) * this.way, y: -Math.sin(angle) };
@@ -989,6 +999,11 @@ export class MeadowView {
     let alpha = 1;
     if (arrow.state === 'stuck' && !arrow.in) alpha = clamp((3 - arrow.since) / 0.6, 0, 1);
     if (arrow.state === 'fell') alpha = clamp((1.6 - arrow.since) / 0.5, 0, 1);
+    // A friend's is grey and see-through, and two in one picture, the other player's is in their colour.
+    if (arrow.ghost && this.friendArrows) {
+      this.drawShaft(tip, dir, { alpha, colours: this.friendArrows });
+      return;
+    }
     const ghost = arrow.ghost ? { shaft: '#e3e8ee', ink: GHOST.ink, tip: '#c9d3df', feather: '#c9d3df' } : undefined;
     this.drawShaft(tip, dir, { alpha: alpha * (arrow.ghost ? 0.6 : 1), colours: ghost });
   }
@@ -1051,14 +1066,18 @@ export class MeadowView {
   /**
    * Giraffe, his bow and his arrow, and the dotted line that says where the arrow would go. The bow is tilted as
    * the hands have it, and bends as far as they've drawn it, and the string hand is on the string while it holds it.
+   * Two on one screen, in one picture, the other player's archer is drawn too, with who: where they stand, their
+   * character's pictures, how far their string is back and held, their name over them, and the colours of their dots
+   * (dot) and of the arrow on their string (look).
    */
-  drawArcher(bow, aim, playing, ready) {
-    const { ctx, scale: s, archer } = this;
-    const feet = this.at(ARCHER.x, WORLD.ground);
+  drawArcher(bow, aim, playing, ready, who = {}) {
+    const { ctx, scale: s } = this;
+    const { stand = 0, art: archer = this.archer, pull = this.pull, hold = this.hold, name = '', dot = null, look } = who;
+    const feet = this.at(ARCHER.x + stand, WORLD.ground);
     const way = this.way;
     const seen = Boolean(bow?.bowSeen);
     const angle = bow ? (aim?.angle ?? bow.angle) : 0.2;
-    const shape = this.bowShape(seen || !playing ? angle : mix(angle, -0.5, 0.6), this.pull);
+    const shape = this.bowShape(seen || !playing ? angle : mix(angle, -0.5, 0.6), pull, stand);
     const thick = Math.max(6, s * 0.036);
     const colours = archer?.arm ?? { skin: '#f5c451', hand: '#f5c451', ink: '#4a2c10' };
     // His shoulders, from his picture, or about where they'd be without it.
@@ -1074,7 +1093,7 @@ export class MeadowView {
       far = on(frame.far);
     }
     // The dotted line goes under everything of his.
-    if (aim && playing && seen) this.drawDots(aim, ready);
+    if (aim && playing && seen) this.drawDots(aim, ready, dot);
     // The arm that holds the bow, behind him, held out nearly straight.
     this.drawArm(far, shape.grip, thick, colours, { x: 0, y: thick * 0.25 });
     if (frame) {
@@ -1089,17 +1108,40 @@ export class MeadowView {
     this.drawBow(shape);
     // The arrow on the string, ready: its tail at the string, wherever that's been drawn back to.
     const tip = { x: shape.nock.x + shape.dir.x * ARROW_LONG * s, y: shape.nock.y + shape.dir.y * ARROW_LONG * s };
-    this.drawShaft(tip, shape.dir);
+    this.drawShaft(tip, shape.dir, look ? { colours: look } : {});
     ctx.restore();
     // The string hand: on the string while it holds it, and down by his side when it doesn't.
     const rest = { x: near.x - way * s * 0.012, y: near.y + s * 0.115 };
-    const hand = { x: mix(rest.x, shape.nock.x, this.hold), y: mix(rest.y, shape.nock.y, this.hold) };
+    const hand = { x: mix(rest.x, shape.nock.x, hold), y: mix(rest.y, shape.nock.y, hold) };
     // On the string, its elbow is up and out behind him, as an archer's is.
-    this.drawArm(near, hand, thick, colours, { x: -way * thick * mix(0.2, 1.25, this.hold), y: thick * mix(0.5, -0.1, this.hold) });
+    this.drawArm(near, hand, thick, colours, { x: -way * thick * mix(0.2, 1.25, hold), y: thick * mix(0.5, -0.1, hold) });
+    // The name just over the head: the picture has room above it for a little jump.
+    if (name) this.drawTag(name, { x: feet.x, y: frame ? feet.y - archer.foot.y * size + s * 0.05 : feet.y - s * (ARCHER.tall + 0.2) });
   }
 
-  /** The dotted line: where an arrow let go now would fly, and what it would come to. */
-  drawDots(aim, ready) {
+  /** A name in a little white box, two on one screen in one picture: over an archer, or over a target. */
+  drawTag(text, at) {
+    const { ctx, scale: s } = this;
+    ctx.save();
+    ctx.font = `600 ${Math.round(Math.max(13, s * 0.03))}px Fredoka, 'Noto Sans Georgian', sans-serif`;
+    const wide = ctx.measureText(text).width + s * 0.035;
+    const x = clamp(at.x, wide / 2 + 6, this.width - wide / 2 - 6);
+    ctx.fillStyle = 'rgb(255 255 255 / 0.92)';
+    ctx.strokeStyle = 'rgb(18 48 77 / 0.35)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x - wide / 2, at.y - s * 0.021, wide, s * 0.042, s * 0.021);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = INK;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, at.y + 1);
+    ctx.restore();
+  }
+
+  /** The dotted line: where an arrow let go now would fly, and what it would come to. dot is a friend's colour, for theirs. */
+  drawDots(aim, ready, dot = null) {
     const { ctx, scale: s } = this;
     const { dots, end } = aim;
     const shown = ready ? dots : dots.slice(0, 9);
@@ -1114,7 +1156,7 @@ export class MeadowView {
       ctx.beginPath();
       ctx.arc(x, y, r + Math.max(1.5, s * 0.003), 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = aim.target ? '#d3f9d8' : '#ffffff';
+      ctx.fillStyle = dot ?? (aim.target ? '#d3f9d8' : '#ffffff');
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();

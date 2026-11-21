@@ -14,9 +14,10 @@ import { DID_IT_TOGETHER, SO_CLOSE } from '../../core/sound.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { seededRandom, Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
+import { SEAT } from '../../core/seat.js';
 import { bodyAcross, LaneReader } from './lanes.js';
 import { Practice } from './practice.js';
-import { ARCH_STARS, GEM_COINS, GOLD_STARS, packPace, POWERS, Run, newAt as newAtLevel, newThingsAt } from './run.js';
+import { ARCH_STARS, GEM_COINS, GOLD_STARS, packPace, PICTURE_PACK, POWERS, Run, newAt as newAtLevel, newThingsAt } from './run.js';
 import { TrailSound } from './trail-sound.js';
 import { World } from './world.js';
 
@@ -683,8 +684,9 @@ class LeapTrail extends BodyGame {
    */
   keepPack() {
     const { run } = this;
-    const others = this.team ? this.mates.filter(({ gone, far }) => !gone && far !== undefined).map(({ far }) => far) : [];
-    run.pack = packPace(run.distance, others);
+    // Two in one picture keep together either way, as the picture can only follow one of them.
+    const others = this.team || SEAT?.onePicture ? this.mates.filter(({ gone, far }) => !gone && far !== undefined).map(({ far }) => far) : [];
+    run.pack = packPace(run.distance, others, SEAT?.onePicture ? PICTURE_PACK : undefined);
     const label = byElementId('run-pack');
     // Not while the runner has stopped for this child, to wait for their move or for them to move again: it's
     // waiting for them then, as the words at the bottom say.
@@ -1207,7 +1209,7 @@ mountBodyShell({
       <p class="choose-tip">Jump for real, and your runner jumps too. Step to the side, and it moves across.</p>
       <button id="run-start" class="big-button" type="button">Let’s run!</button>`,
   hud: `
-  <div id="move-meter" class="move-meter" data-zone="middle" aria-hidden="true">
+  <div id="move-meter" class="move-meter" data-zone="middle" data-own aria-hidden="true">
     <div class="meter-zone meter-zone-up"></div>
     <div class="meter-middle"></div>
     <div id="meter-dot" class="meter-dot"></div>

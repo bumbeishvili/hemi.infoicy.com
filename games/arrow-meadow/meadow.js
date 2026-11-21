@@ -43,6 +43,11 @@ export const GOALS = [6, 10, 14]; // How many targets win the contest.
 export const HELP = { off: null, little: { within: deg(5), pull: 0.6 }, lots: { within: deg(10), pull: 0.85 } };
 export const HELP_NAMES = Object.keys(HELP);
 export const ARROW_LONG = 0.13;
+// Two on one screen, in one picture: how far in front of the first player the second player's archer stands, so the
+// two are side by side on the shooting line, and each one's arrows fly from their own bow. Against each other, each
+// one's own targets stand as much further on as their archer does, so each has the same shots to make. Together,
+// the targets they share stand half as much further on.
+export const STAND_APART = 0.3;
 
 const STEP = 1 / 120; // An arrow is followed this many times a second, so it can't skip past anything.
 const FLIGHT_MOST = 5; // Seconds, after which an arrow has gone.
@@ -192,14 +197,17 @@ export function seeded(seed) {
 /** How fast an arrow leaves a bow drawn this far, from 0 to 1. */
 export const speedFor = (draw) => mix(SPEED.least, SPEED.most, clamp(draw, 0, 1));
 
-/** Where the bow is held, tilted this far: out in front of the string hand, and up or down from it. */
-export const gripAt = (angle) => ({ x: BOW.x + BOW.reach * Math.cos(angle), y: BOW.y - BOW.reach * Math.sin(angle) });
+/**
+ * Where the bow is held, tilted this far: out in front of the string hand, and up or down from it. stand is how far
+ * in front of the usual place the archer stands: see STAND_APART.
+ */
+export const gripAt = (angle, stand = 0) => ({ x: BOW.x + stand + BOW.reach * Math.cos(angle), y: BOW.y - BOW.reach * Math.sin(angle) });
 
 /** An arrow as it leaves the bow: where from, and how it's going. wind pushes it along, or back, all the way. */
-export function shotFor(angle, draw, wind = 0) {
+export function shotFor(angle, draw, wind = 0, stand = 0) {
   const tilt = clamp(angle, ANGLES.low, ANGLES.high);
   const speed = speedFor(draw);
-  const from = gripAt(tilt);
+  const from = gripAt(tilt, stand);
   return { x0: from.x, y0: from.y, vx: speed * Math.cos(tilt), vy: speed * Math.sin(tilt), wind, angle: tilt, draw: clamp(draw, 0, 1) };
 }
 
@@ -244,10 +252,12 @@ export class Meadow {
    * level is the level played, goal how many targets win, and help the help with aiming (see HELP), as a grown-up
    * chose. onEvent hears what happens: see main.js. With friends, team is { seed, players, claim(k) } for a meadow
    * shared with them, and race { seed } for a lane of one's own with the same targets as theirs: both are the plain
-   * meadow, without what the levels bring. me is this child's id among them.
+   * meadow, without what the levels bring. me is this child's id among them, stand how far in front of the usual
+   * place their archer stands, and ahead how much further on than usual the targets shared with friends stand: see
+   * STAND_APART.
    */
-  constructor({ level = 1, goal = 10, help = 'little', team = null, race = null, gentle = false, me = 'me', random = Math.random, onEvent = () => {} } = {}) {
-    Object.assign(this, { random, onEvent, me });
+  constructor({ level = 1, goal = 10, help = 'little', team = null, race = null, gentle = false, me = 'me', stand = 0, ahead = 0, random = Math.random, onEvent = () => {} } = {}) {
+    Object.assign(this, { random, onEvent, me, stand, ahead });
     this.level = clampLevel(level);
     this.mode = team ? 'team' : race ? 'race' : 'solo';
     // With friends it's always the contest as it was: nothing lost, and nothing taken away.
@@ -307,9 +317,9 @@ export class Meadow {
     return this.phase === 'lost';
   }
 
-  /** The targets that can be hit now. */
+  /** The targets that can be hit now: not a friend's, from their own lane. */
   get live() {
-    return this.targets.filter((target) => target.state === 'up');
+    return this.targets.filter((target) => target.state === 'up' && !target.lane);
   }
 
   /** Where a target is at a moment: most stand still, a balloon bobs, a cart rolls and a gift is carried along. */
@@ -358,9 +368,32 @@ export class Meadow {
 
   /** With friends: the target with this number comes, unless it has, or someone has it already. */
   spawnShared(k) {
-    if (this.owners.has(k) || this.targets.some((target) => target.k === k)) return null;
+    if (this.owners.has(k) || this.targets.some((target) => target.k === k && !target.lane)) return null;
     const { kind, x, y, r } = friendTarget(this.seed, k, this.level, this.slots);
-    return this.add({ kind, slot: 'shared', k, x, y, r, colour: k % 5 });
+    return this.add({ kind, slot: 'shared', k, x: x + this.ahead, y, r, colour: k % 5 });
+  }
+
+  /**
+   * Two on one screen, in one picture, against each other: the target a friend is shooting at in their own lane
+   * shows here too, which is the one after the hits they've made, so that they can see it. Only their arrows come to
+   * it, and nothing here counts it. Their next comes as each of this child's does. ahead is how much further on than
+   * usual their targets stand, as far as their archer does.
+   */
+  showLane(by, hits, ahead = 0) {
+    if (this.mode !== 'race' || this.phase !== 'play') return;
+    const theirs = this.targets.find((target) => target.lane === by && target.state === 'up');
+    if (theirs?.k === hits || this.coming.some((next) => next.lane === by && next.k === hits)) return;
+    if (theirs) {
+      Object.assign(theirs, { state: 'hit', since: 0 });
+      this.onEvent({ type: 'claimed', k: theirs.k, by, mine: false, target: theirs, last: false });
+    }
+    this.coming = this.coming.filter((next) => next.lane !== by);
+    this.coming.push({ k: hits, lane: by, ahead, left: theirs ? SHOWN.hit + GAPS.plain : 0 });
+  }
+
+  spawnLane(k, lane, ahead) {
+    const { kind, x, y, r } = friendTarget(this.seed, k, this.level, this.slots);
+    return this.add({ kind, slot: 'lane', k, lane, x: x + ahead, y, r, colour: k % 5 });
   }
 
   /* ---------- the wind ---------- */
@@ -378,12 +411,13 @@ export class Meadow {
   /**
    * What an arrow's tip touches at a place and a moment: a target, a wall, a windmill, the grass, or nothing. only
    * leaves out every target but that one, for working out an arc to it. shown takes in a target that has just been
-   * hit and is still showing, for a friend's arrow, which gets here a moment after the server says whose it is.
+   * hit and is still showing, for a friend's arrow, which gets here a moment after the server says whose it is. lane
+   * is whose lane the arrow is in, two in one picture against each other: a friend's, for theirs, or null.
    */
-  touch(x, y, time, { only = null, shown = false } = {}) {
+  touch(x, y, time, { only = null, shown = false, lane = null } = {}) {
     if (y >= WORLD.ground) return { what: 'ground' };
     if (x > WORLD.wide + 0.2 || x < -0.2) return { what: 'out' };
-    const there = (target) => target.state === 'up' || (shown && target.state !== 'gone');
+    const there = (target) => (target.state === 'up' || (shown && target.state !== 'gone')) && (target.lane ?? null) === lane;
     for (const target of this.targets) {
       if (target.state !== 'up') continue;
       if (target.wall && x >= target.wall.x0 && x <= target.wall.x1 && y >= target.wall.top) return { what: 'wall', target };
@@ -403,16 +437,17 @@ export class Meadow {
   /**
    * Where an arrow let go now would fly: { shot, dots, end }. dots are places along its arc, for the dotted line,
    * and end is what it comes to: { what, target, x, y, t, off }, off being how far from the middle of a target it
-   * would strike, as a share of the target, from 0 to 1.
+   * would strike, as a share of the target, from 0 to 1. stand and lane are a friend's, for their arc, two in one
+   * picture: see STAND_APART and touch.
    */
-  trace(angle, draw, { only = null, dots = false } = {}) {
-    const shot = shotFor(angle, draw, this.wind);
+  trace(angle, draw, { only = null, dots = false, stand = this.stand, lane = null } = {}) {
+    const shot = shotFor(angle, draw, lane === null ? this.wind : 0, stand);
     const points = [];
     let end = { what: 'out', x: shot.x0, y: shot.y0, t: FLIGHT_MOST };
     for (let step = 1; step * STEP <= FLIGHT_MOST; step += 1) {
       const t = step * STEP;
       const at = flightAt(shot, t);
-      const hit = this.touch(at.x, at.y, this.time + t, { only });
+      const hit = this.touch(at.x, at.y, this.time + t, { only, lane });
       if (dots && step % DOT_EVERY === 0) points.push({ x: at.x, y: at.y });
       if (!hit) continue;
       end = { ...hit, x: at.x, y: at.y, t };
@@ -506,16 +541,17 @@ export class Meadow {
 
   /**
    * An arrow leaves the bow, at this angle and with the bow drawn this far, which the string hand opening does.
-   * ghost is a friend's arrow, shown as it flies on their computer, which hits nothing here.
+   * ghost is a friend's arrow, shown as it flies on their computer, which hits nothing here, from where they stand
+   * and in their own lane, two in one picture: see STAND_APART and touch.
    */
-  loose(angle, draw, { ghost = false, by = this.me } = {}) {
+  loose(angle, draw, { ghost = false, by = this.me, stand = this.stand, lane = null } = {}) {
     if (this.done || this.phase === 'lost') return null;
     // An empty quiver has nothing to let go. The castle's golden target, once the contest is won, takes none.
     const counted = !ghost && this.phase === 'play';
     if (counted && this.arrowsLeft <= 0) return null;
     if (counted && Number.isFinite(this.arrowsLeft)) this.arrowsLeft -= 1;
-    const shot = shotFor(angle, draw, ghost ? 0 : this.wind);
-    const arrow = { id: this.nextId, by, ghost, shot, t: 0, at: this.time, state: 'flying', x: shot.x0, y: shot.y0, dx: shot.vx, dy: -shot.vy, since: 0, in: null, scored: false };
+    const shot = shotFor(angle, draw, ghost ? 0 : this.wind, stand);
+    const arrow = { id: this.nextId, by, ghost, lane, shot, t: 0, at: this.time, state: 'flying', x: shot.x0, y: shot.y0, dx: shot.vx, dy: -shot.vy, since: 0, in: null, scored: false };
     this.nextId += 1;
     this.arrows.push(arrow);
     if (!ghost) {
@@ -555,7 +591,7 @@ export class Meadow {
       left -= step;
       arrow.t += step;
       Object.assign(arrow, flightAt(arrow.shot, arrow.t));
-      const hit = arrow.t >= FLIGHT_MOST ? { what: 'out' } : this.touch(arrow.x, arrow.y, arrow.at + arrow.t, { shown: arrow.ghost });
+      const hit = arrow.t >= FLIGHT_MOST ? { what: 'out' } : this.touch(arrow.x, arrow.y, arrow.at + arrow.t, { shown: arrow.ghost, lane: arrow.lane });
       if (hit) this.lands(arrow, hit);
     }
   }
@@ -800,7 +836,10 @@ export class Meadow {
 
   fillShared(dt) {
     for (const next of this.coming) next.left -= dt;
-    for (const next of this.coming.filter((each) => each.left <= 0)) this.spawnShared(next.k);
+    for (const next of this.coming.filter((each) => each.left <= 0)) {
+      if (next.lane) this.spawnLane(next.k, next.lane, next.ahead);
+      else this.spawnShared(next.k);
+    }
     this.coming = this.coming.filter((each) => each.left > 0);
   }
 

@@ -224,3 +224,14 @@ body[data-film='on'][data-screen='playing'] .bounce-film { display: block; }
 @media (max-width: 720px) {
   .score-name { display: none; }
 }
+
+/*
+ * Two in one picture (core/one-picture.js): the first player's half of the court is on the left and the second's
+ * on the right. Each one's mirror, hand meter and film, above the meter, go to the outer corners of their own
+ * half, clear of the score in the middle, and what they're told goes under their mirror. These are the second
+ * player's, in the game under the picture; the first player's are their mirror image.
+ */
+html[data-picture='under'] body .camera-frame { left: auto; right: 70px; }
+html[data-picture='under'] body .bounce-film { left: auto; right: 16px; bottom: calc(10px + var(--meter-size) + 46px); }
+html[data-picture] body .hands-bar { justify-content: flex-end; }
+html[data-picture='under'] body[data-screen='playing'] .prompt { top: calc(12px + var(--camera-small) / var(--camera-aspect) + 18px); }

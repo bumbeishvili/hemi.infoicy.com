@@ -21,6 +21,7 @@ import {
 } from '../../core/body/characters.js';
 import { SHAPES, Sparks, spriteTexture } from '../../core/body/sparks.js';
 import { ROSTER } from '../../core/body/roster.js';
+import { SEAT } from '../../core/seat.js';
 
 // Three lanes, side by side. The lane in the middle is where the runner starts.
 export const LANE_WIDTH = 1.75;
@@ -1862,7 +1863,10 @@ export class World {
       const { where } = mate;
       const { root } = mate.runner.body;
       mate.ahead = where && run ? where.d - run.distance : 0;
-      mate.shown = Boolean(this.view === 'run' && where && mate.ahead > -MATE_BEHIND && mate.ahead < SEEN_AHEAD);
+      // Two in one picture (core/one-picture.js): one behind is always at the shoulder, as it's that player's own
+      // runner, which they have to see.
+      const near = mate.ahead > -MATE_BEHIND || Boolean(SEAT?.onePicture);
+      mate.shown = Boolean(this.view === 'run' && where && near && mate.ahead < SEEN_AHEAD);
       root.visible = mate.shown;
       if (!mate.shown) continue;
       let x = where.x;

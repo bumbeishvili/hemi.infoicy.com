@@ -8,13 +8,14 @@ import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { archerPixels, renderArcher } from './archer.js';
 import { Bow } from './bow.js';
-import { GOALS, HELP_NAMES, Meadow, meadowNewAt, MIN_DRAW, PARTY_SECONDS } from './meadow.js';
-import { ARCHER, MeadowView } from './view.js';
+import { GOALS, HELP_NAMES, Meadow, meadowNewAt, MIN_DRAW, PARTY_SECONDS, STAND_APART } from './meadow.js';
+import { ARCHER, FRIEND_LOOK, MeadowView } from './view.js';
 
 const byId = (id) => document.getElementById(id);
 const FINISH = 'We won the contest! What an archer!';
@@ -74,6 +75,14 @@ const round3 = (value) => Math.round(value * 1000) / 1000;
 // Where each thing a level brings is, for its label the first time it comes.
 const LABEL_FOR = { balloon: 'balloon', far: 'far', roller: 'roller', wall: 'wall', bell: 'bell', mill: 'mill', gift: 'bird', castle: 'castle' };
 
+/**
+ * Two on one screen, in one picture, the second player's archer is someone of their own, so the two are told apart:
+ * whoever they chose in the other games, or Truffle, as Giraffe is the first player's.
+ */
+const secondArcher = (settings) => (characterWithId(settings.fighter) && settings.fighter !== 'giraffe' ? settings.fighter : 'truffle');
+/** Where a seat's archer stands, two on one screen in one picture: the second a step in front of the first. */
+const standOf = (index) => index * STAND_APART;
+
 class ArcherGame {
   chimeOnOpen = false; // The hand opens for every arrow here, and the arrow has its own sound.
   bothHands = true; // Both hands are drawn on the camera's picture, as both are played with.
@@ -110,7 +119,7 @@ class ArcherGame {
       words: ARROW_WORDS,
       // Everyone here plays as Giraffe. The host's number of targets says how many win it: for each player
       // together, or for the first to them against each other.
-      hello: () => ({ driver: 'giraffe', level: session.levels.current, length: this.goalChosen() }),
+      hello: () => ({ driver: SEAT?.onePicture && SEAT.index > 0 ? secondArcher(settings) : 'giraffe', level: session.levels.current, length: this.goalChosen() }),
       // Together or against each other: a choice in the panel, which the friends box can change too.
       teams: {
         get: () => (settings.arrowFriends === 'against' ? 'against' : 'together'),
@@ -181,6 +190,29 @@ class ArcherGame {
     return HELP_NAMES.includes(this.settings.arrowHelp) ? this.settings.arrowHelp : 'off';
   }
 
+  /**
+   * Whether two are playing on one screen, in one picture: the first player's game across the whole screen, with
+   * the second in it as a friend. See core/one-picture.js. Each then has an archer of their own, side by side.
+   */
+  get onePicture() {
+    return Boolean(SEAT?.onePicture) && this.mode !== 'solo';
+  }
+
+  /** A character's archer pictures, as Giraffe's are drawn, made once: the second player's, in one picture. */
+  archerArt(id) {
+    this.arts ??= new Map();
+    if (!this.arts.has(id)) {
+      try {
+        const tallest = Math.max(window.innerHeight, window.screen?.height || 0);
+        this.arts.set(id, renderArcher(characterWithId(id) ?? characterWithId('truffle'), archerPixels(tallest * ARCHER.tall, this.view.ratio)));
+      } catch (error) {
+        console.warn('Could not draw the archer:', error);
+        this.arts.set(id, null);
+      }
+    }
+    return this.arts.get(id);
+  }
+
   /** As many arrows as it takes, targets that wait, and nothing lost, as the contest always was, if a grown-up chose it. */
   get gentle() {
     return this.settings.arrowQuiver === 'gentle';
@@ -195,11 +227,15 @@ class ArcherGame {
     if (!friendly) return new Meadow({ ...common, level, goal: this.goalChosen(), gentle: this.gentle });
     const each = GOALS.includes(friendly.length) ? friendly.length : 10;
     const me = this.friends.room.you;
+    // Two in one picture, each shoots from where their own archer stands, and the targets stand further on: see
+    // STAND_APART.
+    const stand = SEAT?.onePicture ? standOf(SEAT.index) : 0;
     if (friendly.team) {
       const players = friendly.racers.length;
-      return new Meadow({ ...common, level: friendly.level, goal: each * players, me, team: { seed: friendly.seed, players, claim: (k) => this.friends.claim(k) } });
+      const ahead = SEAT?.onePicture ? STAND_APART / 2 : 0;
+      return new Meadow({ ...common, level: friendly.level, goal: each * players, me, stand, ahead, team: { seed: friendly.seed, players, claim: (k) => this.friends.claim(k) } });
     }
-    return new Meadow({ ...common, level: friendly.level, goal: each, me, race: { seed: friendly.seed } });
+    return new Meadow({ ...common, level: friendly.level, goal: each, me, stand, ahead: stand, race: { seed: friendly.seed } });
   }
 
   /** With friends, the start waits until they're ready too. */
@@ -256,6 +292,14 @@ class ArcherGame {
     document.body.dataset.arrows = this.mode;
     this.meadow = this.newMeadow(level, friendly);
     this.others = (friendly?.friends ?? []).map((friend) => ({ id: friend.id, name: friend.spec.name, track: new Track(BOW_TRACK), shots: null, hits: 0, fade: 0, heardAt: -Infinity, at: null }));
+    // Two in one picture: the other player's archer stands where their game has it, as their own character.
+    if (this.onePicture) {
+      for (const each of this.others) {
+        const friend = friendly.friends.find(({ id }) => id === each.id);
+        Object.assign(each, { stand: standOf(1 - SEAT.index), art: this.archerArt(friend?.spec?.id ?? 'truffle'), driver: friend?.spec?.id, pull: 0, hold: 0 });
+      }
+    }
+    this.view.friendArrows = this.onePicture ? FRIEND_LOOK : null;
     this.session.finishLine = this.mode === 'team' ? TOGETHER_DONE : this.mode === 'race' ? YOU_WON : FINISH;
     this.view.setScene({ castle: this.meadow.plan.castle });
     this.view.reset();
@@ -490,6 +534,10 @@ class ArcherGame {
   render() {
     const { screen } = this.session;
     const playing = screen === 'playing' || screen === 'countdown';
+    if (this.onePicture) {
+      this.renderOnePicture(playing);
+      return;
+    }
     const ghosts = [];
     let row = 0;
     for (const each of screen === 'playing' ? this.others : []) {
@@ -498,6 +546,40 @@ class ArcherGame {
       row += 1;
     }
     this.view.render({ meadow: this.meadow, bow: playing ? this.hands : null, aim: screen === 'playing' ? this.aim : null, ready: this.ready, ghosts, playing });
+  }
+
+  /**
+   * Two on one screen, in one picture: the other player's archer side by side with this child's, solid, with their
+   * name and the dotted line of where their arrow would go, and each one's name over them. Against each other, each
+   * target has the name of whoever is shooting at it.
+   */
+  renderOnePicture(playing) {
+    const { meadow } = this;
+    const shooting = this.session.screen === 'playing';
+    const race = this.mode === 'race';
+    const archers = (playing ? this.others : []).map((each) => {
+      const at = each.at;
+      if (!at) return { stand: each.stand, art: each.art, pull: 0, hold: 0, name: each.name, look: FRIEND_LOOK, bow: null, aim: null, ready: false };
+      const bow = { angle: at.a, draw: at.d, nocked: Boolean(at.h), bowSeen: Boolean(at.v) && each.fade > 0.5 };
+      const ready = bow.nocked && at.d >= MIN_DRAW;
+      let aim = null;
+      if (shooting && (at.v || at.h)) {
+        const { dots, end } = meadow.trace(at.a, ready ? at.d : Math.max(at.d, 0.6), { dots: true, stand: each.stand, lane: race ? each.id : null });
+        aim = { angle: at.a, draw: at.d, dots, end, target: end.what === 'target' ? end.target : null };
+      }
+      return { stand: each.stand, art: each.art, pull: each.pull, hold: each.hold, name: each.name, dot: FRIEND_LOOK.dot, look: FRIEND_LOOK, bow, aim, ready };
+    });
+    const mine = seatName(SEAT.index);
+    const tags = [];
+    if (race && shooting) {
+      for (const target of meadow.targets) {
+        if (target.state !== 'up') continue;
+        const theirs = this.others.find((each) => each.id === target.lane);
+        const both = theirs && meadow.targets.some((other) => !other.lane && other.state === 'up' && other.k === target.k);
+        tags.push({ ...meadow.whereAt(target), r: target.r, text: theirs ? theirs.name : mine, row: both ? 1 : 0 });
+      }
+    }
+    this.view.render({ meadow, bow: playing ? this.hands : null, aim: shooting ? this.aim : null, ready: this.ready, playing, archers, name: mine, tags });
   }
 
   /* ---------- with friends ---------- */
@@ -529,6 +611,12 @@ class ArcherGame {
       const seen = Boolean(at?.v) && now - each.heardAt < GHOST_QUIET_MS && !this.friends.results.has(each.id);
       each.fade += ((seen ? 1 : 0) - each.fade) * (1 - Math.exp(-dt * GHOST_FADE_RATE));
       if (at) each.at = at;
+      // Two in one picture, their string follows their hands and springs back, as the child's own does.
+      if (!this.onePicture || !each.at) continue;
+      const nocked = Boolean(each.at.h);
+      const wanted = nocked ? each.at.d : 0;
+      each.pull += (wanted - each.pull) * (1 - Math.exp(-dt * (wanted < each.pull ? 30 : 16)));
+      each.hold += ((nocked ? 1 : 0) - each.hold) * (1 - Math.exp(-dt * 14));
     }
   }
 
@@ -544,8 +632,13 @@ class ArcherGame {
     each.track.push(message, performance.now());
     each.heardAt = performance.now();
     // Together, an arrow of theirs is shown flying, as theirs flew: it hits nothing here. Against each other their
-    // targets are in a lane of their own, so only their bow is shown.
-    if (this.mode === 'team' && each.shots !== null && message.n > each.shots) this.meadow.loose(message.sa, message.sp, { ghost: true, by: id });
+    // targets are in a lane of their own, so only their bow is shown. Two in one picture, their target shows here
+    // too, and their arrows fly to it, from where they stand.
+    const race = this.mode === 'race';
+    if (this.onePicture && race) this.meadow.showLane(id, message.k, each.stand);
+    if ((!race || this.onePicture) && each.shots !== null && message.n > each.shots) {
+      this.meadow.loose(message.sa, message.sp, { ghost: true, by: id, stand: each.stand ?? 0, lane: race ? id : null });
+    }
     each.shots = message.n;
     if (message.k !== each.hits) {
       each.hits = message.k;
@@ -580,7 +673,7 @@ class ArcherGame {
     const portraits = this.session.portraits ?? {};
     const you = this.friends.room.you;
     const hitsOf = (id) => (this.mode === 'team' ? this.meadow.tally.get(id) ?? 0 : id === you ? this.meadow.stats.hits : this.others.find((each) => each.id === id)?.hits ?? 0);
-    const everyone = [{ id: you, name: 'You' }, ...this.others.map((each) => ({ id: each.id, name: each.name }))]
+    const everyone = [{ id: you, name: this.onePicture ? seatName(SEAT.index) : 'You' }, ...this.others.map((each) => ({ id: each.id, name: each.name, driver: each.driver }))]
       .map((each) => ({ ...each, hits: hitsOf(each.id) }))
       .sort((a, b) => b.hits - a.hits);
     const key = everyone.map(({ id, hits }) => `${id}:${hits}`).join(',');
@@ -591,7 +684,7 @@ class ArcherGame {
       row.classList.toggle('is-you', each.id === you);
       const face = document.createElement('img');
       face.alt = '';
-      face.src = portraits.giraffe ?? '';
+      face.src = portraits[each.driver ?? 'giraffe'] ?? portraits.giraffe ?? '';
       const name = document.createElement('span');
       name.className = 'arrow-score-name';
       name.textContent = each.name;
@@ -699,7 +792,7 @@ new GameSession({
         <ol id="arrow-scores" class="arrow-scores" aria-label="How many targets each one has hit" hidden></ol>
       </div>
       ${STORY_BOX}
-      <div class="film arrow-film" aria-hidden="true">
+      <div class="film arrow-film" data-own aria-hidden="true">
         <svg viewBox="0 0 220 160">
           <rect class="film-grass" x="0" y="128" width="220" height="32" />
           <g class="film-target">

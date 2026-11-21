@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LocalRooms } from '../../core/local-room.js';
-import { MOST_SEATS, SEAT, SeatSocket, placeOf, seatName, sliceOf, voiceDropped, voiceFree, voiceTaken } from '../../core/seat.js';
+import { MOST_SEATS, OWN_VIEW, SEAT, SeatSocket, placeOf, seatName, sliceOf, voiceDropped, voiceFree, voiceTaken } from '../../core/seat.js';
 
 const soon = (ms = 5) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -98,6 +98,38 @@ test('when both are ready it starts for both, on the host\'s game, and what one 
   // And a finish.
   two.say({ t: 'done', ms: 30_000, w: 1, n: 4 });
   assert.equal(one.last('done').from, two.last('room').you);
+});
+
+test('in a game played in one picture, it\'s one picture from when both are sent off until the host\'s game is over', () => {
+  const rooms = new LocalRooms();
+  assert.equal(rooms.view(), 'split', 'nobody there yet');
+  const one = client(rooms, '/room/mighty-moves/ABC');
+  assert.equal(rooms.view(), 'split', 'one on their own');
+  const two = client(rooms, '/room/mighty-moves/ABC');
+  for (const each of [one, two]) each.say({ t: 'hi', name: 'Player', driver: 'giraffe', level: 1, length: 3, team: 1 });
+  one.say({ t: 'ready' });
+  assert.equal(rooms.view(), 'split', 'getting ready, each with their own camera check');
+  two.say({ t: 'ready' });
+  assert.equal(rooms.view('split'), 'one', 'both under way');
+
+  // The second player finishing first leaves the host playing in the whole picture, where both are.
+  two.say({ t: 'done', ms: 30_000, w: 1, n: 2 });
+  assert.equal(rooms.view('one'), 'one');
+  // Just started, with one of them not under way, as when the host starts without the other, it stays split.
+  assert.equal(rooms.view('split'), 'split');
+  one.say({ t: 'done', ms: 31_000, w: 1, n: 3 });
+  assert.equal(rooms.view('one'), 'split', 'each sees their own finish card');
+
+  // Off again, and the host going in the middle splits it, as nobody's game is the whole picture then.
+  one.say({ t: 'ready' });
+  two.say({ t: 'ready' });
+  assert.equal(rooms.view('split'), 'one');
+  one.link.leave();
+  assert.equal(rooms.view('one'), 'split');
+});
+
+test('only the games where each player steers their own way through a world bigger than the screen keep it split', () => {
+  assert.deepEqual([...OWN_VIEW].sort(), ['cannon-bay', 'frost-arena', 'high-five-racers', 'moto-mountain', 'rooftop-rope', 'sky-wings']);
 });
 
 test('a keep-alive is answered, and goes no further', () => {
@@ -224,4 +256,16 @@ test('only one seat speaks at a time: a line that would talk over another seat\'
   assert.equal(voiceFree(one), false, 'only whoever is speaking can stop');
   voiceDropped(two);
   assert.equal(voiceFree(one), true);
+});
+
+test('in one picture, the other player\'s own things show through holes in the first player\'s game', async () => {
+  const { withHoles } = await import('../../core/one-picture.js');
+  assert.equal(withHoles(1440, 900, []), '', 'nothing to show through, so nothing cut');
+  const cut = withHoles(1440, 900, [{ x: 1080, y: 12, w: 160, h: 90, r: 18 }, { x: 900.04, y: 700, w: 40, h: 20, r: 999 }]);
+  assert.match(cut, /^path\(evenodd, '/, 'holes, as the whole game with the boxes taken out of it');
+  const parts = cut.slice("path(evenodd, '".length, -2).split(' M').map((part, index) => (index ? `M${part}` : part));
+  assert.equal(parts.length, 3, 'the whole game, and a hole for each box');
+  assert.equal(parts[0], 'M0 0h1440v900h-1440v-900Z');
+  assert.ok(parts[1].startsWith('M1098 12h124a18 18 0 0 1 18 18'), 'rounded as the box is');
+  assert.ok(parts[2].startsWith('M910 700h20a10 10 0 0 1 10 10'), 'a round end at most half as big as the box, in tenths of a pixel');
 });

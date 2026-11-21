@@ -8,8 +8,9 @@ import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { Track } from '../../core/friends.js';
 import { FriendsPanel, time as raceTime } from '../../core/friends-ui.js';
-import { Glove } from '../../core/glove.js';
+import { Glove, SECOND_PLAYER, inOnePicture } from '../../core/glove.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { giraffePixels, renderGiraffe } from '../giraffe-garden/giraffe.js';
@@ -74,6 +75,9 @@ const PAINT_WORDS = {
 // smoothly from one to the next. Whether it can be seen and is down, its paint and its size change half way.
 const BRUSH_TRACK = { lerp: ['x', 'y'], lists: ['p'], steps: ['v', 'o', 'c', 'r'] };
 const FRIEND_LOOK = { ink: '#7f8a99', glove: '#e3e8ee' };
+// The second player's glove, playing in one picture on one screen, where it's in the first player's picture as a
+// friend's is: solid, in their own blue, as in the other hand games.
+const SECOND_LOOK = { ink: SECOND_PLAYER.ink, glove: SECOND_PLAYER.open, tag: SECOND_PLAYER.tag, solid: true };
 const FADE_RATE = 8; // How quickly a friend's glove fades in and out, as their hand comes and goes.
 const QUIET_MS = 1500; // A friend nothing has come from for this long fades away.
 const round1 = (value) => Math.round(value * 10) / 10;
@@ -541,12 +545,17 @@ class PaintGame {
     const side = this.session.settings.hands;
     const glove = this.gloves[side];
     const gloves = [];
-    // Friends' gloves first, grey and see-through, under the child's own.
+    // Friends' gloves first, grey and see-through, under the child's own. Two in one picture on one screen, the
+    // second player's is solid, in their own blue, and over the first's.
+    const second = inOnePicture();
+    const friends = [];
     for (const each of this.friendBrushes) {
       if (!each.at || each.fade < 0.02) continue;
       const on = view.at(each.at.x, each.at.y);
-      gloves.push({ glove: each.glove, x: on.x, y: on.y, look: { ...FRIEND_LOOK, alpha: each.fade * 0.85 }, name: each.name, down: Boolean(each.at.o), colour: COLOUR_NAMES[Math.round(each.at.c)] ?? null, radius: each.at.r });
+      const look = second ? { ...SECOND_LOOK, alpha: each.fade } : { ...FRIEND_LOOK, alpha: each.fade * 0.85 };
+      friends.push({ glove: each.glove, x: on.x, y: on.y, look, name: each.name, down: Boolean(each.at.o), colour: COLOUR_NAMES[Math.round(each.at.c)] ?? null, radius: each.at.r });
     }
+    if (!second) gloves.push(...friends);
     const on = this.gloveOnScreen(side);
     if (on) {
       const { brush, roller, stamping } = painting;
@@ -563,6 +572,7 @@ class PaintGame {
       }
       gloves.push(mine);
     }
+    if (second) gloves.push(...friends);
     view.render({ painting, gloves, side, waving: this.session.screen !== 'playing' || this.session.playSeconds < 3 });
   }
 
@@ -676,7 +686,8 @@ class PaintGame {
     const you = this.friends.room.you;
     const together = this.mode === 'together';
     const scoreOf = (id) => (together ? this.painting.tally.get(id) ?? 0 : id === you ? Math.round(this.painting.progress * 100) : this.scores.get(id) ?? 0);
-    const mine = { id: you, name: 'You', who: (characterWithId(this.settings.fighter) ?? ROSTER[0]).id };
+    // Two in one picture on one screen both see this list, so the first player is Player 1 in it, not You.
+    const mine = { id: you, name: SEAT?.onePicture ? seatName(SEAT.index) : 'You', who: (characterWithId(this.settings.fighter) ?? ROSTER[0]).id };
     const theirs = current.friends.filter((friend) => !friend.gone).map((friend) => ({ id: friend.id, name: friend.spec.name, who: friend.spec.id }));
     const everyone = [mine, ...theirs].map((each) => ({ ...each, score: scoreOf(each.id) })).sort((a, b) => b.score - a.score);
     const key = everyone.map(({ id, score }) => `${id}:${score}`).join(',');

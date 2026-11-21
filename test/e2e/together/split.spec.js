@@ -121,6 +121,8 @@ test('a race for two on one screen: they count down together, each drives their 
   expect(theirs.friends.map(({ name }) => name)).toEqual(['Player 1']);
   expect(mine.friends[0].distance).toBeGreaterThan(40);
   expect(Math.abs(mine.friends[0].distance - theirs.distance)).toBeLessThan(15);
+  // Each needs their own picture of the road, as each car goes its own way, so the screen stays split.
+  expect(await page.locator('#seats').getAttribute('data-view')).toBe('split');
   await page.screenshot({ path: 'test-results/screens/together-racing.png' });
 
   // The left seat crosses the line first, and the right after.
@@ -207,6 +209,53 @@ test('in a whole-body game on a split screen too, a game played to its end moves
     await expect(seat.locator('#level-done-text')).toHaveText('Level 1 done! Next: level 2');
     expect(await seat.evaluate(() => window.__game.game.levels.current)).toBe(2);
   }
+});
+
+test('in a game both play in one place, it\'s one picture while they play, with each player\'s own things in their own half', async ({ page }) => {
+  test.setTimeout(240_000);
+  const [left, right] = await openTogether(page, 'balloon-pop');
+  const seats = page.locator('#seats');
+  const [first, second] = [page.locator('iframe.seat').nth(0), page.locator('iframe.seat').nth(1)];
+  await handsForAll([left, right]);
+  // Getting ready, each has their own half, for their own camera check.
+  await expect(seats).toHaveAttribute('data-view', 'split');
+  await left.locator('#start').click();
+  await waitForScreen(left, 'waiting');
+  await expect(seats).toHaveAttribute('data-view', 'split');
+  await right.locator('#start').click();
+  await waitForScreen(left, 'playing');
+  await waitForScreen(right, 'playing');
+
+  // Playing: the first player's game spreads over the whole screen, with the second player in it as a friend.
+  await expect(seats).toHaveAttribute('data-view', 'one');
+  const { width } = page.viewportSize();
+  await expect.poll(async () => (await first.boundingBox()).width, { timeout: 5000 }).toBe(width);
+  expect(await second.evaluate((seat) => seat.inert)).toBe(true);
+  await expect.poll(() => left.evaluate(() => window.__game.game.friendsGloves.length)).toBe(1);
+  // Each player's own things stay in their own half: the first player's camera and hand meter in the left half,
+  // the second player's showing through holes in the first one's game, from their own game in the right half.
+  await expect.poll(() => left.evaluate(() => document.documentElement.dataset.picture)).toBe('one');
+  await expect.poll(async () => {
+    const own = await left.locator('#camera-frame').boundingBox();
+    return own.x + own.width <= width / 2;
+  }).toBe(true);
+  // (A box in a seat is where it is on the page.)
+  const theirs = await right.locator('#camera-frame').boundingBox();
+  expect(theirs.x).toBeGreaterThanOrEqual(width / 2);
+  await expect.poll(() => first.evaluate((seat) => seat.style.clipPath)).toMatch(/^path\(evenodd, /);
+  await page.screenshot({ path: 'test-results/screens/together-one-picture.png' });
+
+  // At the end, each has their own half again, for their own finish card.
+  await left.evaluate(() => {
+    window.__game.game.timed.endsAt = performance.now() + 300;
+  });
+  await waitForScreen(left, 'finish');
+  await waitForScreen(right, 'finish');
+  await expect(seats).toHaveAttribute('data-view', 'split');
+  await expect.poll(() => first.evaluate((seat) => seat.style.clipPath)).toBe('');
+  await expect.poll(() => left.evaluate(() => document.documentElement.dataset.picture ?? null)).toBe(null);
+  expect(await second.evaluate((seat) => seat.inert)).toBe(false);
+  await expect.poll(async () => (await first.boundingBox()).width, { timeout: 5000 }).toBeLessThan(width / 2);
 });
 
 test('only one seat speaks at a time, so their voices never talk over each other', async ({ page }) => {
