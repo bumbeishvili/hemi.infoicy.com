@@ -81,11 +81,13 @@ const balloonOnHost = (host, { x, y }) => host.evaluate(([across, down]) => {
   return balloons.spawnAt(across * balloons.width, down * balloons.height, { still: true }).id;
 }, [x, y]);
 
-/** The time runs out, for both. */
+/** The time runs out, for both. A team's clock goes by the wall clock, to when it ends; anyone else's counts down. */
 async function timeUp(page, other) {
   for (const each of [page, other]) {
     await each.evaluate(() => {
-      window.__game.game.timed.left = 0.5;
+      const { timed } = window.__game.game;
+      if (timed.endsAt !== null) timed.endsAt = performance.now() + 500;
+      else timed.left = 0.5;
     });
   }
   await waitForScreen(page, 'finish');
