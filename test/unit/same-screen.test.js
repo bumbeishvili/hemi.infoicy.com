@@ -100,7 +100,7 @@ test('when both are ready it starts for both, on the host\'s game, and what one 
   assert.equal(one.last('done').from, two.last('room').you);
 });
 
-test('in a game played in one picture, it\'s one picture from when both are sent off until the host\'s game is over', () => {
+test('in a game played in one picture, it\'s one picture from GO until the host\'s game is over', () => {
   const rooms = new LocalRooms();
   assert.equal(rooms.view(), 'split', 'nobody there yet');
   const one = client(rooms, '/room/mighty-moves/ABC');
@@ -110,7 +110,9 @@ test('in a game played in one picture, it\'s one picture from when both are sent
   one.say({ t: 'ready' });
   assert.equal(rooms.view(), 'split', 'getting ready, each with their own camera check');
   two.say({ t: 'ready' });
-  assert.equal(rooms.view('split'), 'one', 'both under way');
+  assert.equal(rooms.view('split', { counting: true }), 'split', 'counting down, each finding their own hand in their own half');
+  assert.equal(rooms.view('split'), 'one', 'both under way, from GO');
+  assert.equal(rooms.view('one', { counting: true }), 'one', 'and once one picture, it stays so');
 
   // The second player finishing first leaves the host playing in the whole picture, where both are.
   two.say({ t: 'done', ms: 30_000, w: 1, n: 2 });

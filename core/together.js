@@ -51,7 +51,8 @@ if (!known) {
   // each still watching its own player and sending what they do, which the first one shows.
   if (onePicture) {
     setInterval(() => {
-      const view = rooms.view(seats.dataset.view);
+      const counting = seats.children[0]?.contentDocument?.body?.dataset.screen === 'countdown';
+      const view = rooms.view(seats.dataset.view, { counting });
       if (view === seats.dataset.view) return;
       seats.dataset.view = view;
       for (const seat of [...seats.children].slice(1)) seat.inert = view === 'one';

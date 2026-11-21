@@ -223,6 +223,11 @@ test('in a game both play in one place, it\'s one picture while they play, with 
   await waitForScreen(left, 'waiting');
   await expect(seats).toHaveAttribute('data-view', 'split');
   await right.locator('#start').click();
+  // Counting down, each still finds their own hand in their own half.
+  await waitForScreen(left, 'countdown');
+  expect(await seats.getAttribute('data-view')).toBe('split');
+  await left.waitForTimeout(600);
+  expect(await seats.getAttribute('data-view')).toBe('split');
   await waitForScreen(left, 'playing');
   await waitForScreen(right, 'playing');
 

@@ -33,18 +33,20 @@ export class LocalRooms {
   }
 
   /**
-   * How the seats are shown, in a game they play in one picture: 'one' once everyone in the room is under way,
-   * from the moment they're all sent off, and until the host's game is over, or 'split' while they get ready and
-   * at the end. was is how they're shown now, so that one who finishes first doesn't split the screen while the
-   * host still plays.
+   * How the seats are shown, in a game they play in one picture: 'one' once everyone in the room is under way and
+   * the count down to GO is over, and until the host's game is over, or 'split' while they get ready and count
+   * down, each finding their own hand or character in their own half, and at the end. was is how they're shown
+   * now, so that one who finishes first doesn't split the screen while the host still plays. counting is whether
+   * the host's game is counting down.
    */
-  view(was = 'split') {
+  view(was = 'split', { counting = false } = {}) {
     for (const { players } of this.rooms.values()) {
       const everyone = [...players].map(({ meta }) => meta).filter((meta) => meta?.id);
       if (everyone.length < 2) continue;
       const host = everyone.reduce((first, meta) => (meta.joined < first.joined ? meta : first));
       if (!host.racing) return 'split';
-      return was === 'one' || everyone.every(({ racing }) => racing) ? 'one' : 'split';
+      if (was === 'one') return 'one';
+      return everyone.every(({ racing }) => racing) && !counting ? 'one' : 'split';
     }
     return 'split';
   }
