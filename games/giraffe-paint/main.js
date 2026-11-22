@@ -3,7 +3,8 @@
 // A closed hand is the brush lifted. It practises opening the hand and keeping it open while moving it smoothly
 // across the picture. The rules are in paint.js, the pictures in pages.js, and the sheet is drawn by view.js. On
 // their own, or with friends, each on their own computer: all painting one sheet together, or each their own, to
-// see who finishes first.
+// see who finishes first. Two on one screen, in one picture, against each other is one sheet too, and whoever paints
+// the most of it wins.
 import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { Track } from '../../core/friends.js';
@@ -80,8 +81,17 @@ const FRIEND_LOOK = { ink: '#7f8a99', glove: '#e3e8ee' };
 const SECOND_LOOK = { ink: SECOND_PLAYER.ink, glove: SECOND_PLAYER.open, tag: SECOND_PLAYER.tag, solid: true };
 const FADE_RATE = 8; // How quickly a friend's glove fades in and out, as their hand comes and goes.
 const QUIET_MS = 1500; // A friend nothing has come from for this long fades away.
+// On the card of whoever painted the most of the one sheet, two on one screen against each other.
+const MOST = 'You painted the most!';
 const round1 = (value) => Math.round(value * 10) / 10;
 const round2 = (value) => Math.round(value * 100) / 100;
+/**
+ * Whether everyone painting with friends paints one sheet: together, and against each other too for two playing in
+ * one picture on one screen (core/one-picture.js), where the sheet both of them see is the first player's, so a
+ * sheet of the second player's own couldn't be seen. Each part is whoever's stroke finished it, and against each
+ * other, whoever finished the most parts is first.
+ */
+const oneSheet = (friendly) => Boolean(friendly && (friendly.team || SEAT?.onePicture));
 const clock = (seconds) => {
   const whole = Math.max(0, Math.ceil(seconds));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
@@ -105,6 +115,7 @@ class PaintGame {
     this.gloves = { left: new Glove('left'), right: new Glove('right') };
     this.gloveOffset = { x: 0, y: 0 };
     this.mode = 'solo';
+    this.oneSheet = false;
     this.friendBrushes = [];
     this.scores = new Map(); // Against each other: how far along each friend's picture is, in whole percent.
     this.goAt = 0;
@@ -114,6 +125,7 @@ class PaintGame {
     // The finish card and the grown-ups' panel can each save the picture, to this computer only.
     document.querySelector('#screen-finish .finish-actions')?.insertAdjacentHTML('afterbegin', '<button id="save-picture" class="soft-button paint-save" type="button">Save the picture</button>');
     for (const id of ['save-picture', 'save-picture-now']) byId(id)?.addEventListener('click', () => this.savePicture());
+    const game = this;
     // Painting with friends, if a grown-up makes or joins a game.
     this.friends = new FriendsPanel({
       game: 'giraffe-paint',
@@ -124,11 +136,17 @@ class PaintGame {
       portraits: () => session.portraits,
       onMove: (id, message) => this.fromFriend(id, message),
       onGone: (friend) => this.friendGone(friend),
-      // Together, whoever finished the most parts is first on the card, though nobody is placed. Against each
-      // other, those who finished their picture by time, and then the rest by how much of it they painted.
-      rank: (a, b) => (this.mode === 'together' ? b.dropped - a.dropped : Number(b.won) - Number(a.won) || (a.won ? a.ms - b.ms : b.dropped - a.dropped)),
-      resultText: ({ ms, won, dropped }) => (this.mode === 'together' ? `${dropped} ${dropped === 1 ? 'part' : 'parts'}` : won ? raceTime(ms) : `${dropped}% painted`),
-      titles: { first: 'You finished first!', other: 'Lovely painting!' },
+      // On one sheet, whoever finished the most parts is first on the card, though together nobody is placed.
+      // Against each other, each with their own, those who finished their picture by time, and then the rest by how
+      // much of it they painted.
+      rank: (a, b) => (this.oneSheet ? b.dropped - a.dropped : Number(b.won) - Number(a.won) || (a.won ? a.ms - b.ms : b.dropped - a.dropped)),
+      resultText: ({ ms, won, dropped }) => (this.oneSheet ? `${dropped} ${dropped === 1 ? 'part' : 'parts'}` : won ? raceTime(ms) : `${dropped}% painted`),
+      titles: {
+        get first() {
+          return game.oneSheet ? MOST : 'You finished first!';
+        },
+        other: 'Lovely painting!',
+      },
       // With friends, together or against each other: the grown-ups' choice, which the friends box can change too.
       teams: {
         get: () => (session.settings.paintFriends === 'against' ? 'against' : 'together'),
@@ -142,7 +160,6 @@ class PaintGame {
     this.painting = this.newPainting(session.level);
     this.view.setPainting(this.painting);
     this.showProgress();
-    const game = this;
     this.debug = {
       view: this.view,
       gloves: this.gloves,
@@ -206,7 +223,7 @@ class PaintGame {
       done,
       brush: this.brushName(),
       rival: this.rivalName(),
-      shared: friendly?.team ? { claim: (k) => this.friends.claim(k) } : null,
+      shared: oneSheet(friendly) ? { claim: (k) => this.friends.claim(k) } : null,
       me: friendly ? this.friends.room.you : 'me',
       onEvent: (event) => this.onPaint(event),
     });
@@ -260,6 +277,7 @@ class PaintGame {
     // With friends, everyone has the host's picture, plain, which doesn't move anyone's own level on.
     const friendly = this.friends.current;
     this.mode = friendly ? (friendly.team ? 'together' : 'against') : 'solo';
+    this.oneSheet = oneSheet(friendly);
     document.body.toggleAttribute('data-friends-race', Boolean(friendly));
     this.painting = this.newPainting(level, friendly);
     this.view.setPainting(this.painting);
@@ -582,7 +600,7 @@ class PaintGame {
   withFriends(dt) {
     const { painting, friends } = this;
     const now = performance.now();
-    if (this.mode === 'together') {
+    if (this.oneSheet) {
       // The strokes painted since last time, where the brush is, and which parts are done, 10 times a second.
       if (now - this.sentAt >= SEND_EVERY_MS && friends.room.inRoom && friends.current) {
         this.sentAt = now;
@@ -590,7 +608,7 @@ class PaintGame {
       }
       this.showFriendsBrushes(dt);
     } else {
-      // Against each other: only how far along the picture is, when that changes.
+      // Against each other, each with their own: only how far along the picture is, when that changes.
       const percent = Math.round(painting.progress * 100);
       if (percent !== this.sentPercent) {
         this.sentPercent = percent;
@@ -647,7 +665,7 @@ class PaintGame {
   fromFriend(id, message) {
     if (!this.friends.current?.racers.includes(message.t === 'claimed' ? message.by : id)) return;
     if (message.t === 'claimed') {
-      if (this.mode === 'together') this.painting.claimed(message.k, message.by);
+      if (this.oneSheet) this.painting.claimed(message.k, message.by);
       this.showScores();
       return;
     }
@@ -656,7 +674,7 @@ class PaintGame {
       this.showScores();
       return;
     }
-    if (message.t !== 'brush' || this.mode !== 'together') return;
+    if (message.t !== 'brush' || !this.oneSheet) return;
     const each = this.friendBrushes.find((brush) => brush.id === id);
     if (!each) return;
     each.track.push(message, performance.now());
@@ -674,8 +692,8 @@ class PaintGame {
   }
 
   /**
-   * With friends, along the top: together, how many parts each one's stroke finished, and against each other,
-   * how far along each one's picture is, the most first.
+   * With friends, along the top: on one sheet, how many parts each one's stroke finished, and against each other,
+   * each with their own, how far along each one's picture is, the most first.
    */
   showScores() {
     const list = byId('paint-scores');
@@ -684,8 +702,8 @@ class PaintGame {
     if (list.hidden) return;
     const portraits = this.session.portraits ?? {};
     const you = this.friends.room.you;
-    const together = this.mode === 'together';
-    const scoreOf = (id) => (together ? this.painting.tally.get(id) ?? 0 : id === you ? Math.round(this.painting.progress * 100) : this.scores.get(id) ?? 0);
+    const parts = this.oneSheet;
+    const scoreOf = (id) => (parts ? this.painting.tally.get(id) ?? 0 : id === you ? Math.round(this.painting.progress * 100) : this.scores.get(id) ?? 0);
     // Two in one picture on one screen both see this list, so the first player is Player 1 in it, not You.
     const mine = { id: you, name: SEAT?.onePicture ? seatName(SEAT.index) : 'You', who: (characterWithId(this.settings.fighter) ?? ROSTER[0]).id };
     const theirs = current.friends.filter((friend) => !friend.gone).map((friend) => ({ id: friend.id, name: friend.spec.name, who: friend.spec.id }));
@@ -704,7 +722,7 @@ class PaintGame {
       name.textContent = each.name;
       const score = document.createElement('span');
       score.className = 'paint-score';
-      score.textContent = together ? String(each.score) : `${each.score}%`;
+      score.textContent = parts ? String(each.score) : `${each.score}%`;
       row.append(face, name, score);
       return row;
     }));
@@ -759,9 +777,9 @@ class PaintGame {
     sound.stopLoop('birds');
     sound.stopLoop('brush');
     this.story.hide();
-    // With friends: together, how many parts this child's stroke finished, as the server said, and against each
-    // other, whether the picture was finished, and how far along it got.
-    if (this.mode === 'together') this.friends.finished(this.sinceGo, { n: this.painting.tally.get(this.friends.room.you) ?? 0, w: 1 });
+    // With friends: on one sheet, how many parts this child's stroke finished, as the server said, and against each
+    // other, each with their own, whether the picture was finished, and how far along it got.
+    if (this.oneSheet) this.friends.finished(this.sinceGo, { n: this.painting.tally.get(this.friends.room.you) ?? 0, w: 1 });
     else if (this.mode === 'against') this.friends.finished(this.sinceGo, { n: Math.round(this.painting.progress * 100), w: this.painting.done ? 1 : 0 });
     for (const each of this.friendBrushes) each.glove.visible = false;
     for (const glove of Object.values(this.gloves)) glove.hide();
@@ -873,7 +891,7 @@ new GameSession({
       <fieldset class="choice">
         <legend>With friends</legend>
         ${choice('paintFriends', 'together', 'Together: everyone paints the same picture')}
-        ${choice('paintFriends', 'against', 'Against each other: who finishes their own picture first')}
+        ${choice('paintFriends', 'against', SEAT?.onePicture ? 'Against each other: one picture, and whoever paints the most of it wins' : 'Against each other: who finishes their own picture first')}
       </fieldset>
       <div class="panel-actions">
         <button id="save-picture-now" class="soft-button" type="button">Save the picture as it is</button>

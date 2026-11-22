@@ -1,4 +1,4 @@
-// Six games two play on one screen in one picture (core/one-picture.js), each together or against each other: the
+// Seven games two play on one screen in one picture (core/one-picture.js), each together or against each other: the
 // first player's game across the whole screen, with the second in it as a friend. What a friend on another computer
 // wouldn't see, the second player now couldn't either, so each game shows it in one picture. Each test plays one
 // game against each other, through the game's own rules, and checks what both seats make of it, as both seats run
@@ -252,4 +252,79 @@ test('Flap, Little Chick! in one picture: the second player\'s chick is blue, on
   expect(two.x - one.x).toBeGreaterThan(3);
   expect(two.x - one.x).toBeLessThan(3.6);
   await expect.poll(() => ownThingsApart(page, seats, ['.story.is-visible'])).toEqual([]);
+});
+
+/**
+ * Leads a seat's open hand, in its own half of the camera's picture, through the real tracker, to wherever a child
+ * would paint next in Giraffe's Paint Box (see guide in games/giraffe-paint/paint.js).
+ */
+const leadPainter = (seat, index) => seat.evaluate((i) => {
+  clearInterval(window.__lead);
+  let [x, y] = [i === 0 ? 0.25 : 0.75, 0.5];
+  window.__lead = setInterval(() => {
+    const { game, painting } = window.__game;
+    const at = game.brushOnSheet();
+    const wanted = at && painting.guide(at);
+    if (wanted) {
+      x += (wanted.x - at.x) * 0.0004;
+      y += (wanted.y - at.y) * 0.0006;
+    }
+    x = i === 0 ? Math.max(0.04, Math.min(0.46, x)) : Math.max(0.54, Math.min(0.96, x));
+    y = Math.max(0.2, Math.min(0.88, y));
+    window.__camera.showHands([{ name: 'open', side: 'right', x, y, scale: 0.75 }], { sameHand: true });
+  }, 33);
+}, index);
+
+test('Giraffe\'s Paint Box in one picture: against each other the two paint one sheet, each sees the other\'s strokes, and whoever paints the most parts is first', async ({ page }) => {
+  test.setTimeout(300_000);
+  const seats = await openTogether(page, 'giraffe-paint', 2, { paintFriends: 'against' });
+  await handsForAll(seats);
+  await intoOnePicture(page, seats);
+  const read = () => Promise.all(seats.map((seat) => seat.evaluate(() => {
+    const { game, painting } = window.__game;
+    const you = game.friends.room.you;
+    const tally = Object.fromEntries([...painting.tally].map(([id, n]) => [id === you ? 'me' : 'them', n]));
+    return {
+      mode: game.mode,
+      covered: painting.toPaint.reduce((sum, part) => sum + part.covered, 0),
+      own: painting.stats.cells,
+      done: painting.done,
+      toPaint: painting.toPaint.length,
+      tally,
+      seen: game.friendBrushes[0]?.fade ?? 0,
+    };
+  })));
+  expect((await read()).map(({ mode }) => mode)).toEqual(['against', 'against']);
+  await expect(seats[0].locator('#chip-time-box')).toBeVisible();
+  // Player 1 rests, with the brush lifted, and Player 2 paints: their glove and their strokes are on the sheet both
+  // see, which is Player 1's.
+  await seats[0].evaluate(() => window.__camera.showHands([{ name: 'fist', side: 'right', x: 0.25, y: 0.5, scale: 0.75 }], { sameHand: true }));
+  await page.waitForTimeout(1000);
+  const [resting] = await read();
+  await leadPainter(seats[1], 1);
+  await expect.poll(async () => {
+    const [one] = await read();
+    return one.covered > resting.covered + 150 && one.own === resting.own && one.seen > 0.5;
+  }, { timeout: 60_000 }).toBe(true);
+  await expect.poll(() => ownThingsApart(page, seats, ['.paint-hud .chip', '#paint-scores li'])).toEqual([]);
+  // Then both paint, and between them the picture is done on both sheets, each part whoever's stroke finished it.
+  await leadPainter(seats[0], 0);
+  for (const seat of seats) await waitForScreen(seat, 'finish', 120_000);
+  for (const seat of seats) await seat.evaluate(() => clearInterval(window.__lead));
+  const [one, two] = await read();
+  expect(one.done && two.done).toBe(true);
+  expect(one.tally).toEqual({ me: two.tally.them, them: two.tally.me });
+  expect((one.tally.me ?? 0) + (one.tally.them ?? 0)).toBe(one.toPaint);
+  expect(one.tally.them).toBeGreaterThan(0);
+  // Each is placed by how many parts they painted, the most first, on their own card in their own half.
+  const [best, other] = (one.tally.me ?? 0) > (one.tally.them ?? 0) ? [seats[0], seats[1]] : [seats[1], seats[0]];
+  await expect(best.locator('#screen-finish h2')).toHaveText('You painted the most!');
+  await expect(other.locator('#screen-finish h2')).toHaveText('Lovely painting!');
+  for (const seat of seats) {
+    const rows = seat.locator('.friends-results li');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText(/1st.*\d+ parts?/);
+    await expect(rows.nth(1)).toContainText(/2nd.*\d+ parts?/);
+  }
+  await expect(best.locator('.friends-results li').first()).toContainText('You');
 });
