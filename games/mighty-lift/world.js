@@ -26,6 +26,9 @@ const FRIEND_MOST = 1.08; // As tall as a friend can stand under a thing at the 
 const MATE_SLOTS = [[-2.35, -0.8], [-3.5, -1.5], [-0.05, -1.75]];
 const MATE_SIZE = 0.9;
 const TEAM_SIZE = 1.22; // The thing everyone lifts together is this much bigger.
+// Two on one screen against each other, the second player's own rig is a copy of the first one's, this far to the
+// right, with their lifter at it as the first player's is at theirs: see setSecondRig.
+const SECOND_RIG = 4.5;
 // Several lifting in front of one camera stand side by side, left to right across the screen as they stand in
 // front of it: where each is and how big, [x, z, size], for so many of them. They're all the same size, as
 // nobody is the main one. Two and three stand where a child and their friends do. Four are in a row, a little
@@ -48,6 +51,8 @@ const VIEWS = {
   // Three or four side by side reach further to the left, so the view is from a little further that way.
   playBeside: { at: [-0.1, 2.05, 9.4], look: [-0.1, 1.5, 0], fov: 30 },
   win: { at: [-0.1, 1.8, 7.4], look: [-0.5, 1.25, 0], fov: 30 },
+  // Two rigs side by side, each with its lifter, from a little further back.
+  playTwo: { at: [0.42 + SECOND_RIG / 2, 2.3, 12], look: [0.42 + SECOND_RIG / 2, 1.45, 0], fov: 30 },
 };
 
 // A picture taller than it's wide, as each half of the split screen is, would cut the yard off at its sides, so
@@ -680,6 +685,7 @@ export class World {
     this.thingSize = 0;
     this.leaving = []; // Things on their way out, shrinking.
     this.friend = null; // Whoever is under it: { body, size, pose, out, hop, gone }.
+    this.second = null; // Two on one screen against each other, the second player's own rig: see setSecondRig.
     this.friends = new Map(); // Characters made so far, by id, to use again.
     this.runners = []; // Friends who are free, on their way off.
     this.ducks = null;
@@ -784,6 +790,7 @@ export class World {
    * with three or four. A picture taller than it's wide has its own, further back.
    */
   get viewNow() {
+    if (this.second && this.view === 'play' && this.camera.aspect >= 1) return VIEWS.playTwo;
     if (this.beside && this.view === 'warmup') return VIEWS.warmupBeside;
     if (this.beside && this.view === 'play' && this.mates.length >= 2) return VIEWS.playBeside;
     return (this.camera.aspect < 1 && NARROW_VIEWS[this.view]) || VIEWS[this.view];
@@ -827,9 +834,10 @@ export class World {
    * ring. beside is for several lifting in front of one camera: the child's own lifter is the first of them, and
    * they all stand left to right, as they do in front of it. inOrder stands them so without that, for friends whose
    * own games follow them: two on one screen in one picture (core/one-picture.js). Otherwise the child's lifter is
-   * where it always is.
+   * where it always is. rig is for two in one picture against each other: the friend has a rig of their own, beside
+   * the child's, and the child's lifter is where it always is: see setSecondRig.
    */
-  setMates(specs, { hands = ['right'], level = 1, team = false, beside = false, inOrder = beside } = {}) {
+  setMates(specs, { hands = ['right'], level = 1, team = false, beside = false, inOrder = beside, rig = false } = {}) {
     for (const mate of this.mates) mate.dispose();
     this.mates = specs.map((spec) => {
       const mate = new Lifter(spec, this.scene);
@@ -841,9 +849,17 @@ export class World {
     });
     this.team = team && specs.length > 0;
     this.beside = beside && specs.length > 0;
-    const places = inOrder && specs.length > 0
-      ? BESIDE[Math.min(4, specs.length + 1)]
-      : [[...HOME, 1], ...specs.map((_, index) => [...MATE_SLOTS[index % MATE_SLOTS.length], MATE_SIZE])];
+    const two = rig && specs.length === 1;
+    this.setSecondRig(two);
+    if (two) {
+      this.mates[0].roped = true;
+      this.mates[0].ringAt = this.second.ring;
+    }
+    const places = two
+      ? [[...HOME, 1], [HOME[0] + SECOND_RIG, HOME[1], 1]]
+      : inOrder && specs.length > 0
+        ? BESIDE[Math.min(4, specs.length + 1)]
+        : [[...HOME, 1], ...specs.map((_, index) => [...MATE_SLOTS[index % MATE_SLOTS.length], MATE_SIZE])];
     [this.lifter, ...this.mates].forEach((lifter, index) => {
       if (!lifter) return;
       const [x, z, size] = places[index % places.length];
@@ -900,16 +916,16 @@ export class World {
     }
   }
 
-  /** A character to be a friend in need, made once and used again. */
-  friendBody(id) {
-    if (!this.friends.has(id)) {
+  /** A character to be a friend in need, made once and used again: from those made for a rig, its own. */
+  friendBody(id, made = this.friends) {
+    if (!made.has(id)) {
       const spec = characterById(id);
       const body = new Fighter3D(spec);
       // Small enough to crouch under a basket, however long its neck.
       const tall = 1.95 + spec.build.neck;
-      this.friends.set(id, { body, size: Math.min(FRIEND_SIZE, FRIEND_MOST / tall) });
+      made.set(id, { body, size: Math.min(FRIEND_SIZE, FRIEND_MOST / tall) });
     }
-    return this.friends.get(id);
+    return made.get(id);
   }
 
   /** The next friend in need, and what's on them, come in. One that's already there, as the first is from the countdown, stays. */
@@ -1089,6 +1105,7 @@ export class World {
     }
     this.updateThing(dt, playing);
     this.updateFriend(dt);
+    this.updateSecond(dt, playing);
     this.updateDucks(dt);
     this.updateRunners(dt);
     this.updateExtras(dt);
@@ -1141,22 +1158,30 @@ export class World {
   updateFriend(dt) {
     const { friend, game, thing } = this;
     if (!friend || !game || !thing) return;
-    friend.time += dt;
-    const { body, pose, target } = friend;
     // Out while it's held up, as far as they've got, and back under in a hurry if it comes down early.
     const wanted = friend.free ? 1 : game.freeing ? game.out : 0;
+    if (this.poseFriend(friend, dt, { hook: HOOK, exit: EXIT_AT, thingY: this.thingY, thingSize: this.thingSize, inner: thing.inner, wanted })) this.friend = null;
+  }
+
+  /**
+   * A friend under a thing on a hook, as far out towards exit as wanted says, with the thing so high and so big.
+   * Returns true once a friend who's free has jumped for joy and run off.
+   */
+  poseFriend(friend, dt, { hook, exit, thingY, thingSize, inner, wanted }) {
+    friend.time += dt;
+    const { body, pose, target } = friend;
     friend.out = damp(friend.out, wanted, wanted > friend.out ? 6 : 10, dt);
-    const [ex, , ez] = EXIT_AT;
-    const x = HOOK.x + (ex - HOOK.x) * friend.out;
-    const z = HOOK.z + (ez - HOOK.z) * friend.out;
+    const [ex, , ez] = exit;
+    const x = hook.x + (ex - hook.x) * friend.out;
+    const z = hook.z + (ez - hook.z) * friend.out;
     body.root.position.set(x, 0, z);
     const size = body.root.scale.y;
-    body.root.visible = this.thingSize > 0.5 || friend.free;
+    body.root.visible = thingSize > 0.5 || friend.free;
     // There's room to stand once the thing is clear of their head.
-    const room = (this.thingY + thing.inner * this.thingSize) / size;
+    const room = (thingY + inner * thingSize) / size;
     const under = friend.out < 0.45;
     const tall = 1.95 + body.spec.build.neck;
-    const low = 0.24 * (1 - clamp(this.thingY / 0.55, 0, 1));
+    const low = 0.24 * (1 - clamp(thingY / 0.55, 0, 1));
     const crouch = under ? Math.max(low, clamp((tall - room) / 0.9, 0, 0.34)) : 0;
     const moving = Math.abs(wanted - friend.out) > 0.02;
     const step = moving && !this.reducedMotion ? Math.sin(friend.time * 16) : 0;
@@ -1176,14 +1201,117 @@ export class World {
       // After a jump for joy, they run off, and the next one can come.
       if (friend.joy > 1.1 && friend.out > 0.97) {
         this.runners.push({ body, pose, time: 0 });
-        this.friend = null;
-        return;
+        return true;
       }
     }
     mixPose(pose, pose, target, 1 - Math.exp(-dt * 14));
     body.setPose(pose);
     body.update(dt);
     body.faceTowards(friend.free ? 0 : 0.2);
+    return false;
+  }
+
+  /**
+   * Two in one picture on one screen against each other (core/one-picture.js): the second player's own rig, so that
+   * they see what their lifting does, as the first player sees theirs. It's a copy of the crane, the line and the
+   * platform, SECOND_RIG to the right, with a hook, a rope and a ring of its own, and their lifter's rope goes to
+   * it. With friends there are only baskets, so it has a basket and whoever is under it. How it's going comes from
+   * their game: see FriendRescue in team.js, which main.js puts in second.state.
+   */
+  setSecondRig(on) {
+    if (Boolean(this.second) === on) return;
+    if (!on) {
+      const { group, hangRope, groundRope, thing, friend } = this.second;
+      this.scene.remove(group, hangRope.mesh, groundRope.mesh);
+      if (thing) this.scene.remove(thing.model);
+      if (friend) this.scene.remove(friend.body.root);
+      this.second = null;
+      return;
+    }
+    const group = new THREE.Group();
+    const line = this.linePieces.clone();
+    // The line brightens for its own basket only.
+    const tape = line.children.find((child) => child.isMesh && child.material.isMeshBasicMaterial);
+    tape.material = tape.material.clone();
+    const mat = new THREE.Mesh(roundedBox(2.5, 0.08, 1.9, 0.03), paint('#3c4a57'));
+    mat.position.set(LIFTER_AT[0], 0.02, 0.15);
+    const boards = new THREE.Mesh(roundedBox(1.7, 0.08, 1.7, 0.03), paint('#d9a55b'));
+    boards.position.set(LIFTER_AT[0], 0.05, 0.15);
+    for (const floor of [mat, boards]) floor.receiveShadow = true;
+    const eye = new THREE.Mesh(ring(0.09, 0.025).rotateX(Math.PI / 2), paint('#4b5563'));
+    eye.position.copy(RING_AT);
+    const hook = hookBlock();
+    group.add(buildCrane(), line, mat, boards, eye, hook);
+    group.position.x = SECOND_RIG;
+    this.scene.add(group);
+    const ringAt = RING_AT.clone().setX(RING_AT.x + SECOND_RIG);
+    const groundRope = new Rope(this.scene);
+    groundRope.between(ringAt, new THREE.Vector3(POST_AT[0] + SECOND_RIG, 0.3, POST_AT[2] + 0.14));
+    this.second = {
+      group, line, tape, hook, groundRope, ring: ringAt,
+      hangRope: new Rope(this.scene),
+      hookAt: new THREE.Vector3(HOOK.x, HOOK_WAITS, HOOK.z),
+      state: null, rescue: null, thing: null, thingY: 0, thingSize: 0, friend: null, tapeMix: 0, made: new Map(),
+    };
+  }
+
+  /** The second player's rig, each frame: their basket as high as their arm, and their friend getting out. */
+  updateSecond(dt, playing) {
+    const rig = this.second;
+    if (!rig) return;
+    const { state } = rig;
+    const rescue = state?.rescue ?? null;
+    const hook = { x: HOOK.x + SECOND_RIG, z: HOOK.z };
+    if (rescue !== rig.rescue) {
+      // The next friend in need comes in, with their basket, and the last one runs off if they haven't yet.
+      rig.rescue = rescue;
+      if (rig.thing) this.leaving.push({ model: rig.thing.model, size: rig.thingSize });
+      rig.thing = null;
+      if (rig.friend) this.runners.push({ body: rig.friend.body, pose: rig.friend.pose, time: 0 });
+      rig.friend = null;
+      if (rescue) {
+        rig.thing = THINGS.basket();
+        rig.thing.model.position.set(hook.x, 0, hook.z);
+        rig.thing.model.scale.setScalar(0.001);
+        this.scene.add(rig.thing.model);
+        rig.thingSize = 0;
+        rig.thingY = 0;
+        const { body, size } = this.friendBody(rescue.friend, rig.made);
+        body.root.scale.setScalar(size);
+        body.root.position.set(hook.x, 0, hook.z);
+        body.setExpression('ready');
+        this.scene.add(body.root);
+        rig.friend = { id: rescue.friend, body, pose: makePose(), target: makePose(), out: 0, free: false, time: 0, joy: 0 };
+        this.puff(hook.x, 0.2, hook.z + 0.6, 5);
+      }
+    }
+    // The hook is in the rig, so its height is the rig's own; the rope down to it is in the yard.
+    let hookY = HOOK_WAITS;
+    if (rig.thing && state) {
+      const away = state.phase === 'resting' || state.phase === 'done';
+      rig.thingSize = damp(rig.thingSize, away ? 0 : 1, away ? 7 : 9, dt);
+      rig.thingY = damp(rig.thingY, state.height * LINE_HEIGHT, 22, dt);
+      rig.thing.model.scale.setScalar(Math.max(0.001, rig.thingSize));
+      rig.thing.model.position.y = rig.thingY;
+      hookY = HOOK_WAITS + (rig.thingY + rig.thing.top + 0.12 - HOOK_WAITS) * clamp(rig.thingSize, 0, 1);
+    }
+    rig.hookAt.set(HOOK.x, hookY, HOOK.z);
+    rig.hook.position.copy(rig.hookAt);
+    rig.hangRope.between(scratch.a.set(hook.x, hookY, hook.z), scratch.b.set(hook.x, ARM_HEIGHT - 0.1, hook.z));
+    rig.line.visible = playing;
+    rig.tapeMix = damp(rig.tapeMix, (state?.height ?? 0) >= 1 ? 1 : 0, 8, dt);
+    rig.tape.material.color.setRGB(0.153 + rig.tapeMix * 0.2, 0.788 + rig.tapeMix * 0.15, 0.42 + rig.tapeMix * 0.1);
+    const { friend, thing } = rig;
+    if (!friend || !thing || !state) return;
+    // Their game has freed them: a little burst, and a jump for joy before they run off.
+    if (state.out >= 1 && !friend.free) {
+      friend.free = true;
+      friend.body.setExpression('happy');
+      this.burst(EXIT_AT[0] + SECOND_RIG, 1, EXIT_AT[2], ['#ffd23f', '#ff8f3f', '#7dff9f'], 12);
+      this.mates[0]?.body.setExpression('happy', 1.6);
+    }
+    const wanted = friend.free ? 1 : state.out;
+    if (this.poseFriend(friend, dt, { hook, exit: [EXIT_AT[0] + SECOND_RIG, 0, EXIT_AT[2]], thingY: rig.thingY, thingSize: rig.thingSize, inner: thing.inner, wanted })) rig.friend = null;
   }
 
   /** Ducklings waddle out to their mother one at a time, as far as the rules say each has got. */

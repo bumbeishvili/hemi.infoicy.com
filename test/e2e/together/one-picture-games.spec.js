@@ -135,6 +135,29 @@ test('Giraffe\'s Maze in one picture: racing, the two are in the same maze, the 
   await handsForAll(seats);
   await intoOnePicture(page, seats);
   await expect.poll(() => ownThingsApart(page, seats, ['.maze-hud'])).toEqual([]);
+  // The second player's glove is solid and in their own blue, as in the other hand games, and drawn over the first
+  // player's.
+  await expect.poll(() => seats[0].evaluate(async () => {
+    const { game } = window.__game;
+    const [friend] = game.friendWalkers.values();
+    const mine = game.gloves[game.session.settings.hands];
+    const drawn = [];
+    const spy = (glove, who) => {
+      const draw = glove.draw;
+      glove.draw = function drawing(ctx, palm, look) {
+        drawn.push({ who, fill: look?.fill ?? null, alpha: look?.alpha ?? 1 });
+        return draw.call(this, ctx, palm, look);
+      };
+      return () => {
+        glove.draw = draw;
+      };
+    };
+    const undo = [spy(mine, 'own'), spy(friend.glove, 'second')];
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    for (const each of undo) each();
+    const theirs = drawn.filter(({ who }) => who === 'second');
+    return theirs.length > 0 && drawn.at(-1).who === 'second' && theirs.every(({ fill, alpha }) => fill === '#6f7cff' && alpha > 0.9);
+  }), { timeout: 20_000 }).toBe(true);
   // Each character goes along the way out of the maze numbered window.__lead in its seat, as the game's film leads it.
   for (const seat of seats) {
     await seat.evaluate(() => {

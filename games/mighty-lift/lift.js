@@ -515,12 +515,12 @@ export function layOut({ lifts = 8, level = 1, lifter = 'giraffe', random = Math
 
 const UP_AT = 1; // A weight is up once it's at the line,
 const DOWN_AGAIN = 0.88; // and stays up until it's this far below it, so a wobble doesn't drop it.
-const LOWERED = 0.3; // An arm this low has come down, and its next raise is another lift.
+export const LOWERED = 0.3; // An arm this low has come down, and its next raise is another lift.
 const SET_DOWN = 0.2; // A weight this low is back on the ground.
-const LIGHT_RISE = 3.5; // Lifts a second: how fast a light thing follows the arm up.
-const FALL_RATE = 12; // And how quickly anything follows it down.
-const ARRIVE_SECONDS = 0.9; // The next friend and what's on them coming in.
-const REST_SECONDS = 1.6; // A shake of the arms between rescues.
+export const LIGHT_RISE = 3.5; // Lifts a second: how fast a light thing follows the arm up.
+export const FALL_RATE = 12; // And how quickly anything follows it down.
+export const ARRIVE_SECONDS = 0.9; // The next friend and what's on them coming in.
+export const REST_SECONDS = 1.6; // A shake of the arms between rescues.
 const TEAM_FREED_SECONDS = 1.4; // With friends, the big weight isn't waited for: the next comes after this.
 const STEADY_WITHIN = 0.4; // Torso lengths a second: an arm moving less than this is steady.
 const WOBBLE_SECONDS = 0.35; // Over about this long.

@@ -8,7 +8,7 @@ import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { Track } from '../../core/friends.js';
 import { FriendsPanel, time } from '../../core/friends-ui.js';
-import { Glove } from '../../core/glove.js';
+import { Glove, inOnePicture, secondPlayerLook } from '../../core/glove.js';
 import { SEAT, seatName } from '../../core/seat.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { DID_IT_TOGETHER, Sound } from '../../core/sound.js';
@@ -754,12 +754,19 @@ class MazeGame {
         });
       }
     }
-    const gloves = [];
+    // Friends' gloves are grey and see-through, under the child's own. Two in one picture on one screen, the second
+    // player's is solid, in their own blue, and over the first player's, as in the other hand games.
+    const second = inOnePicture();
+    const theirs = [];
     for (const friend of this.friendWalkers.values()) {
-      if (friend.shown && friend.glove.visible) gloves.push({ glove: friend.glove, look: { ...FRIEND_GLOVE, alpha: 0.7 * friend.fade, palm: this.view.palmSize * 0.8 } });
+      if (!friend.shown || !friend.glove.visible) continue;
+      const look = second ? secondPlayerLook(friend.glove, friend.fade) : { ...FRIEND_GLOVE, alpha: 0.7 * friend.fade };
+      theirs.push({ glove: friend.glove, look: { ...look, palm: this.view.palmSize * 0.8 } });
     }
     const mine = this.gloves[this.session.settings.hands];
+    const gloves = second ? [] : theirs;
     gloves.push({ glove: mine, offset: this.gloveOffset });
+    if (second) gloves.push(...theirs);
     const playing = this.session.screen === 'playing' && run.phase === 'walking';
     const lead = playing && this.lastOpen && mine.visible ? { from: run.position, to: { x: mine.x + this.gloveOffset.x, y: mine.y + this.gloveOffset.y } } : null;
     const bird = run.bird ? { ...run.bird, at: run.birdAt() } : null;

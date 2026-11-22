@@ -1,5 +1,6 @@
 // Two playing a whole-body game on one screen, in one picture (core/one-picture.js): the first player's game across
 // the whole screen, the second player in it as a friend, and each player's own things in their own half.
+import { childLifts, stopChild } from '../mighty-lift/helpers.js';
 import { expect, openTogether, test, waitForScreen } from './helpers.js';
 
 /** A filmed person in each half of the camera's picture, in every seat's test camera. */
@@ -70,6 +71,8 @@ test('Leap Trail in one picture: the runners keep together, so the second player
   await expect(view(page)).toHaveAttribute('data-view', 'one', { timeout: 90_000 });
   for (const seat of seats) await waitForScreen(seat, 'run', 30_000);
   await expect.poll(() => left.evaluate(() => window.__game.run.distance), { timeout: 20_000 }).toBeGreaterThan(10);
+  // Both read the stars, so the first player is Player 1 in them, not You.
+  await expect(left.locator('#run-scores li.is-you')).toContainText('Player 1');
 
   // The second player steps out of the picture, so their runner waits for them. Even racing each other, the first
   // player's runner waits a few metres on, rather than leaving the other behind the camera.
@@ -113,4 +116,61 @@ test('Mighty Lift in one picture: the lifters stand as the players do, the first
     await left.waitForTimeout(200);
   }
   expect(seen).toEqual(Array(10).fill(true));
+});
+
+test('Mighty Lift in one picture against each other: the second player has a rig of their own beside the first one\'s, and sees their friend get out as they lift', async ({ page }) => {
+  test.setTimeout(300_000);
+  const seats = await openTogether(page, 'mighty-lift', 2, { liftClock: 'no', liftFriends: 'against', lifts: 5 });
+  const [left, right] = seats;
+  await twoPeople(seats, { name: 'lifts', from: 0.6, playing: false });
+  for (const seat of seats) await seat.locator('#start').click();
+  for (const seat of seats) await waitForScreen(seat, 'choose');
+  for (const seat of seats) await seat.locator('#lift-start').click();
+  for (const seat of seats) await waitForScreen(seat, 'warmup', 90_000);
+  for (const seat of seats) await seat.locator('#warm-skip').click();
+  for (const seat of seats) await waitForScreen(seat, 'playing', 90_000);
+  await expect(view(page)).toHaveAttribute('data-view', 'one', { timeout: 30_000 });
+  // In the first player's game, the picture: the second player's rig, their basket and the friend under it, and how
+  // far through their lifts they are, and the first player's own, as on their own.
+  const rigs = () => left.evaluate(() => {
+    const { world, mates, lifting } = window.__game.game;
+    const { second } = world;
+    if (!second) return null;
+    const [theirs] = world.mates;
+    return {
+      roped: theirs.roped && theirs.ringAt === second.ring,
+      apart: theirs.body.root.position.x - world.lifter.body.root.position.x,
+      height: second.thingY,
+      out: second.friend?.out ?? 0,
+      rescue: second.rescue?.index ?? -1,
+      freed: mates[0].freed,
+      count: document.querySelector('.lifter-mark-count')?.textContent ?? '',
+      mine: { freed: lifting.stats.freed, height: world.thingY },
+    };
+  });
+  const start = await rigs();
+  expect(start).not.toBe(null);
+  expect(start.roped).toBe(true);
+  expect(start.apart).toBeGreaterThan(3);
+  expect(start.count).toBe('Lifts 0 / 5');
+  await expect(left.locator('#lift-scores li.is-you')).toContainText('Player 1');
+
+  // The first player rests, and the second lifts: their basket goes up on their rig, their friend gets out, and once
+  // their game has freed them, the count over them says so. The first player's own rig waits for them.
+  await childLifts(left, { lifts: false });
+  await childLifts(right);
+  await expect.poll(async () => {
+    const now = await rigs();
+    return now.height > 1.1 && now.out > 0.2;
+  }, { timeout: 60_000 }).toBe(true);
+  await page.screenshot({ path: 'test-results/screens/together-one-picture-lift-against.png' });
+  await expect.poll(async () => {
+    const now = await rigs();
+    return now.freed >= 1 && now.count === `Lifts ${Math.min(now.freed, 5)} / 5`;
+  }, { timeout: 60_000 }).toBe(true);
+  await expect.poll(async () => (await rigs()).rescue, { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
+  const end = await rigs();
+  expect(end.mine.freed).toBe(0);
+  expect(end.mine.height).toBeLessThan(0.1);
+  for (const seat of seats) await stopChild(seat);
 });

@@ -18,10 +18,10 @@ import { ROSTER, byId as characterById } from '../../core/body/roster.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { seededRandom } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
-import { SEAT } from '../../core/seat.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { Arms, HEIGHTS, HOLDS, LIFT_COUNTS, Lifting, Partner, Warmup, armHeights, newAt as newAtLevel, thingsUpTo } from './lift.js';
 import { LiftSound } from './lift-sound.js';
-import { Mate, armMessage, finishMessage, mateArms, scoreRows, someoneFreedAll } from './team.js';
+import { FriendRescue, Mate, armMessage, finishMessage, mateArms, scoreRows, someoneFreedAll } from './team.js';
 import { World } from './world.js';
 
 const AFTER_FINISH_SECONDS = 2.4;
@@ -1033,10 +1033,16 @@ class MightyLift extends BodyGame {
    */
   setUpMates(friendly) {
     this.mates = (friendly?.friends ?? []).map((friend) => new Mate(friend));
+    // Two on one screen in one picture against each other, the second player has a rig of their own beside the
+    // first player's, to see what their lifting does: see setSecondRig in world.js. Only the first player's game is
+    // the picture, so only it has one. Their rescues are the same as everyone's, and so is a hold.
+    const rig = Boolean(SEAT?.onePicture && SEAT.index === 0 && friendly && !this.team && this.mates.length === 1);
+    this.theirRescue = rig ? new FriendRescue(this.lifting.rescues, this.lifting.holdSeconds) : null;
     if (this.sideBySide) this.standCrew(this.lifting.levelNumber);
     // Two on one screen in one picture (core/one-picture.js) stand side by side as they stand in front of the camera,
     // the first player on the left, as several at one camera do.
-    else this.world.setMates(this.mates.map(({ friend }) => friend.spec), { level: friendly?.level ?? 1, team: this.team, inOrder: Boolean(SEAT?.onePicture) });
+    else this.world.setMates(this.mates.map(({ friend }) => friend.spec), { level: friendly?.level ?? 1, team: this.team, inOrder: Boolean(SEAT?.onePicture), rig });
+    if (this.world.second) this.world.second.state = this.theirRescue;
     for (const mark of this.markMates) mark.remove();
     this.markMates = this.mates.map(({ friend }) => {
       const root = document.createElement('div');
@@ -1050,10 +1056,28 @@ class MightyLift extends BodyGame {
       name.className = 'lifter-mark-name';
       name.textContent = friend.spec.name;
       root.append(face, name);
+      // With a rig of their own, how far through their lifts they are, as the first player's own count is.
+      if (rig) {
+        const count = document.createElement('span');
+        count.className = 'lifter-mark-count';
+        root.append(count);
+      }
       document.body.append(root);
       return root;
     });
     this.showScores();
+  }
+
+  /** Two on one screen against each other: the second player's own rescue, on their rig, from what their game says. */
+  updateTheirRescue(dt, now) {
+    const [mate] = this.mates;
+    if (!mate || mate.gone) return;
+    const arm = mate.armAt(now);
+    this.theirRescue.update(dt, { lift: arm.lift, up: arm.up, freed: mate.freed });
+    const count = this.markMates[0]?.querySelector('.lifter-mark-count');
+    const all = this.theirRescue.rescues.length;
+    const words = `Lifts ${Math.min(mate.freed, all)} / ${all}`;
+    if (count && count.textContent !== words) count.textContent = words;
   }
 
   /** Where each friend's lifter is and what it's doing, a moment behind what their game says. */
@@ -1113,7 +1137,7 @@ class MightyLift extends BodyGame {
     const { cast } = this;
     const rows = this.sideBySide
       ? this.crew.map((member) => ({ name: cast[member.index].name, count: this.liftsOf(member), you: false }))
-      : scoreRows(this.lifting.stats, this.mates, this.team);
+      : scoreRows(this.lifting.stats, this.mates, this.team, SEAT?.onePicture ? seatName(SEAT.index) : 'You');
     board.dataset.counts = this.team ? 'lifts' : 'freed';
     board.replaceChildren(...rows.map(({ name, count: number, you }) => {
       const row = document.createElement('li');
@@ -1140,6 +1164,7 @@ class MightyLift extends BodyGame {
   frame(dt, now) {
     if (this.lifting) this.updateNew(dt);
     if (this.mates.length) this.updateMates(now);
+    if (this.theirRescue && ['countdown', 'playing', 'finishing'].includes(this.screen)) this.updateTheirRescue(dt, now);
     switch (this.screen) {
       case 'warmup':
         this.updateWarmup(dt, now);

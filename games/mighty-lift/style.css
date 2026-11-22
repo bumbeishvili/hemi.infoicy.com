@@ -252,6 +252,23 @@ body[data-screen='playing']:has(.lift-new.is-showing) .prompt { top: calc(clamp(
   box-shadow: 0 2px 8px rgba(18, 48, 77, 0.3);
 }
 
+/* Two on one screen against each other, how far through their lifts the second player is, over their face. */
+.lifter-mark-count {
+  position: absolute;
+  top: -86px;
+  left: 0;
+  transform: translateX(-50%);
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.lifter-mark-count:empty { display: none; }
+
 .lifter-mark-name {
   position: absolute;
   top: -20px;

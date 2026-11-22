@@ -14,7 +14,7 @@ import { DID_IT_TOGETHER, SO_CLOSE } from '../../core/sound.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { seededRandom, Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
-import { SEAT } from '../../core/seat.js';
+import { SEAT, seatName } from '../../core/seat.js';
 import { bodyAcross, LaneReader } from './lanes.js';
 import { Practice } from './practice.js';
 import { ARCH_STARS, GEM_COINS, GOLD_STARS, packPace, PICTURE_PACK, POWERS, Run, newAt as newAtLevel, newThingsAt } from './run.js';
@@ -653,7 +653,8 @@ class LeapTrail extends BodyGame {
     const friendly = this.mates.length > 0;
     board.hidden = !friendly;
     if (!friendly) return;
-    const rows = [{ name: 'You', stars: this.run?.starTotal ?? 0, you: true }, ...this.mates.filter(({ gone }) => !gone).map(({ friend, stars }) => ({ name: friend.spec.name, stars, you: false }))];
+    // Two in one picture on one screen both read this list, so the first player is Player 1 in it, not You.
+    const rows = [{ name: SEAT?.onePicture ? seatName(SEAT.index) : 'You', stars: this.run?.starTotal ?? 0, you: true }, ...this.mates.filter(({ gone }) => !gone).map(({ friend, stars }) => ({ name: friend.spec.name, stars, you: false }))];
     if (this.team) rows.unshift({ name: 'Together', stars: this.teamStars, team: true });
     else rows.sort((a, b) => b.stars - a.stars);
     board.replaceChildren(...rows.map(({ name, stars, you, team }) => {

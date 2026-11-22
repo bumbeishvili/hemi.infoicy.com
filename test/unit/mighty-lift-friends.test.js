@@ -5,8 +5,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanLifter, mostIn, RaceRoom } from '../../server/race-room.js';
 import { seededRandom } from '../../core/friends.js';
-import { Lifting } from '../../games/mighty-lift/lift.js';
-import { Mate, armMessage, finishMessage, mateArms, scoreRows, someoneFreedAll } from '../../games/mighty-lift/team.js';
+import { layOut, Lifting } from '../../games/mighty-lift/lift.js';
+import { FriendRescue, Mate, armMessage, finishMessage, mateArms, scoreRows, someoneFreedAll } from '../../games/mighty-lift/team.js';
 
 const STEP = 1 / 30;
 const SEND_EVERY = 0.1;
@@ -244,6 +244,8 @@ test('the scoreboard counts lifts on one weight together and friends freed again
   assert.deepEqual(scoreRows(mine, [ana, ben, gone], true).map(({ name, count }) => [name, count]), [['Ana', 7], ['You', 4], ['Ben', 2]]);
   // On a tie, the child sees themselves first.
   assert.equal(scoreRows({ freed: 5, lifts: 0 }, [ben], false)[0].you, true);
+  // Two in one picture on one screen both read it, so the child is named as a player there.
+  assert.deepEqual(scoreRows(mine, [ben], false, 'Player 1').map(({ name }) => name), ['Ben', 'Player 1']);
   assert.equal(someoneFreedAll(new Map([['a', { won: false }], ['b', { won: true }]])), true);
   assert.equal(someoneFreedAll(new Map([['a', { won: false }]])), false);
   assert.equal(someoneFreedAll(new Map()), false);
@@ -263,4 +265,45 @@ test('a friend\'s arm is shown a moment behind and moves smoothly between messag
   mate.hear({ t: 'pose', ms: 200, p: [1, 2, 3] }, 1200);
   assert.deepEqual(mate.bodyAt(1400), [1, 2, 3]);
   assert.equal(mate.hear({ t: 'score', n: 4 }, 1300), false, 'anything else is nothing to it');
+});
+
+test('two on one screen against each other: the second player\'s own rescue follows their arm, and their friend is free when their game says so', () => {
+  const rescues = layOut({ lifts: 2, lifter: ['giraffe', 'truffle'], random: () => 0.4, plain: true });
+  const rescue = new FriendRescue(rescues, 1);
+  const run = (seconds, arm) => {
+    for (let t = 0; t < seconds; t += STEP) rescue.update(STEP, arm);
+  };
+  assert.deepEqual(rescues.map(({ kind }) => kind), ['basket', 'basket']);
+  assert.ok(!rescues.some(({ friend }) => friend === 'giraffe' || friend === 'truffle'), 'neither lifter is one to free');
+  // The basket comes in, and goes up with the arm.
+  run(1, { lift: 0 });
+  assert.equal(rescue.phase, 'lifting');
+  assert.equal(rescue.left, 2);
+  run(0.8, { lift: 1.1, up: true });
+  assert.ok(rescue.height > 1);
+  assert.ok(rescue.freeing && rescue.out > 0.3);
+  // However long it's held, the friend isn't free until their game says so.
+  run(3, { lift: 1.1, up: true });
+  assert.equal(rescue.phase, 'lifting');
+  assert.ok(rescue.out < 1);
+  // The arm comes down early: the friend is back under, but what they'd managed isn't lost.
+  run(0.5, { lift: 0 });
+  assert.equal(rescue.out, 0);
+  assert.ok(rescue.progress > 0.9);
+  // Their game has freed them: out, and once the arm is down, a rest and the next one.
+  run(0.2, { lift: 1, up: true, freed: 1 });
+  assert.equal(rescue.phase, 'freed');
+  assert.equal(rescue.out, 1);
+  assert.equal(rescue.left, 1);
+  run(0.5, { lift: 0, freed: 1 });
+  assert.equal(rescue.phase, 'resting');
+  run(2, { lift: 0, freed: 1 });
+  assert.equal(rescue.index, 1);
+  assert.equal(rescue.phase, 'arriving');
+  assert.equal(rescue.out, 0);
+  // The last one freed, it's done, with none left.
+  run(1.5, { lift: 1, up: true, freed: 2 });
+  run(2, { lift: 0, freed: 2 });
+  assert.equal(rescue.phase, 'done');
+  assert.equal(rescue.left, 0);
 });
