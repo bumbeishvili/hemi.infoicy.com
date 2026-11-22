@@ -3,7 +3,8 @@
 // near its place, it snaps in. A hand that closes, or rests, just leaves the piece where it is. Keeping the hand open
 // while reaching to every part of the picture is what's practised. The rules are in puzzle.js, the pictures are
 // drawn by pictures.js, and view.js draws the room. On their own, or with friends, each on their own computer:
-// together, all putting the same picture back, or against each other, each with a copy of it to themselves.
+// together, all putting the same picture back, or against each other, each with a copy of it to themselves. Two on
+// one screen, in one picture, against each other is one puzzle too, and whoever puts in the most pieces wins.
 import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { Track } from '../../core/friends.js';
@@ -69,6 +70,17 @@ const GLOVE_FADE_RATE = 8; // How quickly a friend's glove fades in and out, as 
 const HAND_QUIET_MS = 1500; // A friend's glove nothing has come from for this long, as in their hand check, fades away.
 const round2 = (value) => Math.round(value * 100) / 100;
 const round3 = (value) => Math.round(value * 1000) / 1000;
+// On the card of whoever put in the most pieces of the one puzzle, two on one screen against each other.
+const MOST = 'You put in the most pieces!';
+const DID_IT = 'You did it!';
+
+/**
+ * Whether everyone playing with friends has one puzzle: together, and against each other too for two playing in one
+ * picture on one screen (core/one-picture.js), where the table both of them see is the first player's, so a copy of
+ * the second player's own couldn't be seen. Each piece is whoever's hand got to it first, as the room says, and
+ * against each other, whoever put in the most pieces is first.
+ */
+const onePuzzle = (friendly) => Boolean(friendly && (friendly.team || SEAT?.onePicture));
 
 class PuzzleGame {
   chimeOnOpen = false; // The hand opens and closes all the time here, so a chime would be noise.
@@ -94,6 +106,7 @@ class PuzzleGame {
     this.gloveOffset = { x: 0, y: 0 };
     this.mode = 'solo';
     this.team = false;
+    this.shared = false; // One puzzle for everyone: see onePuzzle.
     this.friendHands = [];
     this.goAt = 0;
     this.lastPictures = [];
@@ -101,6 +114,7 @@ class PuzzleGame {
     this.artFor(this.puzzle);
     this.resetCounts();
     byId('finish-hero')?.closest('.finish-hero')?.insertAdjacentHTML('afterend', '<p id="finish-prizes" class="finish-prizes"></p>');
+    const game = this;
     // Playing with friends, if a grown-up makes or joins a game.
     this.friends = new FriendsPanel({
       game: 'giraffe-puzzles',
@@ -111,11 +125,20 @@ class PuzzleGame {
       portraits: () => session.portraits,
       onMove: (id, message) => this.fromFriend(id, message),
       onGone: (friend) => this.friendGone(friend),
-      // Against each other, whoever finished first, by their time. Together, whoever put the most pieces in is first
-      // on the list, and nobody is placed.
-      rank: (a, b) => (this.team ? b.dropped - a.dropped : a.ms - b.ms),
-      resultText: ({ ms, dropped }) => (this.team ? `${dropped} ${dropped === 1 ? 'piece' : 'pieces'}` : time(ms)),
-      titles: { first: 'You finished first!', other: 'You did it!' },
+      // Against each other, each with their own, whoever finished first, by their time. With one puzzle, whoever put
+      // the most pieces in is first on the list, though together nobody is placed.
+      rank: (a, b) => (this.shared ? b.dropped - a.dropped : a.ms - b.ms),
+      resultText: ({ ms, dropped }) => (this.shared ? `${dropped} ${dropped === 1 ? 'piece' : 'pieces'}` : time(ms)),
+      titles: {
+        // With one puzzle, two who put in as many as each other are both first, and neither put in the most.
+        get first() {
+          if (!game.shared) return 'You finished first!';
+          const { results, room } = game.friends;
+          const mine = results.get(room.you)?.dropped;
+          return [...results].some(([id, { dropped }]) => id !== room.you && dropped === mine) ? DID_IT : MOST;
+        },
+        other: DID_IT,
+      },
       // With friends, together or against each other: the grown-ups' choice, which the friends box can change too.
       teams: {
         get: () => (session.settings.puzzleFriends === 'against' ? 'against' : 'together'),
@@ -128,7 +151,6 @@ class PuzzleGame {
     });
     window.addEventListener('resize', () => this.placeFilm());
     this.placeFilm();
-    const game = this;
     this.debug = {
       view: this.view,
       gloves: this.gloves,
@@ -189,11 +211,12 @@ class PuzzleGame {
   }
 
   /**
-   * A puzzle on their own, or with friends the host's plain one, laid out from the seed everyone has: together,
-   * one puzzle for everyone, its pieces claimed through the server, or against each other, a copy each.
+   * A puzzle on their own, or with friends the host's plain one, laid out from the seed everyone has: together, or
+   * against each other in one picture on one screen, one puzzle for everyone, its pieces claimed through the server,
+   * or else against each other, a copy each.
    */
   newPuzzle(level, friendly = null) {
-    const together = Boolean(friendly?.team);
+    const together = onePuzzle(friendly);
     const pieces = friendly ? (friendly.mode in PIECE_CHOICES ? friendly.mode : 'usual') : this.piecesChoice();
     return new Puzzle({
       level: friendly?.level ?? level,
@@ -330,6 +353,7 @@ class PuzzleGame {
     // move anyone's own level on. Each child keeps their own hand, reach help and how near a piece has to come.
     const friendly = this.friends.current;
     this.team = Boolean(friendly?.team);
+    this.shared = onePuzzle(friendly);
     this.mode = friendly ? (this.team ? 'together' : 'against') : 'solo';
     document.body.toggleAttribute('data-friends-race', Boolean(friendly));
     document.body.toggleAttribute('data-friends-team', this.team);
@@ -578,7 +602,7 @@ class PuzzleGame {
       puzzle: this.puzzle,
       glove: this.gloves[side],
       offset: this.gloveOffset,
-      friends: this.mode === 'together' ? this.friendHands : [],
+      friends: this.shared ? this.friendHands : [],
       side,
       waving: screen !== 'playing' || this.session.playSeconds < 3,
     });
@@ -588,15 +612,15 @@ class PuzzleGame {
 
   /**
    * What this game tells its friends: where the glove is on the table, from 0 to 1 across and down it, whether it
-   * can be seen and is open, and its points in palms, and how many pieces this child has put in. Together, also
-   * which piece is in the hand, and where the pieces it last held lie: see report() in puzzle.js. Against each
-   * other, only how far they've got.
+   * can be seen and is open, and its points in palms, and how many pieces this child has put in. With one puzzle,
+   * also which piece is in the hand, and where the pieces it last held lie: see report() in puzzle.js. Against each
+   * other, each with their own, only how far they've got.
    */
   handState(at, open) {
     const { puzzle } = this;
-    const mine = this.mode === 'together' ? puzzle.report() : { h: -1, d: [], n: puzzle.stats.placed };
+    const mine = this.shared ? puzzle.report() : { h: -1, d: [], n: puzzle.stats.placed };
     const glove = this.gloves[this.settings.hands];
-    if (!at || !glove.visible || this.mode !== 'together') return { x: 0, y: 0, v: 0, o: 0, p: [], ...mine };
+    if (!at || !glove.visible || !this.shared) return { x: 0, y: 0, v: 0, o: 0, p: [], ...mine };
     const palm = this.view.palmSize;
     return {
       x: round3(at.x / TABLE.width),
@@ -611,7 +635,7 @@ class PuzzleGame {
   /** Something from a friend's game: where their glove is and what they've done, or whose a piece is. */
   fromFriend(id, message) {
     if (message.t === 'claimed') {
-      if (this.mode === 'together' && this.friends.current?.racers.includes(message.by)) this.puzzle.claimed(message.k, message.by);
+      if (this.shared && this.friends.current?.racers.includes(message.by)) this.puzzle.claimed(message.k, message.by);
       return;
     }
     if (message.t !== 'jigsaw' || this.mode === 'solo') return;
@@ -619,7 +643,7 @@ class PuzzleGame {
     if (!friend) return;
     friend.track.push(message, performance.now());
     friend.heardAt = performance.now();
-    if (this.mode === 'together') this.puzzle.heard(id, message);
+    if (this.shared) this.puzzle.heard(id, message);
     else if (message.n !== friend.n) {
       friend.n = message.n;
       this.showScores();
@@ -629,16 +653,16 @@ class PuzzleGame {
   /** A friend has gone, and their glove with them. Whatever they held lies where it was, and what they put in stays. */
   friendGone(friend) {
     this.friendHands = this.friendHands.filter((each) => each.id !== friend.id);
-    if (this.mode === 'together') this.puzzle.friendGone(friend.id);
+    if (this.shared) this.puzzle.friendGone(friend.id);
     this.showScores();
   }
 
   /**
-   * Together, each friend's glove where it is on their table, a moment ago, fading in and out as their hand comes
-   * and goes, and the piece in their hand going with it.
+   * With one puzzle, each friend's glove where it is on their table, a moment ago, fading in and out as their hand
+   * comes and goes, and the piece in their hand going with it.
    */
   showFriendsHands(dt) {
-    if (this.mode !== 'together') return;
+    if (!this.shared) return;
     const { view, puzzle } = this;
     const now = performance.now();
     for (const friend of this.friendHands) {
@@ -666,18 +690,19 @@ class PuzzleGame {
 
   /* ---------- the top of the screen ---------- */
 
-  /** How many pieces are in, of all there are in the game: together, everyone's. */
+  /** How many pieces are in, of all there are in the game: with one puzzle, everyone's. */
   showProgress() {
     const { puzzle } = this;
-    const placed = this.mode === 'together' ? [...puzzle.tally.values()].reduce((sum, count) => sum + count, 0) : puzzle.stats.placed;
+    const placed = this.shared ? [...puzzle.tally.values()].reduce((sum, count) => sum + count, 0) : puzzle.stats.placed;
     byId('chip-pieces').textContent = `${Math.min(placed, puzzle.total)} of ${puzzle.total}`;
     const prizes = Object.values(puzzle.stats.prizes).reduce((sum, count) => sum + count, 0);
     byId('chip-prizes').textContent = String(prizes);
   }
 
   /**
-   * With friends, everyone along the top: together, how many pieces each has put in, the most first, and against
-   * each other, how far each has got, whoever is furthest on first, with a flag once they've finished.
+   * With friends, everyone along the top: with one puzzle, how many pieces each has put in, the most first, and
+   * against each other, each with their own, how far each has got, whoever is furthest on first, with a flag once
+   * they've finished.
    */
   showScores() {
     const list = byId('puzzle-scores');
@@ -688,8 +713,8 @@ class PuzzleGame {
     const portraits = this.session.portraits ?? {};
     const you = this.friends.room.you;
     // Two in one picture on one screen both see this list, so the first player is Player 1 in it, not You.
-    const mine = { id: you, name: SEAT?.onePicture ? seatName(SEAT.index) : 'You', who: (characterWithId(this.settings.fighter) ?? ROSTER[0]).id, n: this.team ? puzzle.tally.get(you) ?? 0 : puzzle.stats.placed };
-    const theirs = this.friendHands.map((friend) => ({ id: friend.id, name: friend.name, who: friend.who, n: this.team ? puzzle.tally.get(friend.id) ?? 0 : friend.n }));
+    const mine = { id: you, name: SEAT?.onePicture ? seatName(SEAT.index) : 'You', who: (characterWithId(this.settings.fighter) ?? ROSTER[0]).id, n: this.shared ? puzzle.tally.get(you) ?? 0 : puzzle.stats.placed };
+    const theirs = this.friendHands.map((friend) => ({ id: friend.id, name: friend.name, who: friend.who, n: this.shared ? puzzle.tally.get(friend.id) ?? 0 : friend.n }));
     const everyone = [mine, ...theirs].sort((a, b) => b.n - a.n);
     const key = everyone.map(({ id, n }) => `${id}:${n}`).join(',');
     if (list.dataset.key === key) return;
@@ -705,9 +730,9 @@ class PuzzleGame {
       name.textContent = each.name;
       const score = document.createElement('span');
       score.className = 'puzzle-score';
-      score.textContent = this.team ? String(each.n) : `${Math.min(each.n, puzzle.total)}/${puzzle.total}`;
+      score.textContent = this.shared ? String(each.n) : `${Math.min(each.n, puzzle.total)}/${puzzle.total}`;
       row.append(face, name, score);
-      if (!this.team) {
+      if (!this.shared) {
         // A little bar of how far through the puzzle they are, and a flag at the end of it.
         const bar = document.createElement('span');
         bar.className = 'puzzle-score-bar';
@@ -754,7 +779,7 @@ class PuzzleGame {
     // With friends, how long it took, and how many of the pieces this child put in, which every computer counts the same.
     if (this.mode !== 'solo') {
       const { puzzle } = this;
-      const mine = this.team ? puzzle.tally.get(this.friends.room.you) ?? 0 : puzzle.stats.placed;
+      const mine = this.shared ? puzzle.tally.get(this.friends.room.you) ?? 0 : puzzle.stats.placed;
       this.friends.finished(this.doneMs ?? this.sinceGo, { n: mine, w: 1 });
     }
     for (const friend of this.friendHands) friend.glove.visible = false;
@@ -865,7 +890,7 @@ new GameSession({
       <fieldset class="choice">
         <legend>With friends</legend>
         ${choice('puzzleFriends', 'together', 'Together: everyone puts the same picture back')}
-        ${choice('puzzleFriends', 'against', 'Against each other: the same puzzle each, and the first to finish wins')}
+        ${choice('puzzleFriends', 'against', SEAT?.onePicture ? 'Against each other: one puzzle, and whoever puts in the most pieces wins' : 'Against each other: the same puzzle each, and the first to finish wins')}
       </fieldset>`,
   },
   defaults: { puzzlePieces: 'more', puzzleSnap: 'closer', puzzleClock: 'ticks', puzzleReach: 'little', puzzleFriends: 'together' },

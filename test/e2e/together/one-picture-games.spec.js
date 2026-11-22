@@ -1,4 +1,4 @@
-// Seven games two play on one screen in one picture (core/one-picture.js), each together or against each other: the
+// Eight games two play on one screen in one picture (core/one-picture.js), each together or against each other: the
 // first player's game across the whole screen, with the second in it as a friend. What a friend on another computer
 // wouldn't see, the second player now couldn't either, so each game shows it in one picture. Each test plays one
 // game against each other, through the game's own rules, and checks what both seats make of it, as both seats run
@@ -256,24 +256,31 @@ test('Flap, Little Chick! in one picture: the second player\'s chick is blue, on
 
 /**
  * Leads a seat's open hand, in its own half of the camera's picture, through the real tracker, to wherever a child
- * would paint next in Giraffe's Paint Box (see guide in games/giraffe-paint/paint.js).
+ * would go next: in Giraffe's Paint Box to paint (see guide in games/giraffe-paint/paint.js), and in Giraffe's
+ * Puzzles to a loose piece, or with one to its place (see wants in games/giraffe-puzzles/puzzle.js).
  */
-const leadPainter = (seat, index) => seat.evaluate((i) => {
+const leadHand = (seat, index) => seat.evaluate((i) => {
   clearInterval(window.__lead);
   let [x, y] = [i === 0 ? 0.25 : 0.75, 0.5];
   window.__lead = setInterval(() => {
-    const { game, painting } = window.__game;
-    const at = game.brushOnSheet();
-    const wanted = at && painting.guide(at);
+    const { game, painting, puzzle } = window.__game;
+    // Where the hand is and where it's going, and how far across the camera's picture a step on the sheet or the
+    // table is: the sheet is 150 by 100, the table 2 by 1.
+    const at = painting ? game.brushOnSheet() : game.gloveOnTable();
+    const wanted = at && (painting ? painting.guide(at) : puzzle.wants(at));
+    const [across, down] = painting ? [0.0004, 0.0006] : [0.025, 0.04];
     if (wanted) {
-      x += (wanted.x - at.x) * 0.0004;
-      y += (wanted.y - at.y) * 0.0006;
+      x += (wanted.x - at.x) * across;
+      y += (wanted.y - at.y) * down;
     }
     x = i === 0 ? Math.max(0.04, Math.min(0.46, x)) : Math.max(0.54, Math.min(0.96, x));
     y = Math.max(0.2, Math.min(0.88, y));
     window.__camera.showHands([{ name: 'open', side: 'right', x, y, scale: 0.75 }], { sameHand: true });
   }, 33);
 }, index);
+
+/** Player 1 rests, with a closed hand in the middle of their part of the camera's picture. */
+const firstRests = (seats) => seats[0].evaluate(() => window.__camera.showHands([{ name: 'fist', side: 'right', x: 0.25, y: 0.5, scale: 0.75 }], { sameHand: true }));
 
 test('Giraffe\'s Paint Box in one picture: against each other the two paint one sheet, each sees the other\'s strokes, and whoever paints the most parts is first', async ({ page }) => {
   test.setTimeout(300_000);
@@ -298,17 +305,17 @@ test('Giraffe\'s Paint Box in one picture: against each other the two paint one 
   await expect(seats[0].locator('#chip-time-box')).toBeVisible();
   // Player 1 rests, with the brush lifted, and Player 2 paints: their glove and their strokes are on the sheet both
   // see, which is Player 1's.
-  await seats[0].evaluate(() => window.__camera.showHands([{ name: 'fist', side: 'right', x: 0.25, y: 0.5, scale: 0.75 }], { sameHand: true }));
+  await firstRests(seats);
   await page.waitForTimeout(1000);
   const [resting] = await read();
-  await leadPainter(seats[1], 1);
+  await leadHand(seats[1], 1);
   await expect.poll(async () => {
     const [one] = await read();
     return one.covered > resting.covered + 150 && one.own === resting.own && one.seen > 0.5;
   }, { timeout: 60_000 }).toBe(true);
   await expect.poll(() => ownThingsApart(page, seats, ['.paint-hud .chip', '#paint-scores li'])).toEqual([]);
   // Then both paint, and between them the picture is done on both sheets, each part whoever's stroke finished it.
-  await leadPainter(seats[0], 0);
+  await leadHand(seats[0], 0);
   for (const seat of seats) await waitForScreen(seat, 'finish', 120_000);
   for (const seat of seats) await seat.evaluate(() => clearInterval(window.__lead));
   const [one, two] = await read();
@@ -325,6 +332,55 @@ test('Giraffe\'s Paint Box in one picture: against each other the two paint one 
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0)).toContainText(/1st.*\d+ parts?/);
     await expect(rows.nth(1)).toContainText(/2nd.*\d+ parts?/);
+  }
+  await expect(best.locator('.friends-results li').first()).toContainText('You');
+});
+
+test('Giraffe\'s Puzzles in one picture: against each other the two mend one puzzle, each sees the other\'s glove and pieces, and whoever puts in the most is first', async ({ page }) => {
+  test.setTimeout(300_000);
+  const seats = await openTogether(page, 'giraffe-puzzles', 2, { puzzleFriends: 'against' });
+  await handsForAll(seats);
+  await intoOnePicture(page, seats);
+  const read = () => Promise.all(seats.map((seat) => seat.evaluate(() => {
+    const { game, puzzle } = window.__game;
+    const you = game.friends.room.you;
+    const tally = Object.fromEntries([...puzzle.tally].map(([id, n]) => [id === you ? 'me' : 'them', n]));
+    return { mode: game.mode, own: puzzle.stats.placed, done: puzzle.done, total: puzzle.total, tally, seen: game.friendHands[0]?.fade ?? 0, chip: document.getElementById('chip-pieces').textContent };
+  })));
+  expect((await read()).map(({ mode }) => mode)).toEqual(['against', 'against']);
+  // Player 1 rests, and Player 2 puts pieces in: their glove, and their pieces going in, are on the table both see,
+  // which is Player 1's.
+  await firstRests(seats);
+  await page.waitForTimeout(1000);
+  const [resting] = await read();
+  await leadHand(seats[1], 1);
+  await expect.poll(async () => {
+    const [one, two] = await read();
+    return one.own === resting.own && two.own >= 2 && (one.tally.them ?? 0) === two.own && one.seen > 0.5 && one.chip.startsWith(`${one.own + two.own} of`);
+  }, { timeout: 60_000 }).toBe(true);
+  await expect.poll(() => ownThingsApart(page, seats, ['.puzzle-hud .chip', '#puzzle-scores li'])).toEqual([]);
+  // Then both play, and between them the puzzle is done in both games, each piece whoever put it in.
+  await leadHand(seats[0], 0);
+  for (const seat of seats) await waitForScreen(seat, 'finish', 120_000);
+  for (const seat of seats) await seat.evaluate(() => clearInterval(window.__lead));
+  const [one, two] = await read();
+  expect(one.done && two.done).toBe(true);
+  expect(one.tally).toEqual({ me: two.tally.them, them: two.tally.me });
+  expect([one.tally.me, one.tally.them]).toEqual([one.own, two.own]);
+  expect(one.own + two.own).toBe(one.total);
+  // Each is placed by how many pieces they put in, the most first, on their own card in their own half.
+  if (one.own === two.own) {
+    for (const seat of seats) await expect(seat.locator('#screen-finish h2')).toHaveText('You did it!');
+    return;
+  }
+  const [best, other] = one.own > two.own ? [seats[0], seats[1]] : [seats[1], seats[0]];
+  await expect(best.locator('#screen-finish h2')).toHaveText('You put in the most pieces!');
+  await expect(other.locator('#screen-finish h2')).toHaveText('You did it!');
+  for (const seat of seats) {
+    const rows = seat.locator('.friends-results li');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText(/1st.*\d+ pieces?/);
+    await expect(rows.nth(1)).toContainText(/2nd.*\d+ pieces?/);
   }
   await expect(best.locator('.friends-results li').first()).toContainText('You');
 });

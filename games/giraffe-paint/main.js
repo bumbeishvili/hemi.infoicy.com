@@ -83,6 +83,7 @@ const FADE_RATE = 8; // How quickly a friend's glove fades in and out, as their 
 const QUIET_MS = 1500; // A friend nothing has come from for this long fades away.
 // On the card of whoever painted the most of the one sheet, two on one screen against each other.
 const MOST = 'You painted the most!';
+const LOVELY = 'Lovely painting!';
 const round1 = (value) => Math.round(value * 10) / 10;
 const round2 = (value) => Math.round(value * 100) / 100;
 /**
@@ -142,10 +143,14 @@ class PaintGame {
       rank: (a, b) => (this.oneSheet ? b.dropped - a.dropped : Number(b.won) - Number(a.won) || (a.won ? a.ms - b.ms : b.dropped - a.dropped)),
       resultText: ({ ms, won, dropped }) => (this.oneSheet ? `${dropped} ${dropped === 1 ? 'part' : 'parts'}` : won ? raceTime(ms) : `${dropped}% painted`),
       titles: {
+        // On one sheet, two who painted as many parts as each other are both first, and neither painted the most.
         get first() {
-          return game.oneSheet ? MOST : 'You finished first!';
+          if (!game.oneSheet) return 'You finished first!';
+          const { results, room } = game.friends;
+          const mine = results.get(room.you)?.dropped;
+          return [...results].some(([id, { dropped }]) => id !== room.you && dropped === mine) ? LOVELY : MOST;
         },
-        other: 'Lovely painting!',
+        other: LOVELY,
       },
       // With friends, together or against each other: the grown-ups' choice, which the friends box can change too.
       teams: {
