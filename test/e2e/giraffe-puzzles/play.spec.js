@@ -25,16 +25,24 @@ test('an open hand picks a piece up and carries it to its place, and every piece
   await page.waitForTimeout(400);
   await shot(page, 'puzzles-start');
 
-  // The hand goes to a piece, and it's in the hand, going with it.
+  // The hand goes to a piece, and it's in the hand, going with it. It follows a moment behind, as a held thing does
+  // (FOLLOW_RATE in puzzle.js), and this hand goes much faster than a child's, so it's a good way behind while it
+  // moves: it's taken a little way along its own board, away from its place, and once the hand rests there it's
+  // right under it.
   await leadHand(page);
   await expectSoon(async () => (await state(page)).held).not.toBe(null);
-  await page.waitForTimeout(250);
+  await stopHand(page);
+  const picked = await state(page);
+  const from = picked.pieces.find(({ id }) => id === picked.held);
+  const along = { x: from.x, y: from.y > 0.5 ? from.y - 0.25 : from.y + 0.25 };
+  await leadHand(page, { target: `(puzzle) => (puzzle.held ? { x: ${along.x}, y: ${along.y} } : null)` });
+  await expectSoon(async () => {
+    const now = await state(page);
+    const piece = now.pieces.find(({ id }) => id === picked.held);
+    return now.held === picked.held && now.glove && gap(now.glove, along) < 0.05 && gap(piece, now.glove) < 0.04 && gap(piece, from) > 0.15;
+  }, { timeout: 20_000 }).toBe(true);
   await shot(page, 'puzzles-carrying');
-  const carrying = await state(page);
-  if (carrying.held !== null) {
-    const piece = carrying.pieces.find(({ id }) => id === carrying.held);
-    expect(gap(piece, carrying.glove)).toBeLessThan(0.12);
-  }
+  await leadHand(page);
   // Brought to its place, it snaps in.
   await expectSoon(async () => (await state(page)).placed).toBeGreaterThanOrEqual(1);
   await expect(page.locator('#chip-pieces')).toHaveText(/^[1-6] of 6$/);
