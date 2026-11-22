@@ -4,6 +4,7 @@
 // Nothing flashes: plants grow and open slowly, water falls as small drops, a sparkle is a few small stars, and
 // whatever comes and goes fades or slides.
 import { INK } from '../../core/glove.js';
+import { pictureChanged, pictureSize } from '../../core/seat.js';
 import { BASKET_Y, GROUND, LABELS } from './garden.js';
 
 const LABEL_SECONDS = 2.4;
@@ -107,12 +108,17 @@ export class GardenView {
     this.resize();
   }
 
+  /**
+   * As big as the picture the child sees it in. That's the window, except for the second of two playing in one
+   * picture, whose game goes on under the first one's, in a window half as wide: it's as big as the first one's,
+   * so their water lands where it falls in the picture. See pictureSize in core/seat.js. The canvas is as big as
+   * the window, and shows as much as fits in it.
+   */
   resize() {
-    this.width = window.innerWidth;
-    this.height = window.innerHeight;
+    ({ width: this.width, height: this.height } = pictureSize());
     this.ratio = Math.min(window.devicePixelRatio || 1, 2);
-    this.canvas.width = Math.round(this.width * this.ratio);
-    this.canvas.height = Math.round(this.height * this.ratio);
+    this.canvas.width = Math.round(window.innerWidth * this.ratio);
+    this.canvas.height = Math.round(window.innerHeight * this.ratio);
     this.palmSize = Math.max(40, this.height * 0.08);
     this.base = null;
   }
@@ -283,8 +289,8 @@ export class GardenView {
     if (this.base) return this.base;
     const layer = () => {
       const canvas = document.createElement('canvas');
-      canvas.width = this.canvas.width;
-      canvas.height = this.canvas.height;
+      canvas.width = Math.round(this.width * this.ratio);
+      canvas.height = Math.round(this.height * this.ratio);
       const context = canvas.getContext('2d');
       context.scale(this.ratio, this.ratio);
       return [canvas, context];
@@ -362,6 +368,8 @@ export class GardenView {
    * tip, glove, look, name, sprinkler }, on the screen, and which side the child's can's spout points.
    */
   render(model = {}) {
+    // A seat's game going under the one picture two share on one screen, or coming back out, is laid out again.
+    if (pictureChanged(this)) this.resize();
     const { ctx, width: w, height: h, ratio } = this;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     const { back, front } = this.baseFor();

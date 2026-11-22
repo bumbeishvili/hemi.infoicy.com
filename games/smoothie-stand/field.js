@@ -10,6 +10,7 @@
 // their names: see setShared, and together.js.
 import { LOOKS, paintFruit } from '../../core/fruit.js';
 import { Glove, INK, SECOND_PLAYER, inOnePicture, secondPlayerLook } from '../../core/glove.js';
+import { pictureChanged, pictureSize } from '../../core/seat.js';
 import { GOLDEN_COINS, NEW_THINGS, POWER_SECONDS, fairAt, nearestOnPath } from './orders.js';
 import { flightAt, rounded, THROW_AHEAD_MS } from './together.js';
 
@@ -420,12 +421,17 @@ export class SmoothieField {
     return fruit;
   }
 
+  /**
+   * As big as the picture the child sees it in. That's the window, except for the second of two playing in one
+   * picture, whose game goes on under the first one's, in a window half as wide: it's as big as the first one's,
+   * so the fruit their hand slices is the fruit it's on in the picture. See pictureSize in core/seat.js. The canvas
+   * is as big as the window, and shows as much as fits in it.
+   */
   resize() {
-    this.width = window.innerWidth;
-    this.height = window.innerHeight;
+    ({ width: this.width, height: this.height } = pictureSize());
     this.ratio = Math.min(window.devicePixelRatio || 1, 2);
-    this.canvas.width = Math.round(this.width * this.ratio);
-    this.canvas.height = Math.round(this.height * this.ratio);
+    this.canvas.width = Math.round(window.innerWidth * this.ratio);
+    this.canvas.height = Math.round(window.innerHeight * this.ratio);
     this.palmSize = Math.max(44, this.height * PALM_SHARE);
     this.fruitSize = Math.max(32, this.height * FRUIT_SHARE);
     this.paintBackdrop();
@@ -435,8 +441,8 @@ export class SmoothieField {
   paintBackdrop() {
     const { width, height, ratio } = this;
     this.backdrop = document.createElement('canvas');
-    this.backdrop.width = this.canvas.width;
-    this.backdrop.height = this.canvas.height;
+    this.backdrop.width = Math.round(width * ratio);
+    this.backdrop.height = Math.round(height * ratio);
     const ctx = this.backdrop.getContext('2d');
     ctx.scale(ratio, ratio);
 
@@ -909,6 +915,8 @@ export class SmoothieField {
   }
 
   render() {
+    // A seat's game going under the one picture two share on one screen, or coming back out, is laid out again.
+    if (pictureChanged(this)) this.resize();
     const { ctx, width, height, ratio } = this;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.drawImage(this.backdrop, 0, 0, width, height);

@@ -71,6 +71,15 @@ export function pictureSize() {
   return { width: shown.innerWidth, height: shown.innerHeight };
 }
 
+/**
+ * Whether something laid out { width, height } isn't as big as its player's picture any more, as when its seat goes
+ * under the one picture or comes back out, which its window isn't told: it's laid out again then.
+ */
+export function pictureChanged({ width, height }) {
+  const now = pictureSize();
+  return now.width !== width || now.height !== height;
+}
+
 /** Where a seat's player stands, in words. */
 export const placeOf = (index) => ['on the left', 'on the right'][index] ?? '';
 

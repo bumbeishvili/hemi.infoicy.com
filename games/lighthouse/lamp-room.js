@@ -12,6 +12,7 @@
 // their hand is on their own window, and the mud their hand wipes comes off here as well, a patch at a
 // time, softly, as the server says it was theirs.
 import { Glove, INK, SECOND_PLAYER, inOnePicture, mixColours, secondPlayerLook } from '../../core/glove.js';
+import { pictureChanged, pictureSize } from '../../core/seat.js';
 import { NEW_THINGS, POWER_SECONDS, PRIZE_READY_SECONDS } from './storm.js';
 
 const PALM_SHARE = 0.105;
@@ -93,12 +94,17 @@ export class LampRoom {
     this.placeWindow();
   }
 
+  /**
+   * As big as the picture the child sees it in. That's the window, except for the second of two playing in one
+   * picture, whose game goes on under the first one's, in a window half as wide: it's as big as the first one's,
+   * so their hand wipes the glass it's on in the picture, as wide as it is there. See pictureSize in core/seat.js.
+   * The canvas is as big as the window, and shows as much as fits in it.
+   */
   resize() {
-    this.width = window.innerWidth;
-    this.height = window.innerHeight;
+    ({ width: this.width, height: this.height } = pictureSize());
     this.ratio = Math.min(window.devicePixelRatio || 1, 2);
-    this.canvas.width = Math.round(this.width * this.ratio);
-    this.canvas.height = Math.round(this.height * this.ratio);
+    this.canvas.width = Math.round(window.innerWidth * this.ratio);
+    this.canvas.height = Math.round(window.innerHeight * this.ratio);
     this.palmSize = Math.max(44, this.height * PALM_SHARE);
     this.placeWindow();
   }
@@ -695,6 +701,8 @@ export class LampRoom {
   }
 
   render() {
+    // A seat's game going under the one picture two share on one screen, or coming back out, is laid out again.
+    if (pictureChanged(this)) this.resize();
     const { ctx, width, height, ratio, window: glass } = this;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     // The room around the window, warm against the night outside.
