@@ -231,9 +231,10 @@ export class Coach {
       this.wait(this.rules.afterMove);
       return;
     }
-    // The computer gets its turn if the child is up and moving, whatever they're doing.
+    // The computer gets its turn if the child is up and moving, whatever they're doing. Together, not once the
+    // child's own computer fighter is down: they're helping their friend then.
     if (!fight.resting) this.computerIn -= dt;
-    if (this.computerIn <= 0) this.startDefence();
+    if (this.computerIn <= 0 && !fight.foeDown) this.startDefence();
   }
 
   /**
@@ -315,7 +316,7 @@ export class Coach {
     this.fight.setGuard('player', false);
     this.fight.setDodge('player', 0);
     this.fight.setDuck('player', false);
-    if (this.followUp) {
+    if (this.followUp && !this.fight.foeDown) {
       const kind = this.followUp;
       this.followUp = null;
       this.startDefence(kind);
@@ -331,6 +332,14 @@ export class Coach {
   update(dt) {
     this.time += dt;
     if (this.fight.state !== 'fighting') return;
+    // Together, the child's own computer fighter went down in the middle of its turn: the turn's over.
+    if (this.phase === 'defending' && this.fight.foeDown) {
+      this.fight.clearWarning('npc');
+      this.defence = null;
+      this.followUp = null;
+      this.wait(this.rules.afterMove);
+      return;
+    }
     if (this.phase === 'asking') {
       this.updateAsking(dt);
     } else if (this.phase === 'defending') {

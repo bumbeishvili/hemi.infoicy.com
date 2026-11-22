@@ -9,7 +9,7 @@ async function twoPeople(seats, clip) {
 
 const view = (page) => page.locator('#seats');
 
-test('Mighty Moves in one picture: two fighters told apart, each player with their own coach in their own half', async ({ page }) => {
+test('Mighty Moves in one picture: two against two, the fighters told apart, each player with their own coach in their own half', async ({ page }) => {
   test.setTimeout(240_000);
   const seats = await openTogether(page, 'mighty-moves');
   const [left, right] = seats;
@@ -43,6 +43,17 @@ test('Mighty Moves in one picture: two fighters told apart, each player with the
     return starts.some(({ x, y }) => Math.abs(y - coach.y) < 1.5 && x >= coach.x - 1 && x <= coach.x + coach.width / 2);
   };
   await expect.poll(holeAtCoach).toBe(true);
+
+  // Together it's two against two: a computer fighter for each, the same two in both games, the one facing the
+  // second player in the first player's game being the second player's own.
+  const sides = (seat) => seat.evaluate(() => ({ mine: window.__game.arena.npc.spec.id, theirs: window.__game.arena.foe?.spec.id ?? null }));
+  const [one, two] = [await sides(left), await sides(right)];
+  expect(one.theirs).toBe(two.mine);
+  expect(two.theirs).toBe(one.mine);
+  expect(one.mine).not.toBe(one.theirs);
+  // When the second player's computer fighter takes its turn at them, which their own game runs, the first
+  // player's game, which is the picture, shows it doing so.
+  await expect.poll(() => left.evaluate(() => window.__game.game.shownFoe), { timeout: 90_000 }).toBeGreaterThan(0);
   await page.screenshot({ path: 'test-results/screens/together-one-picture-fight.png' });
 });
 

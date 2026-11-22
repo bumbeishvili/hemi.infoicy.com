@@ -35,8 +35,15 @@ const between = (low, high) => low + Math.random() * (high - low);
 
 // The camera sits behind the child's fighter, off to its right. The child's right hand is then
 // on the right of the screen, as it is in the mirror, and the opponent faces them.
+// Together, two against two: the second pair, the friend's fighter and their computer one, stands further back and
+// over to the right, so that the camera, which looks across from the child's side, sees the friend's between the
+// first pair and their computer one beside it, and nobody is hidden behind anybody. ally is where the friend's
+// fighter stands across, and the computer's stands gap from it, a little more than the first pair's, as it's further.
+const BACK_PAIR = { z: -2.8, ally: 0.9, gap: 3 };
+
 const VIEWS = {
   fight: { at: [-3.75, 2.25, 5.5], look: [0.3, 1.2, -0.2], fov: 31 },
+  fightTwoByTwo: { at: [-2.4, 3, 7.8], look: [0.7, 1.1, -1.3], fov: 33 },
   choose: { at: [-1.35, 1.6, 7.3], look: [-1.35, 0.92, 0], fov: 30 },
   intro: { at: [0, 2, 8.3], look: [0, 1.25, 0], fov: 30 },
   win: { at: [0.9, 1.75, 5.6], look: [-1.1, 1.2, 0], fov: 30 },
@@ -46,6 +53,7 @@ const VIEWS = {
 // so there the camera stands further back. On the chooser the fighter also stays clear of the cards above and below.
 const NARROW_VIEWS = {
   fight: { at: [-5.6, 2.9, 8.6], look: [0, 1.1, -0.4], fov: 40 },
+  fightTwoByTwo: { at: [-5.2, 3.6, 10.4], look: [1.1, 1, -1.3], fov: 42 },
   choose: { at: [-1.35, 1.6, 16], look: [-1.35, 1.3, 0], fov: 30 },
   intro: { at: [0, 2.3, 14], look: [0, 1.25, 0], fov: 32 },
   win: { at: [1.6, 2, 9.6], look: [-1.1, 1.2, 0], fov: 32 },
@@ -424,6 +432,7 @@ export class Arena {
     this.crown = this.buildCrown();
     this.ball = this.buildBall();
     this.helper = null;
+    this.foe = null; // Together, two against two: the computer's fighter for the friend. See showFoe.
     this.champion = false;
 
     this.onResize = () => this.resize();
@@ -661,12 +670,45 @@ export class Arena {
     this.helper.hold(null);
   }
 
-  /** The friend's fighter makes one of the friend's moves, at the computer's fighter, and stays. */
-  allyStrike(move, side = 'right') {
-    const { helper, npc } = this;
-    if (!helper?.ally || !npc) return;
+  /**
+   * Together, two against two: the computer's fighter for the friend, facing the friend's fighter, the two of them
+   * a pair behind the child's and their own. null takes it away, as when the friend goes.
+   */
+  showFoe(spec) {
+    this.hideFoe();
+    if (!spec) return;
+    const foe = new Stander(spec, 1);
+    foe.home = BACK_PAIR.ally + BACK_PAIR.gap;
+    foe.x = foe.home;
+    foe.z = BACK_PAIR.z;
+    this.foe = foe;
+    this.scene.add(foe.body.root);
+    const { helper } = this;
+    if (helper?.ally) {
+      helper.x = BACK_PAIR.ally;
+      helper.z = BACK_PAIR.z;
+      helper.fightFacing = Math.PI / 2;
+      helper.facing = helper.fightFacing;
+    }
+  }
+
+  hideFoe() {
+    if (!this.foe) return;
+    this.scene.remove(this.foe.body.root);
+    this.foe.body.dispose();
+    this.foe = null;
+  }
+
+  /**
+   * The friend's fighter makes one of the friend's moves, at the computer's fighter it's fighting, and stays. at is
+   * 'foe', the friend's own, or 'npc', the child's, when the friend's own is down and they've come to help.
+   */
+  allyStrike(move, side = 'right', at = 'npc') {
+    const { helper } = this;
+    const target = this[at] ?? this.npc;
+    if (!helper?.ally || !target) return;
     helper.hold(null);
-    helper.play(CLIPS[move] ? move : 'palm', { side: side === 'left' ? 'left' : 'right', gap: helper.gapTo(npc) });
+    helper.play(CLIPS[move] ? move : 'palm', { side: side === 'left' ? 'left' : 'right', gap: helper.gapTo(target) });
   }
 
   /** The friend joins in with the child's big move, and then goes. */
@@ -806,7 +848,8 @@ export class Arena {
 
   /** Where the camera stands for a view, which is further back in a picture that's taller than it's wide. */
   framing(name) {
-    return this.camera.aspect < 1 ? NARROW_VIEWS[name] : VIEWS[name];
+    const views = this.camera.aspect < 1 ? NARROW_VIEWS : VIEWS;
+    return name === 'fight' && this.foe ? views.fightTwoByTwo : views[name];
   }
 
   /** Puts a fighter on the stage in place of whoever was there. which is 'player' or 'npc'. */
@@ -828,7 +871,7 @@ export class Arena {
 
   /** Back to the start of a round. */
   resetRound() {
-    for (const stander of [this.player, this.npc]) {
+    for (const stander of [this.player, this.npc, this.foe]) {
       if (!stander) continue;
       stander.hold(null);
       stander.action = null;
@@ -864,9 +907,10 @@ export class Arena {
 
   /* ---------- what happens on stage for each thing in the fight ---------- */
 
-  moveStarted(who, move, { side }) {
+  /** aim is who it's aimed at, if not the one facing: together, the other pair's computer fighter, or their friend. */
+  moveStarted(who, move, { side, aim = null }) {
     const self = this[who];
-    const other = this[who === 'player' ? 'npc' : 'player'];
+    const other = this[aim ?? (who === 'player' ? 'npc' : 'player')] ?? this[who === 'player' ? 'npc' : 'player'];
     const name = move;
     self.play(name, { side: side === 'left' ? 'left' : 'right', gap: self.gapTo(other) });
     self.body.setExpression('strike', 0.5);
@@ -1104,6 +1148,7 @@ export class Arena {
     this.watchSpeed(dt);
     this.player?.update(dt, this.reducedMotion);
     this.npc?.update(dt, this.reducedMotion);
+    this.foe?.update(dt, this.reducedMotion);
     this.updateHelper(dt);
     this.updateBall(dt);
     this.updateWeather(dt);

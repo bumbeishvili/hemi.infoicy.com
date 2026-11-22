@@ -1,5 +1,5 @@
 // Fighting with a friend: two children, each on their own computer with their own camera. Whoever makes the
-// fight chooses: together, both of them against the computer's fighter, side by side, or against each other.
+// fight chooses: together, two against two, each against a computer fighter of their own, or against each other.
 // Each child's moves are watched by their own computer. Against each other, their fighter's moves land on the
 // friend's fighter, on both screens. Together, both fighters' moves take the computer's fighter down, on both
 // screens. Here they're two separate browsers, talking through the race server on this computer
@@ -59,6 +59,9 @@ const fightOf = (page) => page.evaluate(() => {
     // Who the computer's fighter is, and whose fighter stands beside the child's own, if anyone's.
     opponent: arena.npc?.spec.id ?? null,
     beside: arena.helper?.spec.id ?? null,
+    // Together, the computer's fighter facing the friend's, and what each of the computer's two has left.
+    foe: arena.foe?.spec.id ?? null,
+    foes: fight.ally ? fight.teamFoes() : null,
     rounds: fight.totalRounds,
     level: fight.levelNumber,
     player: { hp: fight.player.hp, won: fight.player.roundsWon },
@@ -168,13 +171,13 @@ test('two friends fight each other from their own computers, each one\'s moves l
   await ben.context.close();
 });
 
-test('two friends fight together: side by side against the computer\'s fighter, each one\'s moves taking it down on both screens, and both win', async ({ page, browser }) => {
+test('two friends fight together, two against two: each against a computer fighter of their own, each one\'s moves taking theirs down on both screens, and both win', async ({ page, browser }) => {
   test.setTimeout(300_000);
   // Together is how it comes. The computer is as strong as Ana's grown-up has set it, which is Tough.
   await openFight(page, { rounds: 1, fightStrength: 'tough', levels: { 'mighty-moves': 3 } });
   const code = await makeFight(page, 'Ana');
   await expect(page.locator('input[name="friends-team"][value="together"]')).toBeChecked();
-  await expect(page.locator('#friends-how')).toContainText('fight the computer side by side');
+  await expect(page.locator('#friends-how')).toContainText('fight two of the computer’s fighters, one each');
 
   // The friend has chosen against each other for the fights they make, and fights the host's, together.
   const ben = await secondPlayer(browser);
@@ -190,7 +193,7 @@ test('two friends fight together: side by side against the computer\'s fighter, 
   await ben.page.locator('#start').click();
   await waitForScreen(ben.page, 'choose');
   await expect(ben.page.locator('#opponent-name')).toHaveText('The computer');
-  await expect(ben.page.locator('#opponent-change')).toHaveText('You and your friend fight it together');
+  await expect(ben.page.locator('#opponent-change')).toHaveText('Two against two, with your friend');
   await expect(ben.page.locator('#next-opponent')).toBeDisabled();
   await ben.page.screenshot({ path: 'test-results/screens/fight-together-choose.png' });
   await ben.page.locator('#fight-start').click();
@@ -204,14 +207,20 @@ test('two friends fight together: side by side against the computer\'s fighter, 
   expect([ana.friend, his.friend]).toEqual([false, false]);
   expect([ana.rounds, his.rounds]).toEqual([1, 1]);
   expect([ana.level, his.level]).toEqual([3, 3]);
-  // The same fighter of the computer's on both screens, neither of theirs, with twice the health.
-  expect(ana.opponent).toBe(his.opponent);
-  expect(['giraffe', 'mochi']).not.toContain(ana.opponent);
+  // Two of the computer's fighters, the same two on both screens, neither of theirs: each child faces one, and the
+  // other faces the friend's fighter. Two fighters' health between them.
+  expect(ana.opponent).toBe(his.foe);
+  expect(his.opponent).toBe(ana.foe);
+  expect(ana.opponent).not.toBe(ana.foe);
+  for (const id of [ana.opponent, ana.foe]) expect(['giraffe', 'mochi']).not.toContain(id);
   expect([ana.npc.hp, his.npc.hp]).toEqual([200, 200]);
-  // Each has the other's fighter beside their own.
+  expect(ana.foes).toEqual({ mine: 100, theirs: 100 });
+  // Each has the other's fighter in the fight too.
   expect([ana.beside, his.beside]).toEqual(['mochi', 'giraffe']);
   await expect(page.locator('#player-name')).toHaveText('Giraffe + Ben');
   await expect(ben.page.locator('#player-name')).toHaveText('Mochi + Ana');
+  const names = await page.evaluate(() => [window.__game.arena.npc.spec.name, window.__game.arena.foe.spec.name]);
+  await expect(page.locator('#npc-name')).toHaveText(`${names[0]} + ${names[1]}`);
 
   // Ana does what her coach asks: the computer's fighter loses the same on both screens, and on Ben's her
   // fighter is seen making the move, with its name over it.
@@ -220,6 +229,11 @@ test('two friends fight together: side by side against the computer\'s fighter, 
   await expect.poll(async () => (await fightOf(page)).npc.hp, { timeout: 5000 }).toBeLessThan(200);
   const left = (await fightOf(page)).npc.hp;
   await expect.poll(async () => (await fightOf(ben.page)).npc.hp, { timeout: 5000 }).toBe(left);
+  // It was Ana's own computer fighter that it hit, which on Ben's screen is the one facing her.
+  const hit = (await fightOf(page)).foes;
+  expect(hit.mine).toBeLessThan(100);
+  expect(hit.theirs).toBe(100);
+  expect((await fightOf(ben.page)).foes).toEqual({ mine: 100, theirs: hit.mine });
   await expect(ben.page.locator('.callout.is-friend').first()).toBeVisible();
   await ben.page.screenshot({ path: 'test-results/screens/fight-together-hit.png' });
 
@@ -283,7 +297,8 @@ test('together, a friend who goes in the middle leaves the child to fight on by 
   await ben.context.close();
   await expect.poll(async () => (await fightOf(page)).allyLeft, { timeout: 20_000 }).toBe(true);
   const alone = await fightOf(page);
-  expect([alone.state, alone.npcMax, alone.beside]).toEqual(['fighting', 100, null]);
+  // His computer fighter goes with him.
+  expect([alone.state, alone.npcMax, alone.beside, alone.foe]).toEqual(['fighting', 100, null, null]);
   expect(alone.npc.hp).toBeLessThanOrEqual(100);
   await expect(page.locator('#player-name')).toHaveText('Giraffe');
   // She fights on, and wins it.

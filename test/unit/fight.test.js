@@ -1321,7 +1321,7 @@ test('against a friend who has gone, the fight is over, and it\'s the child\'s',
   assert.equal(ana.fight.perform('player', 'stomp', { exercise: 'squat' }), null);
 });
 
-test('together with a friend, the computer\'s fighter has twice the health, and what\'s left is what both children\'s moves have left it', () => {
+test('together with a friend, the computer\'s two fighters have two fighters\' health between them, and what\'s left is what both children\'s moves have left them', () => {
   const { fight, events } = setup({ ally: true });
   assert.equal(fight.ally, true);
   assert.equal(fight.npc.hp, RULES.maxHp * TEAM.health);
@@ -1425,6 +1425,72 @@ test('together, a friend who goes leaves the child to fight on, against a fighte
   // Gone twice is gone once.
   late.fight.allyGone();
   assert.equal(late.fight.npc.hp, 100);
+});
+
+test('together it\'s two against two: each child\'s moves go to their own computer fighter, and once it\'s down, to help with the friend\'s', () => {
+  const { fight, events } = setup({ ally: true });
+  const most = RULES.maxHp;
+  assert.deepEqual(fight.teamFoes(), { mine: most, theirs: most });
+  // The friend's moves take theirs down.
+  fight.allyHit('palm', { damage: 40, total: 40 });
+  assert.deepEqual(fight.teamFoes(), { mine: most, theirs: most - 40 });
+  fight.allyHit('palm', { damage: 60, total: most });
+  assert.deepEqual(fight.teamFoes(), { mine: most, theirs: 0 });
+  const downs = () => events.filter(({ type }) => type === 'foe-down').map(({ which }) => which);
+  assert.deepEqual(downs(), ['theirs'], 'said once, as it goes down');
+  // Theirs down, the friend comes to help: what more their moves do goes to this child's.
+  fight.allyHit('palm', { damage: 30, total: most + 30 });
+  assert.deepEqual(fight.teamFoes(), { mine: most - 30, theirs: 0 });
+  assert.equal(fight.foeDown, false);
+  assert.deepEqual(downs(), ['theirs']);
+  assert.equal(fight.state, 'fighting', 'not over while one of the computer\'s fighters is still up');
+  // And the same the other way: this child's own moves, once theirs is down, would go to the friend's.
+  const other = setup({ ally: true });
+  for (let i = 0; i < 40 && !other.fight.foeDown; i += 1) {
+    other.fight.perform('player', 'stomp', { exercise: 'squat', side: 'right' });
+    run(other.fight, 1);
+  }
+  assert.equal(other.fight.foeDown, true);
+  assert.deepEqual(other.events.filter(({ type }) => type === 'foe-down').map(({ which }) => which), ['mine']);
+  assert.equal(other.fight.teamFoes().mine, 0);
+  assert.equal(other.fight.state, 'fighting');
+  const beyond = Math.max(0, other.fight.dealt - most);
+  assert.equal(other.fight.teamFoes().theirs, most - beyond);
+  // Both down is the round, and the next one has both up again.
+  other.fight.allyHit('palm', { damage: 20, total: most - beyond });
+  assert.equal(other.fight.state, 'break');
+  other.fight.beginRound();
+  assert.deepEqual([other.fight.teamFoes(), other.fight.down, other.fight.foeDown], [{ mine: most, theirs: most }, { mine: false, theirs: false }, false]);
+});
+
+test('together, once the child\'s own computer fighter is down, it takes no more turns: the child is helping their friend', () => {
+  const { fight } = setup({ ally: true, level: { ...NPC_LEVELS.medium } });
+  const coach = new Coach({ fight, reader: fakeReader({ moving: true }) });
+  coach.beginRound();
+  // Its turn has started, with a warning, when the child's move that's nearly finished it lands.
+  for (let t = 0; t < 120 && coach.phase !== 'defending'; t += 0.1) {
+    fight.noteActivity(0.1);
+    coach.update(0.1);
+    fight.update(0.1);
+  }
+  assert.equal(coach.phase, 'defending');
+  assert.ok(fight.npc.warning);
+  fight.dealt = RULES.maxHp - 1;
+  fight.npc.hp = fight.teamLeft();
+  fight.perform('player', 'stomp', { exercise: 'squat', side: 'right' });
+  run(fight, 1);
+  assert.equal(fight.foeDown, true);
+  assert.equal(fight.npc.warning, null, 'the warning goes as it goes down');
+  const before = coach.defences;
+  for (let t = 0; t < 120; t += 0.1) {
+    fight.noteActivity(0.1);
+    coach.update(0.1);
+    fight.update(0.1);
+  }
+  assert.notEqual(coach.phase, 'defending');
+  assert.equal(coach.defences, before);
+  assert.equal(fight.state, 'fighting');
+  assert.equal(fight.player.hp, RULES.maxHp, 'and nothing of its turn landed');
 });
 
 test('the coach gives the computer its turns when the friend is on the child\'s side, as it does on their own', () => {
