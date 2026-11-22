@@ -9,7 +9,7 @@ import { mountBodyShell } from '../../core/body/shell.js';
 import { Track } from '../../core/friends.js';
 import { FriendsPanel, time } from '../../core/friends-ui.js';
 import { FlightSound } from './flight-sound.js';
-import { Flight, HEARTS, MOST_AT_ONCE_EVER, NEW_AT, forwardOf, isOn } from './flight.js';
+import { DOGFIGHT, Flight, HEARTS, MOST_AT_ONCE_EVER, NEW_AT, forwardOf, isOn } from './flight.js';
 import { Lesson } from './lesson.js';
 import { Sky } from './sky.js';
 
@@ -24,8 +24,10 @@ const WING_CLIMB_SHOWN = 22;
 const MARK_MARGIN = 70; // How far from the edge of the screen the arrows to other planes stay.
 const LIMIT_PROMPT_FROM = 0.25;
 
-const DEFAULTS = { moveSize: 'small', pace: 'slow', planes: 6, level: 'medium', climbing: 'yes', fighter: 'giraffe' };
-const CHOICES = { pace: String, planes: Number, level: String, climbing: String };
+// With friends it's against each other, a dogfight, unless a grown-up chooses together: the user asked to play
+// against a friend and shoot them down. See DOGFIGHT in flight.js.
+const DEFAULTS = { moveSize: 'small', pace: 'slow', planes: 6, level: 'medium', climbing: 'yes', fighter: 'giraffe', wingsFriends: 'against' };
+const CHOICES = { pace: String, planes: Number, level: String, climbing: String, wingsFriends: String };
 
 // Every one of these has a rendered voice file: see audio/voice/lines.json.
 const SAY = {
@@ -91,9 +93,13 @@ const FLY_WORDS = {
   make: 'Make a flight',
   codeLabel: 'A friend’s flight code',
   codeName: 'Flight code',
-  how: 'Tell your friend the code. Then you both choose a pilot and press <b>Let’s fly!</b>',
+  how: 'Tell your friend the code. Then you both choose a pilot and press <b>Let’s fly!</b>, and try to get each other inside your ring.',
+  // Against each other, a dogfight, or together against the sky pirates, as whoever made the flight chooses.
+  together: 'Together',
+  against: 'Against each other',
+  howTogether: 'Tell your friend the code. Then you both choose a pilot and press <b>Let’s fly!</b>, and drop the sky pirates together.',
   leave: 'Leave this flight',
-  privacy: 'Only your name, who flies and where your plane is go to your friends. The camera picture stays on this computer.',
+  privacy: 'Only your name, who flies, whether you chose together or against each other, where your plane is and whose plane yours put out go to your friends. The camera picture stays on this computer.',
   alone: 'Fly on your own',
   full: 'That flight already has 4 planes.',
   lost: 'Can’t reach the flight. Check the internet, then try again.',
@@ -105,6 +111,14 @@ const FLY_WORDS = {
 const PLANES = [3, 6, 9]; // The numbers of planes to drop a host can have chosen.
 const MOST_FRIENDS = 3;
 const START_APART = 24; // Metres between friends' planes at the start, side by side, rather than all in one place.
+// A dogfight's start: the middle of the circle is so far ahead of where a plane starts alone, and each plane is so
+// far out from it, so that two start a little further apart than their guns reach.
+const DOGFIGHT_START = { ahead: 180, apart: 140 };
+// Words on the screen in a dogfight, which aren't spoken.
+const DOGFIGHT_WORDS = {
+  start: { en: 'Get your friend inside the ring!', ka: 'მეგობარი რგოლში მოაქციე!' },
+  out: { en: 'Smoke! Back in a moment', ka: 'კვამლი! ცოტაც და დაბრუნდები' },
+};
 // A friend's plane between what their game sends: where it is, its pitch, roll and speed, the way it heads,
 // which goes the short way round, and, with nothing new for a moment, carrying on the way it was going.
 const PLANE_TRACK = {
@@ -187,7 +201,13 @@ class SkyWings extends BodyGame {
       screen: () => this.screen,
       portraits: () => this.portraits,
       onGone: (friend) => this.friendGone(friend),
-      resultText: ({ ms, won, dropped }) => (won ? `all ${dropped} in ${time(ms)}` : `${dropped} dropped`),
+      resultText: ({ ms, won, dropped }) => (this.flight?.dogfight ? `${dropped} ${dropped === 1 ? 'hit plane' : 'hit planes'}` : won ? `all ${dropped} in ${time(ms)}` : `${dropped} dropped`),
+      // Against each other, a dogfight, or together against the pirates: the grown-ups' choice.
+      teams: {
+        get: () => (this.settings.wingsFriends === 'together' ? 'together' : 'against'),
+        set: (choice) => this.chooseTeams(choice),
+      },
+      onMove: (id, message) => this.fromFriend(id, message),
       startAfter: byElementId('start'),
       waitingBefore: byElementId('screen-finish'),
       resultsAfter: byElementId('finish-place'),
@@ -255,6 +275,18 @@ class SkyWings extends BodyGame {
     if ('level' in change) this.sizeAim();
     // What the cards say is new depends on how many planes there are.
     if ('planes' in change) this.levelUi.refresh();
+    // Friends are shown the choice at once, as it's the host's that counts.
+    if ('wingsFriends' in change && this.friends) {
+      if (this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
+      this.friends.showTeams();
+    }
+  }
+
+  /** Together or against each other, chosen in the friends box: kept with the grown-ups' settings, and shown there. */
+  chooseTeams(choice) {
+    this.changeSettings({ wingsFriends: choice });
+    const input = document.querySelector(`input[name="wingsFriends"][value="${choice}"]`);
+    if (input) input.checked = true;
   }
 
   showChosen(spec) {
@@ -381,18 +413,26 @@ class SkyWings extends BodyGame {
     const friendly = this.friends.current;
     document.body.toggleAttribute('data-friends-race', Boolean(friendly));
     const levelNumber = friendly ? friendly.level : this.startLevel();
+    // Against each other, it's a dogfight in the same sky, with no pirates.
+    const dogfight = Boolean(friendly && !friendly.team && friendly.friends.length);
     this.flight = new Flight({
       planes: friendly && PLANES.includes(friendly.length) ? friendly.length : settings.planes,
       pace: settings.pace,
       level: settings.level,
       levelNumber,
       climbing: settings.climbing === 'yes',
+      dogfight,
       onEvent: (event) => this.onFlightEvent(event),
     });
     this.helper = this.helperSpec();
     this.pirates = this.pirateSpecs(this.flight.total, (friendly?.friends ?? []).map(({ spec }) => spec.id));
-    // With friends, side by side, in the same order on every computer.
-    if (friendly) this.flight.x += (friendly.mySlot - (friendly.racers.length - 1) / 2) * START_APART;
+    document.body.toggleAttribute('data-dogfight', dogfight);
+    if (dogfight) this.faceEachOther(friendly);
+    // Together, side by side, in the same order on every computer.
+    else if (friendly) this.flight.x += (friendly.mySlot - (friendly.racers.length - 1) / 2) * START_APART;
+    this.friendsOut = new Map(); // A dogfight: each friend's count of whose plane they put out, as the last heard.
+    this.friendScores = new Map(); // And how many each has put out in all.
+    this.putOut = new Map(); // How many times this child's plane has put out each friend's.
     sky.setFlight(this.flight, this.pirates, this.helper);
     this.setUpMates(friendly);
     this.namedKinds = new Set();
@@ -412,13 +452,29 @@ class SkyWings extends BodyGame {
     this.setScreen('countdown');
   }
 
+  /**
+   * A dogfight: everyone starts round a circle out over the sea, each heading in across it towards the others, the
+   * same on every computer, so that friends meet straight away.
+   */
+  faceEachOther(friendly) {
+    const { flight } = this;
+    const ahead = forwardOf(flight.heading, 0);
+    const middle = { x: flight.x + ahead.x * DOGFIGHT_START.ahead, z: flight.z + ahead.z * DOGFIGHT_START.ahead };
+    const turn = (friendly.mySlot / friendly.racers.length) * Math.PI * 2;
+    // Each starts on the far side of the middle from where their heading points.
+    flight.heading = flight.heading + turn;
+    const facing = forwardOf(flight.heading, 0);
+    flight.x = middle.x - facing.x * DOGFIGHT_START.apart;
+    flight.z = middle.z - facing.z * DOGFIGHT_START.apart;
+  }
+
   /** Friends' planes, each following what their own game sends about where it is. */
   setUpMates(friendly) {
     const friends = (friendly?.friends ?? []).slice(0, MOST_FRIENDS);
     this.mates = friends.map((friend) => {
       const track = new Track(PLANE_TRACK);
       this.friends.follow(friend.id, track);
-      return { friend, track, x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0, speed: 0, live: true, seen: false };
+      return { friend, track, x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0, speed: 0, live: true, seen: false, outLeft: 0, hitsTaken: 0 };
     });
     this.flight.mates = this.mates;
     this.sky.setMates(friends.map(({ spec }) => spec), this.mates);
@@ -460,8 +516,13 @@ class SkyWings extends BodyGame {
     this.flight.begin();
     this.setScreen('fly');
     this.asking = 'tip';
-    this.showCoach('tip', this.translate(SAY.start), { side: this.settings.hands });
-    this.sound.say(SAY.start);
+    if (this.flight.dogfight) {
+      // No pirates: the friend is the one to get inside the ring. Shown, and not said.
+      this.showCoach('tip', DOGFIGHT_WORDS.start[this.settings.language] ?? DOGFIGHT_WORDS.start.en, { side: this.settings.hands });
+    } else {
+      this.showCoach('tip', this.translate(SAY.start), { side: this.settings.hands });
+      this.sound.say(SAY.start);
+    }
   }
 
   updateFlying(dt, now) {
@@ -480,6 +541,7 @@ class SkyWings extends BodyGame {
 
     const { wings } = reader;
     flight.update(dt, { out: wings.out, bank: wings.bank, climb: wings.climb });
+    if (flight.dogfight) this.dogfightOver();
     if (flight.state !== 'flying') return;
     // Where this plane is, for friends' games, timed by the clock on the wall.
     const heading = Math.atan2(Math.sin(flight.heading), Math.cos(flight.heading));
@@ -665,7 +727,8 @@ class SkyWings extends BodyGame {
   /** A mark on each plane that can be seen, and an arrow at the edge of the screen to any that can't. */
   updateMarks() {
     const { flight, sky, marks } = this;
-    const planes = flight.flying;
+    // In a dogfight the friends' planes are the ones to find and get in the ring, with an arrow to any off the screen.
+    const planes = flight.dogfight ? this.mates.filter(({ live, seen }) => live && seen) : flight.flying;
     // From where the camera is now, rather than a frame ago, so that the marks stay on the planes.
     sky.updateCamera(0);
     marks.forEach((mark, index) => {
@@ -677,7 +740,7 @@ class SkyWings extends BodyGame {
       }
       if (mark.enemy !== enemy) {
         mark.enemy = enemy;
-        const pilot = this.pirates[enemy.index % this.pirates.length];
+        const pilot = enemy.friend ? enemy.friend.spec : this.pirates[enemy.index % this.pirates.length];
         mark.face.src = this.portraits[pilot.id];
       }
       const seen = sky.project(enemy.x, enemy.y, enemy.z);
@@ -701,7 +764,9 @@ class SkyWings extends BodyGame {
         mark.name.textContent = label;
         mark.root.dataset.named = label ? 'yes' : 'no';
       }
-      mark.fill.style.width = `${Math.round((enemy.hitsLeft / enemy.hitsTotal) * 100)}%`;
+      const share = enemy.friend ? (enemy.outLeft > 0 ? 0 : 1 - (enemy.hitsTaken ?? 0) / DOGFIGHT.hits) : enemy.hitsLeft / enemy.hitsTotal;
+      mark.fill.style.width = `${Math.round(share * 100)}%`;
+      mark.root.dataset.out = enemy.outLeft > 0 ? 'yes' : 'no';
       if (onScreen) {
         mark.root.dataset.where = 'on';
         mark.root.style.transform = `translate(${Math.round(seen.x)}px, ${Math.round(seen.y)}px)`;
@@ -729,10 +794,11 @@ class SkyWings extends BodyGame {
       const onScreen = seen && !seen.behind && seen.x > 0 && seen.x < sky.width && seen.y > 0 && seen.y < sky.height;
       mark.root.dataset.where = onScreen ? 'on' : 'none';
       if (!onScreen) return;
-      if (mark.mate !== mate) {
+      const name = this.flight?.dogfight ? `${mate.friend.spec.name} ${this.friendScores?.get(mate.friend.id) ?? 0}` : mate.friend.spec.name;
+      if (mark.mate !== mate || mark.name.textContent !== name) {
         mark.mate = mate;
         mark.face.src = this.portraits[mate.friend.spec.id] ?? '';
-        mark.name.textContent = mate.friend.spec.name;
+        mark.name.textContent = name;
       }
       mark.root.style.transform = `translate(${Math.round(seen.x)}px, ${Math.round(seen.y)}px)`;
     });
@@ -763,8 +829,73 @@ class SkyWings extends BodyGame {
       resting: () => this.onResting(event),
       won: () => this.onFinished(true),
       lost: () => this.onFinished(false),
+      'mate-hit': () => {
+        this.sky.hitMate(this.mates.indexOf(event.mate));
+        this.sound.hit();
+      },
+      'mate-out': () => this.onMateOut(event),
+      out: () => this.onOut(),
     };
     handlers[event.type]?.();
+  }
+
+  /* ---------- a dogfight with friends ---------- */
+
+  /**
+   * Something from a friend's game: where their plane is, which goes to the track following it, and in a dogfight,
+   * whose plane they've put out and how many they've put out in all.
+   */
+  fromFriend(id, message) {
+    if (message.t === 'plane') {
+      this.friends.current?.tracks.get(id)?.push(message, performance.now());
+      return;
+    }
+    const { flight } = this;
+    if (!flight?.dogfight || flight.state !== 'flying') return;
+    if (message.t === 'score') {
+      this.friendScores.set(id, message.n);
+      return;
+    }
+    if (message.t !== 'hit') return;
+    // r is whose plane, by their place, and tot how many times in all this friend has put it out: each is heard once.
+    const key = `${id}:${message.r}`;
+    if (!(message.tot > (this.friendsOut.get(key) ?? 0))) return;
+    this.friendsOut.set(key, message.tot);
+    const slot = message.r - 1;
+    if (slot === this.friends.current?.mySlot) flight.knockedOut();
+    else {
+      const mate = this.mates.find(({ friend }) => friend.slot === slot);
+      if (mate) flight.mateOut(mate);
+    }
+  }
+
+  /** A friend's plane is out of the fight for a moment. When this child's put it out, every game is told. */
+  onMateOut({ mate, mine }) {
+    this.sky.mateOut(this.mates.indexOf(mate));
+    if (!mine) return;
+    const times = (this.putOut.get(mate.friend.id) ?? 0) + 1;
+    this.putOut.set(mate.friend.id, times);
+    const ms = performance.now() - this.goAt;
+    this.friends.sendHit({ r: mate.friend.slot + 1, tot: times, d: 1 }, ms);
+    this.friends.sendScore(this.flight.stats.dropped, ms);
+    this.sound.down();
+    this.callout(GOT_ONE[this.settings.language] ?? GOT_ONE.en, { kind: 'is-big', x: 0.42, y: 0.26 });
+  }
+
+  /** A friend put this child's plane out: it trails smoke for a moment, and that's all. */
+  onOut() {
+    this.sky.childOut();
+    this.sound.hurt();
+    this.callout(DOGFIGHT_WORDS.out[this.settings.language] ?? DOGFIGHT_WORDS.out.en, { kind: 'is-combo', x: 0.5, y: 0.36 });
+  }
+
+  /** A dogfight is over once a friend has won it, and won by whoever's still here if all the others have gone. */
+  dogfightOver() {
+    const { flight } = this;
+    if (flight.state !== 'flying') return;
+    const results = [...(this.friends.results?.entries() ?? [])];
+    if (results.some(([id, { won }]) => won && id !== this.friends.room.you)) flight.beaten();
+    else if (this.mates.length && this.mates.every(({ live }) => !live)) flight.walkover();
   }
 
   onHit({ enemy }) {
@@ -857,9 +988,15 @@ class SkyWings extends BodyGame {
       const whole = Math.round(seconds);
       return whole >= 60 ? `${Math.floor(whole / 60)} min ${whole % 60} sec` : `${whole} sec`;
     };
-    byElementId('finish-line').textContent = won
-      ? `${this.chosen.name} dropped ${stats.dropped} of ${total} planes.`
-      : `The sky pirates got ${this.chosen.name}’s plane this time. ${this.chosen.name} dropped ${stats.dropped} of ${total} planes.`;
+    const winner = [...(this.friends.results?.entries() ?? [])].find(([id, { won: theirs }]) => theirs && id !== this.friends.room.you);
+    const winnerName = winner ? this.mates.find(({ friend }) => friend.id === winner[0])?.friend.spec.name ?? 'Your friend' : 'Your friend';
+    byElementId('finish-line').textContent = this.flight.dogfight
+      ? won
+        ? `${this.chosen.name} put friends’ planes out ${stats.dropped} ${stats.dropped === 1 ? 'time' : 'times'}, first to ${total}.`
+        : `${winnerName} got to ${total} first this time. ${this.chosen.name} put friends’ planes out ${stats.dropped} ${stats.dropped === 1 ? 'time' : 'times'}.`
+      : won
+        ? `${this.chosen.name} dropped ${stats.dropped} of ${total} planes.`
+        : `The sky pirates got ${this.chosen.name}’s plane this time. ${this.chosen.name} dropped ${stats.dropped} of ${total} planes.`;
     byElementId('finish-hold').textContent = `Arms out for ${clock(stats.wingsSeconds)} of ${clock(stats.seconds)}.`;
     // The treasure brought home, on the levels with prizes.
     const prizes = Object.entries(stats.prizes).filter(([, count]) => count > 0);
@@ -1001,6 +1138,11 @@ mountBodyShell({
       <label><input type="radio" name="pace" value="slow"> Slow</label>
       <label><input type="radio" name="pace" value="medium"> Medium</label>
       <label><input type="radio" name="pace" value="fast"> Fast</label>
+    </fieldset>
+    <fieldset class="choice">
+      <legend>With friends</legend>
+      <label><input type="radio" name="wingsFriends" value="against"> Against each other: a dogfight, with no pirates, where getting a friend’s plane in the ring puts it out for a moment, and the first to put others out as many times as the planes to drop wins</label>
+      <label><input type="radio" name="wingsFriends" value="together"> Together: everyone against the sky pirates, each with their own</label>
     </fieldset>
     <fieldset class="choice">
       <legend>Planes to drop</legend>

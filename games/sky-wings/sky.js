@@ -707,6 +707,51 @@ export class Sky {
     this.chutes.push({ group, pilot, canopy, left: CHUTE_SECONDS, phase: Math.random() * 6 });
   }
 
+  /* ---------- a dogfight with friends ---------- */
+
+  /** A shot from the child's plane got to a friend's: sparks, as on a pirate's. */
+  hitMate(index) {
+    const plane = this.matePlanes[index];
+    if (!plane?.root.visible) return;
+    plane.pilot.setExpression('hurt', 0.4);
+    const count = this.reducedMotion ? 2 : 4;
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2 + Math.random();
+      this.sparks.emit({ shape: i % 2 ? 'star' : 'spark', colour: ['#ffd23f', '#ff8f3f'][i % 2], at: plane.root.position, velocity: [Math.cos(angle) * 14, Math.sin(angle) * 14, between(-8, 8)], life: 0.35, size: 2, spin: 4, drag: 1 });
+    }
+  }
+
+  /** A friend's plane is out of the fight for a moment: a puff of smoke, and a trail while it's out. Nobody falls. */
+  mateOut(index) {
+    const plane = this.matePlanes[index];
+    if (!plane) return;
+    const { position } = plane.root;
+    this.puffs(position, { count: 8, colours: ['#6b6560', '#8a837b', '#a59e95', '#ff9c4a'], size: 4 * this.smokeShare(position), speed: 9, life: 1.1, grow: 1.5 });
+    plane.pilot.setExpression('hurt', 1);
+  }
+
+  /** The child's own plane is out of the fight for a moment, the same. */
+  childOut() {
+    if (!this.plane) return;
+    const at = this.plane.root.position;
+    this.puffs(at, { count: 6, colours: ['#8a837b', '#a59e95', '#ffb25c'], size: 2.6, speed: 8, life: 0.9, grow: 1.3 });
+    this.plane.pilot.setExpression('hurt', 1);
+  }
+
+  /** While a plane is out of a dogfight, a thin trail of smoke behind it, every so often. */
+  trailSmoke(dt) {
+    const { flight } = this;
+    if (!flight?.dogfight || this.view !== 'fly') return;
+    this.smokeIn = (this.smokeIn ?? 0) - dt;
+    if (this.smokeIn > 0) return;
+    this.smokeIn = this.reducedMotion ? 0.5 : 0.22;
+    const trail = { count: 1, colours: ['#8a837b', '#a59e95'], speed: 2, life: 1.1, grow: 1.6, opacity: 0.6 };
+    if (flight.outLeft > 0 && this.plane) this.puffs(this.plane.root.position, { ...trail, size: 1.8 });
+    this.matePlanes.forEach((plane, index) => {
+      if (plane.root.visible && this.mates[index]?.outLeft > 0) this.puffs(plane.root.position, { ...trail, size: 3 * this.smokeShare(plane.root.position) });
+    });
+  }
+
   childHit() {
     if (!this.plane) return;
     const at = this.plane.root.position;
@@ -1015,6 +1060,7 @@ export class Sky {
     this.drawGift();
     this.drawPower(dt);
     this.drawMates(dt);
+    this.trailSmoke(dt);
     this.sparks.update(dt);
     this.updateCamera(dt);
     this.moveSnow(dt);

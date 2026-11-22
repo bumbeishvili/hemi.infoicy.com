@@ -299,6 +299,10 @@ const PAIR = { side: 22, back: 8, join: 30, ease: 0.25 };
 const DRIFT_ASIDE = 18; // How fast something going down gently moves out of the child's way.
 const BEHIND_EVERY = 14; // Seconds at the least between being told a plane is behind.
 const WON_AFTER = 0.9;
+// Against friends, a dogfight in the same sky, with no pirates: so many hits put a friend's plane out of the fight
+// for a few seconds, trailing smoke, when it can't shoot or be shot. Nobody falls and nobody is hurt. Whoever puts
+// the others out as many times as the host's number of planes first wins. See main.js for what goes between games.
+export const DOGFIGHT = { hits: 6, outSeconds: 4 };
 export const MOST_AT_ONCE_EVER = flightLevel(10).atOnce; // For the marks on the screen.
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -331,7 +335,7 @@ export class Flight {
    * whether the child's arms control how high they go. If not, the plane does that by itself.
    * levelNumber is the level, from 1 to 10: see flightLevel.
    */
-  constructor({ planes = 6, pace = 'slow', level = 'gentle', levelNumber = 1, climbing = true, random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ planes = 6, pace = 'slow', level = 'gentle', levelNumber = 1, climbing = true, dogfight = false, random = Math.random, onEvent = () => {} } = {}) {
     this.pace = PACES[pace];
     this.level = LEVELS[level];
     this.levelNumber = levelNumber;
@@ -360,8 +364,12 @@ export class Flight {
     this.resting = false;
     this.atLimit = 0;
 
+    // Against friends: no pirates, and the friends' planes are what's shot at. See DOGFIGHT.
+    this.dogfight = Boolean(dogfight);
+    this.outLeft = 0; // How much longer this child's own plane is out of a dogfight.
+
     this.enemies = [];
-    this.waiting = planes; // Still to come.
+    this.waiting = this.dogfight ? 0 : planes; // Still to come.
     this.spawnIn = 0;
     this.nextPilot = 0;
     this.shots = [];
@@ -376,7 +384,7 @@ export class Flight {
     // Prizes on their way to the child's plane, the gift box in the sky, and the power it gave.
     this.prizes = [];
     this.gift = null;
-    this.giftIn = GIFT.firstIn;
+    this.giftIn = this.dogfight ? Infinity : GIFT.firstIn;
     const { gifts } = this.levelRules;
     const before = levelNumber > 1 ? flightLevel(levelNumber - 1).gifts : [];
     // The first gift box is this level's new power, and then they take turns.
@@ -745,11 +753,18 @@ export class Flight {
   /* ---------- the guns ---------- */
 
   /** The plane in the ring that's nearest the middle of it, if there is one. */
+  /** What can be shot at: the pirates, or in a dogfight, friends' planes that are in it. */
+  get targets() {
+    if (!this.dogfight) return this.flying;
+    if (this.outLeft > 0) return [];
+    return this.mates.filter((mate) => mate.live && mate.seen && !(mate.outLeft > 0));
+  }
+
   findTarget() {
     const view = this.view;
     let found = null;
     let nearest = Infinity;
-    for (const enemy of this.flying) {
+    for (const enemy of this.targets) {
       const { angle, away } = this.offAim(enemy, view);
       if (away <= RANGE && angle <= this.level.aim && angle < nearest) {
         found = enemy;
@@ -789,6 +804,10 @@ export class Flight {
   /** Something that flies after its target and does something when it gets there. */
   arrives(shot) {
     const { target, kind } = shot;
+    if (target.friend) {
+      this.hitMate(target);
+      return;
+    }
     if (kind === 'bubble') this.wrap(target);
     else if (kind === 'paper') {
       for (let i = 0; i < PAPER.hits; i += 1) this.hit(target);
@@ -849,6 +868,53 @@ export class Flight {
       going.dodgeLeft = this.levelRules.dodgeSeconds;
       this.pickWay(going, { dodging: true });
     }
+  }
+
+  /* ---------- a dogfight with friends ---------- */
+
+  /** A shot from this child's plane has got to a friend's. */
+  hitMate(mate) {
+    if (!this.dogfight || this.state !== 'flying' || !mate.live || mate.outLeft > 0) return;
+    mate.hitsTaken = (mate.hitsTaken ?? 0) + 1;
+    mate.hitLeft = 0.25;
+    this.stats.hits += 1;
+    this.emit('mate-hit', { mate });
+    if (mate.hitsTaken >= DOGFIGHT.hits) this.mateOut(mate, { mine: true });
+  }
+
+  /**
+   * A friend's plane is out of the fight for a moment: put out by this child's, mine, or by another friend's, as
+   * that friend's game says. Each child's own game counts what it does to the others.
+   */
+  mateOut(mate, { mine = false } = {}) {
+    if (!this.dogfight || mate.outLeft > 0) return;
+    mate.outLeft = DOGFIGHT.outSeconds;
+    mate.hitsTaken = 0;
+    if (mine) this.stats.dropped += 1;
+    this.emit('mate-out', { mate, mine, dropped: this.stats.dropped });
+    if (mine && this.left <= 0 && this.wonIn === null) this.wonIn = WON_AFTER;
+  }
+
+  /** A friend's game says it put this child's plane out: it trails smoke, and can't shoot or be shot, for a moment. */
+  knockedOut() {
+    if (!this.dogfight || this.state !== 'flying' || this.outLeft > 0) return;
+    this.outLeft = DOGFIGHT.outSeconds;
+    this.stats.hurts += 1;
+    this.shots = this.shots.filter(({ mine }) => !mine);
+    this.emit('out', {});
+  }
+
+  /** A friend got there first: the dogfight is over, and it's theirs. */
+  beaten() {
+    if (!this.dogfight || this.state !== 'flying') return;
+    this.lose();
+  }
+
+  /** Everyone else has gone: there's nobody left to fight, and the dogfight is this child's. */
+  walkover() {
+    if (!this.dogfight || this.state !== 'flying') return;
+    this.finish('won');
+    this.emit('won', { dropped: this.stats.dropped, walkover: true });
   }
 
   hurt() {
@@ -1107,7 +1173,7 @@ export class Flight {
     const view = this.view;
     let found = null;
     let nearest = Infinity;
-    for (const enemy of this.flying) {
+    for (const enemy of this.targets) {
       const { angle, away } = this.offAim(enemy, view);
       if (away <= RANGE * 1.3 && angle < nearest) {
         found = enemy;
@@ -1214,7 +1280,8 @@ export class Flight {
     this.watchBehind();
     this.moveGift(dt);
     this.usePower(dt);
-    for (const mate of this.mates) this.mateFires(mate, dt);
+    if (this.dogfight) this.countOut(dt);
+    else for (const mate of this.mates) this.mateFires(mate, dt);
 
     this.locked = resting ? null : this.findTarget();
     this.setFiring(Boolean(this.locked));
@@ -1231,6 +1298,15 @@ export class Flight {
         this.emit('won', { dropped: this.stats.dropped });
       }
     }
+  }
+
+  /** A dogfight: planes that are out come back into it. */
+  countOut(dt) {
+    if (this.outLeft > 0) {
+      this.outLeft = Math.max(0, this.outLeft - dt);
+      if (this.outLeft === 0) this.emit('back', {});
+    }
+    for (const mate of this.mates) if (mate.outLeft > 0) mate.outLeft = Math.max(0, mate.outLeft - dt);
   }
 
   /** What's already in the air when it's all over just carries on, and harms nobody. */

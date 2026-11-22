@@ -429,3 +429,6 @@ fieldset:has(input[name='hands']) { display: none; }
   font-weight: 700;
   white-space: nowrap;
 }
+
+/* A dogfight with friends: no pirates fire, so there are no hearts to lose. */
+body[data-dogfight] .sky-hearts { display: none; }

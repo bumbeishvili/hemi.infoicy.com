@@ -1343,3 +1343,76 @@ test('on Medium and Tough, level 10 leaves about half the time between hunts, an
   const { flight } = flying({ level: 'medium', levelNumber: 10 });
   assert.deepEqual(flight.huntEvery, LEVELS.medium.huntEvery.map((seconds) => seconds * 0.5));
 });
+
+/* ---------- against friends: a dogfight in the same sky ---------- */
+
+/** A friend's plane as main.js keeps it, held in front of the child's, as each frame puts it where their game says. */
+function friendInFront(flight, ahead = 120) {
+  const mate = { friend: { id: 'ben', slot: 1, spec: { id: 'mochi' } }, x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0, live: true, seen: true, outLeft: 0, hitsTaken: 0 };
+  flight.mates = [mate];
+  const keep = () => {
+    const { forward, view } = flight;
+    Object.assign(mate, { x: view.eye.x + forward.x * ahead, y: view.eye.y + forward.y * ahead, z: view.eye.z + forward.z * ahead });
+    return { out: true };
+  };
+  keep();
+  return { mate, keep };
+}
+
+test('against friends it\'s a dogfight: no pirates and no gift boxes, and a friend\'s plane in the ring is fired at', async () => {
+  const { DOGFIGHT } = await import('../../games/sky-wings/flight.js');
+  const { flight, events } = flying({ dogfight: true, planes: 3 });
+  fly(flight, 20);
+  assert.equal(flight.enemies.length, 0, 'no pirates come');
+  assert.equal(flight.gift, null, 'and no gift boxes');
+  const { mate, keep } = friendInFront(flight);
+  fly(flight, 3, keep);
+  // Enough hits put the friend's plane out for a moment, counted as this child's, and it can't be hit while it's out.
+  const outs = named(events, 'mate-out');
+  assert.equal(outs.length, 1);
+  assert.deepEqual([outs[0].mine, outs[0].dropped, flight.stats.dropped], [true, 1, 1]);
+  assert.ok(named(events, 'mate-hit').length >= DOGFIGHT.hits);
+  assert.ok(mate.outLeft > 0 && mate.outLeft <= DOGFIGHT.outSeconds);
+  assert.equal(flight.findTarget(), null, 'out of the fight, it isn\'t fired at');
+  // Back in it once it's had its moment, and it can be put out again.
+  fly(flight, DOGFIGHT.outSeconds + 3, keep);
+  assert.equal(named(events, 'mate-out').length, 2);
+  assert.equal(flight.state, 'flying');
+});
+
+test('in a dogfight the first to put friends out as many times as the planes to drop wins, and a friend who gets there first wins it', async () => {
+  const { DOGFIGHT } = await import('../../games/sky-wings/flight.js');
+  const first = flying({ dogfight: true, planes: 3 });
+  const { keep } = friendInFront(first.flight);
+  for (let t = 0; t < 60 && first.flight.state === 'flying'; t += 1) fly(first.flight, 1, keep);
+  assert.equal(first.flight.state, 'won');
+  assert.equal(first.flight.stats.dropped, 3);
+  assert.equal(named(first.events, 'won').length, 1);
+  // A friend's game said they got there first: it's theirs, and that's a loss, kindly.
+  const second = flying({ dogfight: true, planes: 3 });
+  second.flight.beaten();
+  assert.equal(second.flight.state, 'lost');
+  assert.equal(named(second.events, 'lost').length, 1);
+  // Put out by a friend: no firing and no being fired at for a moment, then back in it.
+  const third = flying({ dogfight: true, planes: 3 });
+  const { mate, keep: hold } = friendInFront(third.flight);
+  third.flight.knockedOut();
+  assert.equal(third.flight.outLeft, DOGFIGHT.outSeconds);
+  fly(third.flight, 1, hold);
+  assert.equal(third.flight.findTarget(), null);
+  assert.equal(mate.hitsTaken, 0);
+  fly(third.flight, DOGFIGHT.outSeconds, hold);
+  assert.equal(third.flight.outLeft, 0);
+  assert.equal(named(third.events, 'back').length, 1);
+  assert.ok(third.flight.findTarget() === mate || mate.outLeft > 0);
+  // Everyone else gone: it's this child's.
+  const fourth = flying({ dogfight: true, planes: 3 });
+  fourth.flight.walkover();
+  assert.equal(fourth.flight.state, 'won');
+  // And none of it happens against the pirates.
+  const alone = flying({ planes: 3 });
+  alone.flight.knockedOut();
+  alone.flight.beaten();
+  assert.equal(alone.flight.outLeft, 0);
+  assert.equal(alone.flight.state, 'flying');
+});
