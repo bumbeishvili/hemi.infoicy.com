@@ -59,6 +59,18 @@ export function sliceOf(index, count) {
   return { from: (count - 1 - index) / count, to: (count - index) / count };
 }
 
+/**
+ * How big the picture this game's player sees themselves in is: its own window, except in a seat whose game goes on
+ * under the one picture two share on one screen (see core/one-picture.js), where they're in the first seat's game,
+ * as big as that is, which is the whole page once it has spread over it. A game that works out where things are from
+ * the size of its screen can lay them out at that size, so its player's hand is where the other game shows it.
+ */
+export function pictureSize() {
+  const under = SEAT && globalThis.document?.documentElement.dataset.picture === 'under';
+  const shown = (under && globalThis.parent.document.querySelector('iframe.seat')?.contentWindow) || globalThis;
+  return { width: shown.innerWidth, height: shown.innerHeight };
+}
+
 /** Where a seat's player stands, in words. */
 export const placeOf = (index) => ['on the left', 'on the right'][index] ?? '';
 

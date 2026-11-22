@@ -14,6 +14,7 @@
 // With friends, it's the same garden on everyone's screen, and each friend's glove is in it in light grey,
 // carrying whatever spider it caught: see setShared, and friends.js for how it's shared.
 import { Glove, INK, SECOND_PLAYER, inOnePicture, secondPlayerLook } from '../../core/glove.js';
+import { pictureSize } from '../../core/seat.js';
 import { acrossGardens, answerFor, catchKey, homeBits, placeRandom, readFriend, readKey } from './friends.js';
 import {
   BASKET_HOLDS, BERRY, BUTTERFLY, CATCH_REACH, CHEST_BERRIES, CHEST_SECONDS, Catching, DASH, GOLDEN_BERRIES, SLEEP_MOST,
@@ -317,13 +318,19 @@ export class Garden {
     this.resize();
   }
 
+  /**
+   * The garden is as big as the picture its player sees it in. Two on one screen in one picture, the second player's
+   * game goes on under the first one's, in a window half as wide, and its garden is laid out as big as the first
+   * one's, which the player sees: otherwise its web would be somewhere else, and they'd open their hand at the web they
+   * see and their spider would only go back to playing. See pictureSize in core/seat.js. The canvases are as big as
+   * the window, and show as much of the garden as fits in it.
+   */
   resize() {
-    this.width = window.innerWidth;
-    this.height = window.innerHeight;
+    ({ width: this.width, height: this.height } = pictureSize());
     this.ratio = Math.min(window.devicePixelRatio || 1, 2);
     for (const canvas of [this.backdropCanvas, this.canvas]) {
-      canvas.width = Math.round(this.width * this.ratio);
-      canvas.height = Math.round(this.height * this.ratio);
+      canvas.width = Math.round(window.innerWidth * this.ratio);
+      canvas.height = Math.round(window.innerHeight * this.ratio);
     }
     this.palmSize = Math.max(44, this.height * PALM_SHARE);
     this.scenes = {};
@@ -620,6 +627,9 @@ export class Garden {
   }
 
   update(dt, snapshot, { aspect = this.aspect, playing = false, showHands = false } = {}) {
+    // A seat's game going under the one picture two share on one screen, or coming back out, is laid out again.
+    const { width, height } = pictureSize();
+    if (width !== this.width || height !== this.height) this.resize();
     this.time += dt;
     // With friends, the spiders go round by the clock every friend's game has, so they're in step on every screen.
     this.playTime = this.shared ? this.shared.clock() : this.playTime + dt * this.slow;

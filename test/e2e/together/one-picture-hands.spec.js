@@ -163,3 +163,100 @@ for (const game of Object.keys(SHARED)) {
     await page.screenshot({ path: `test-results/screens/one-picture-${game}-closed.png` });
   });
 }
+
+/* ---------- Spider Catcher: home at the web each player sees ---------- */
+
+/**
+ * Each player's hand, as both seats' cameras show it, open or a fist. Given somewhere to go, it's moved a little each
+ * moment until the player's glove is there in their own game: by a spider, given its index, or at 'web', where the
+ * web they see in the one picture is in their game. Each hand stays in its own player's half of the picture.
+ */
+const steering = (page) => page.evaluate(() => {
+  const seats = () => [...document.querySelectorAll('iframe.seat')].map((seat) => seat.contentWindow);
+  const hands = [0.25, 0.75].map((x) => ({ name: 'open', side: 'right', x, y: 0.5, scale: 0.75 }));
+  const show = () => {
+    for (const seat of seats()) seat.__camera.showHands(hands.map((hand) => ({ ...hand })), { sameHand: true });
+  };
+  let timer = 0;
+  window.__hand = (player, name, to = null) => {
+    clearInterval(timer);
+    hands[player].name = name;
+    show();
+    if (to === null) return;
+    timer = setInterval(() => {
+      const own = seats()[player].__game.garden;
+      const glove = own.gloves[own.side];
+      const shown = seats()[0].__game.garden;
+      const web = shown.toCommon(shown.web.x, shown.web.y);
+      const target = to === 'web' ? own.fromCommon(web.x, web.y) : own.spiders.find((spider) => spider.index === to);
+      if (glove.visible && target) {
+        const [from, upTo] = player ? [0.5, 1] : [0, 0.5];
+        hands[player].x = Math.min(upTo, Math.max(from, hands[player].x + ((target.x - glove.x) / own.width) * 0.12));
+        hands[player].y += ((target.y - glove.y) / own.height) * 0.25;
+      }
+      show();
+    }, 70);
+  };
+  show();
+});
+
+const handIs = (page, player, name, to = null) => page.evaluate(([who, shape, where]) => window.__hand(who, shape, where), [player, name, to]);
+
+/** In a seat's game: which spider the glove holds, how many its player has brought home, and how one spider is. */
+const caught = (seat, index) => seat.evaluate((which) => {
+  const { garden } = window.__game;
+  return { holding: garden.holding?.index ?? null, mine: garden.mine, state: garden.spiders.find((spider) => spider.index === which)?.state ?? 'gone' };
+}, index);
+
+/** How far from the web a player's glove is in the one picture, the first player's game, in the web's reach. */
+const offWeb = (left, player) => left.evaluate((which) => {
+  const { garden } = window.__game;
+  const glove = which ? garden.friendsGloves[0]?.glove : garden.gloves[garden.side];
+  return glove?.visible ? Math.hypot(glove.x - garden.web.x, glove.y - garden.web.y) / garden.web.reach : 99;
+}, player);
+
+test('spider-catcher: in one picture, each player catches a spider and opens their hand at the web they see, and it goes home', async ({ page }) => {
+  test.setTimeout(240_000);
+  const seats = await openTogether(page, 'spider-catcher');
+  const [left] = seats;
+  await steering(page);
+  for (const seat of seats) await seat.locator('#start').click();
+  for (const seat of seats) await waitForScreen(seat, 'playing');
+  await expect(page.locator('#seats')).toHaveAttribute('data-view', 'one');
+  const { width } = page.viewportSize();
+  await expect.poll(async () => (await page.locator('iframe.seat').nth(0).boundingBox()).width, { timeout: 5000 }).toBe(width);
+
+  for (const [player, own] of seats.entries()) {
+    // The spiders held still, in the same places in both games, so a hand can be put on one.
+    await expect.poll(() => own.evaluate(() => window.__game.garden.spiders.some((spider) => window.__game.garden.catchable(spider))), { timeout: 15_000 }).toBe(true);
+    for (const seat of seats) await seat.evaluate(() => window.__game.garden.spiders.forEach((spider) => { spider.path.rate = 0; }));
+    const spider = await own.evaluate(() => window.__game.garden.spiders.find((each) => window.__game.garden.catchable(each)).index);
+
+    // An open hand onto it, which closes.
+    await handIs(page, player, 'open', spider);
+    await expect.poll(() => own.evaluate((index) => {
+      const { garden } = window.__game;
+      const glove = garden.gloves[garden.side];
+      const it = garden.spiders.find((each) => each.index === index);
+      return glove.visible && Math.hypot(glove.x - it.x, glove.y - it.y) < 20;
+    }, spider), { timeout: 30_000 }).toBe(true);
+    await page.waitForTimeout(400);
+    await handIs(page, player, 'fist', spider);
+    await expect.poll(async () => (await caught(own, spider)).holding, { timeout: 15_000 }).toBe(spider);
+
+    // To the web, as the player sees it: their glove is on it in the one picture, the second player's in blue.
+    await handIs(page, player, 'fist', 'web');
+    await expect.poll(() => offWeb(left, player), { timeout: 20_000 }).toBeLessThan(0.5);
+    await page.waitForTimeout(600);
+    expect(await offWeb(left, player)).toBeLessThan(0.5);
+
+    // Opening the hand there lets the spider into the web, and it's that player's. The other game hears of it as the
+    // next word from this one comes.
+    await handIs(page, player, 'open');
+    await expect.poll(async () => (await caught(own, spider)).mine, { timeout: 10_000 }).toBe(1);
+    for (const seat of seats) await expect.poll(async () => ['landing', 'home'].includes((await caught(seat, spider)).state), { timeout: 5000 }).toBe(true);
+  }
+  // One each, in the scores both read.
+  await expect.poll(() => left.evaluate(() => [window.__game.garden.mine, window.__game.game.friendsGloves[0]?.n])).toEqual([1, 1]);
+  await page.screenshot({ path: 'test-results/screens/one-picture-spider-catcher-home.png' });
+});
