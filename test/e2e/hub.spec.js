@@ -30,6 +30,7 @@ const GAMES = [
   { name: 'Giraffe’s World Tour', folder: 'world-tour', start: 'Start the tour' },
   { name: 'Swamp Splash', folder: 'swamp-splash', start: 'Choose your jumper' },
   { name: 'Hat Chase', folder: 'hat-chase', start: 'Choose your walker' },
+  { name: 'Giraffe’s Riddle Doors', folder: 'riddle-doors', start: 'Open the doors' },
 ];
 
 test('the hub offers every game, and each one opens and comes back', async ({ page }) => {

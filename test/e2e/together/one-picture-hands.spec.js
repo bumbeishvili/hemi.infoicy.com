@@ -14,11 +14,12 @@ const SHARED = {
   'giraffe-garden': ['.garden-hud .chip', '#garden-scores li', '#story', '.film'],
   'giraffe-puzzles': ['.puzzle-hud .chip', '#puzzle-scores li', '#story', '.film'],
   'giraffe-paint': ['.paint-hud .chip', '#paint-scores li', '#story', '.film'],
+  'riddle-doors': ['.doors-hud .chip', '#door-scores li', '#story', '.film'],
 };
 
 // The games whose friends' gloves are open or closed as their hands are: in the others a friend's glove only ever holds
 // something, the can or the brush.
-const SHOWS_CLOSED = new Set(['balloon-pop', 'lighthouse', 'smoothie-stand', 'spider-catcher', 'giraffe-puzzles']);
+const SHOWS_CLOSED = new Set(['balloon-pop', 'lighthouse', 'smoothie-stand', 'spider-catcher', 'giraffe-puzzles', 'riddle-doors']);
 
 // A player's own things, as core/one-picture.js has them, with the hand meters one by one.
 const OWN = ['.camera-frame', '#prompt', '#coach', '.tally', '.hands-bar .meter', '[data-own]'];
@@ -50,6 +51,7 @@ const secondGlove = (seat, game) => seat.evaluate((name) => {
     'giraffe-garden': () => ({ view: it.view, each: it.friendCans[0] }),
     'giraffe-puzzles': () => ({ view: it.view, each: it.friendHands[0] }),
     'giraffe-paint': () => ({ view: it.view, each: it.friendBrushes[0], at: (each) => it.view.at(each.at.x, each.at.y) }),
+    'riddle-doors': () => ({ view: it.view, each: it.friendHands[0] }),
   }[name]();
   const { view, each } = find;
   if (!each?.glove.visible) return null;
@@ -79,6 +81,7 @@ const drawOrder = (seat, game) => seat.evaluate(async (name) => {
     'giraffe-garden': () => [it.gloves.right, it.friendCans[0].glove],
     'giraffe-puzzles': () => [it.gloves.right, it.friendHands[0].glove],
     'giraffe-paint': () => [it.gloves.right, it.friendBrushes[0].glove],
+    'riddle-doors': () => [it.gloves.right, it.friendHands[0].glove],
   };
   const [own, second] = pairs[name]();
   const order = [];

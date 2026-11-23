@@ -714,6 +714,18 @@ body.hub {
 .art-puzzle-gap { fill: none; stroke: rgb(18 48 77 / 0.4); stroke-width: 2; stroke-dasharray: 5 4; }
 .art-puzzle-cut { fill: none; stroke: rgb(18 48 77 / 0.35); stroke-width: 1.5; }
 .art-puzzle-edge { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
+.game-art-doors { background: #c9d6e3; }
+.art-door-floor { fill: #b98b5e; }
+.art-door-shelf { fill: #e2c193; stroke: #a8683a; stroke-width: 3; }
+.art-door-wood { fill: #a8683a; stroke: var(--ink); stroke-width: 3; }
+.art-door-paper { fill: #fff8e8; stroke: var(--ink); stroke-width: 2; }
+.art-door-cell { fill: #fff; stroke: rgb(18 48 77 / 0.3); stroke-width: 1; }
+.art-door-gap { fill: rgb(18 48 77 / 0.06); stroke: rgb(18 48 77 / 0.55); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.art-door-red { fill: #e63946; stroke: var(--ink); stroke-width: 1.2; }
+.art-door-blue { fill: #3a86ff; stroke: var(--ink); stroke-width: 1.2; stroke-linejoin: round; }
+.art-door-green { fill: #2a9d4b; stroke: var(--ink); stroke-width: 1.2; }
+.art-door-tile { fill: #fffdf6; stroke: var(--ink); stroke-width: 2; }
+.art-door-held { fill: none; stroke: #3ddc84; stroke-width: 5; }
 /* Mighty Lift's picture. */
 .game-art-lift { background: linear-gradient(#7cc8ff, #e4f6ff 70%); }
 .art-lift-hill { fill: #7bd65b; }

@@ -13,7 +13,7 @@ import { COMES_BACK_WITHIN_MS, idFor, mostIn, RaceRoom, takeOver, validCode } fr
 // Only the games' own pages may use it.
 const ALLOWED_ORIGINS = ['https://hemi.infoicy.com', 'http://localhost:8642', 'http://127.0.0.1:8642'];
 // The games with rooms of their own. High Five Racers' are just the code, as they came first.
-const GAMES = ['sky-wings', 'balloon-pop', 'mighty-moves', 'bounce-back', 'leap-trail', 'giraffe-maze', 'lighthouse', 'smoothie-stand', 'cannon-bay', 'spider-catcher', 'tank-patrol', 'giraffe-garden', 'frost-arena', 'arrow-meadow', 'giraffe-puzzles', 'chick-flap', 'mighty-lift', 'gobble-grow', 'giraffe-paint', 'moto-mountain', 'rooftop-rope'];
+const GAMES = ['sky-wings', 'balloon-pop', 'mighty-moves', 'bounce-back', 'leap-trail', 'giraffe-maze', 'lighthouse', 'smoothie-stand', 'cannon-bay', 'spider-catcher', 'tank-patrol', 'giraffe-garden', 'frost-arena', 'arrow-meadow', 'giraffe-puzzles', 'chick-flap', 'mighty-lift', 'gobble-grow', 'giraffe-paint', 'moto-mountain', 'rooftop-rope', 'riddle-doors'];
 
 export default {
   async fetch(request, env) {

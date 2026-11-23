@@ -1,7 +1,7 @@
 // Playing with friends, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's
 // Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the Lighthouse Keeper, Giraffe's Garden, Frost
-// Arena, Arrow Meadow, Giraffe's Puzzles, Flap, Little Chick!, Mighty Lift, Gobble and Grow, Giraffe's Paint Box and
-// Moto Mountain: who's in a room, and what they pass to each other.
+// Arena, Arrow Meadow, Giraffe's Puzzles, Flap, Little Chick!, Mighty Lift, Gobble and Grow, Giraffe's Paint Box,
+// Moto Mountain, Rooftop Rope and Giraffe's Riddle Doors: who's in a room, and what they pass to each other.
 // The same rules run on Cloudflare (server/worker.js) and on this computer for the tests
 // (tools/race-server.mjs). Each game has rooms of its own. Nothing here is kept once everyone has gone, and no
 // camera picture ever comes here: only where each car or plane is, the moves a fighter makes and how it stands,
@@ -94,7 +94,10 @@
 //                                      piece's number times 1000, plus which grab of it this is), or -1, n how many
 //                                      pieces they've put in place, and d each piece they were the last to hold, as
 //                                      [claim, x, y, angle, placed]. Everyone lays the same puzzle out from the seed,
-//                                      and claims each piece their open hand comes to. It's passed on to the others
+//                                      and claims each piece their open hand comes to. It's passed on to the others.
+//                                      Giraffe's Riddle Doors sends the same, for its glove over the hall, the piece in
+//                                      it and the doors it has opened, with angle always 0, and claims a piece that
+//                                      didn't fit in the gap as 500000 plus the piece's number
 //   tank   { ms, x, z, h, a, s, n, r, o }   where their tank is in Tank Patrol, across and along the valley, which
 //                                      way it faces and its turret points, how fast it's going, how many shots it
 //                                      has fired, so the friend's game can show them coming, whether their child

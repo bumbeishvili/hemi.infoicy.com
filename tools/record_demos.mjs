@@ -821,6 +821,47 @@ const FILMS = {
       return { placed, pictures, picks, prizes };
     }),
   },
+  'riddle-doors': {
+    settings: { doorReach: 'lots', levels: { 'riddle-doors': 3 } },
+    css: '.camera-frame { --camera-small: 18vw !important; } .doors-film { display: none !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.62, sameHand: true }));
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 1200);
+    },
+    async play(page) {
+      // A moment to look at the riddle, and then the open hand goes to the piece that fits, settles on it, carries it
+      // to the gap and holds it there while the ring fills, and the door swings open: door after door, as a child
+      // who has worked each one out would.
+      await page.evaluate(() => new Promise((done) => {
+        let x = 0;
+        let y = 0;
+        const started = performance.now();
+        const timer = setInterval(() => {
+          const { game, doors, view, gloves } = window.__game;
+          const glove = gloves.right;
+          const at = game.gloveOnTable('right');
+          const wanted = at ? doors.wants(at) : null;
+          if (glove.visible && at && wanted) {
+            const to = view.at(wanted.x, wanted.y);
+            const from = view.at(at.x, at.y);
+            x = Math.max(-780, Math.min(240, x + ((to.x - from.x) / innerWidth) * 1280 * 0.05));
+            y = Math.max(-300, Math.min(260, y + ((to.y - from.y) / innerHeight) * 720 * 0.05));
+          }
+          window.__camera.show({ left: null, right: 'open', scale: 0.62, sameHand: true, rightOffsetX: x, rightOffsetY: y });
+          if (performance.now() - started > 16_000) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { opened, firstTry, wrong, picks } = window.__game.doors.stats;
+      return { opened, firstTry, wrong, picks };
+    }),
+  },
   'chick-flap': {
     settings: { levels: { 'chick-flap': 6 } },
     css: '.camera-frame { --camera-small: 24vw !important; }',

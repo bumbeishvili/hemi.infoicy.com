@@ -8,7 +8,7 @@ export { expect, test };
 const fakeCamera = fileURLToPath(new URL('../fake-camera.js', import.meta.url));
 
 /** The games that can be played with friends, and so on a split screen, by their folders. */
-export const GAMES = ['high-five-racers', 'sky-wings', 'balloon-pop', 'mighty-moves', 'bounce-back', 'leap-trail', 'giraffe-maze', 'lighthouse', 'smoothie-stand', 'cannon-bay', 'spider-catcher', 'tank-patrol', 'giraffe-garden', 'frost-arena', 'arrow-meadow', 'giraffe-puzzles', 'chick-flap', 'mighty-lift', 'gobble-grow', 'giraffe-paint', 'moto-mountain', 'rooftop-rope'];
+export const GAMES = ['high-five-racers', 'sky-wings', 'balloon-pop', 'mighty-moves', 'bounce-back', 'leap-trail', 'giraffe-maze', 'lighthouse', 'smoothie-stand', 'cannon-bay', 'spider-catcher', 'tank-patrol', 'giraffe-garden', 'frost-arena', 'arrow-meadow', 'giraffe-puzzles', 'chick-flap', 'mighty-lift', 'gobble-grow', 'giraffe-paint', 'moto-mountain', 'rooftop-rope', 'riddle-doors'];
 
 /** The seats of the page, left to right, once there are so many. */
 export async function seatsOf(page, players) {

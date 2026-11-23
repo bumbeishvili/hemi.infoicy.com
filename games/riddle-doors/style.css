@@ -1,0 +1,202 @@
+/* Giraffe's Riddle Doors: the hall fills the screen under a band along the top, with the doors opened, the candles
+   and the stars on the left, Giraffe's words in the middle, and the hand meter and the mirror on the right, so nothing
+   sits over the pieces. main.js works out the same band, and says where the little film and the prompts go. */
+:root {
+  --meter-size: clamp(66px, 7vw, 92px);
+  --camera-small: clamp(140px, 15vw, 230px);
+  --film-left: 16px;
+  --film-top: 70vh;
+  --film-width: 150px;
+  --prompt-top: 150px;
+  --prompt-wide: 46vw;
+  --prompt-band-top: 66px;
+  --prompt-band-left: 50vw;
+  --prompt-band-wide: 40vw;
+}
+
+/* The mirror, in the top right corner, by the gear. */
+body:not([data-screen='check']) .camera-frame { left: auto; right: 70px; transform: none; }
+
+/* The hand meter, beside the mirror. */
+.hands-bar {
+  top: 12px;
+  bottom: auto;
+  left: auto;
+  right: calc(70px + var(--camera-small) + 12px);
+  transform: none;
+}
+body[data-screen='check'] .hands-bar { top: auto; bottom: 10px; left: 50%; right: auto; transform: translateX(-50%); }
+.meter { padding: 6px 6px 4px; border-radius: 20px; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* ---------- the doors opened, the candles and the stars ---------- */
+.doors-hud {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  top: 12px;
+  left: 12px;
+  align-items: center;
+  gap: 8px;
+}
+body[data-screen='playing'] .doors-hud,
+body[data-screen='countdown'] .doors-hud { display: flex; }
+.doors-hud .chip { min-width: clamp(64px, 7vw, 96px); padding: 4px 10px 6px; }
+.doors-hud .chip[hidden] { display: none; }
+.chip-doors .chip-label::before { content: '🚪 '; }
+.chip-prizes .chip-label::before { content: '⭐ '; }
+/* Each candle still lit, and those blown out, grey and faded. */
+.candles { display: flex; gap: 3px; align-items: flex-end; height: clamp(22px, 2.2vw, 30px); }
+.candle { height: 100%; width: auto; }
+.candle-wax { fill: #fff3d6; stroke: var(--ink); stroke-width: 1.5; transition: fill 0.8s ease; }
+.candle-flame { fill: #ffb703; stroke: #e8743b; stroke-width: 1.2; transition: opacity 0.8s ease; }
+.candle-smoke { fill: none; stroke: #9aa8b6; stroke-width: 1.4; stroke-linecap: round; opacity: 0; transition: opacity 0.8s ease; }
+.candle.is-out .candle-wax { fill: #c9d1da; }
+.candle.is-out .candle-flame { opacity: 0; }
+.candle.is-out .candle-smoke { opacity: 0.9; }
+.finish-prizes { margin: 0; font-size: clamp(20px, 2.4vw, 28px); font-weight: 600; }
+.finish-prizes:empty { display: none; }
+
+/* ---------- Giraffe's words, in the middle of the band ---------- */
+.story {
+  top: 12px;
+  left: 50%;
+  transform: translateX(-62%);
+  width: min(30vw, 360px);
+}
+/* With friends, they're along the top after the tally, so his words go a little further over to make room. */
+body[data-friends-race] .story { transform: translateX(-40%); }
+
+/* What the child is asked for goes in the band, between the tally and the hand meter, so it's never over the table.
+   While Giraffe's words are there, or when there's no room, as with a long row of friends, it goes just under the
+   band instead, between the two shelves, small enough to fit there, so it still hides no piece. main.js says how much
+   room there is in each place. */
+body[data-screen='playing'] .prompt {
+  top: var(--prompt-band-top);
+  left: var(--prompt-band-left);
+  transform: translate(-50%, -50%);
+  max-width: var(--prompt-band-wide);
+  padding: 6px 18px 7px;
+  font-size: clamp(16px, 1.9vw, 26px);
+}
+body[data-screen='playing'][data-prompt='table'] .prompt,
+body[data-screen='playing']:has(.story.is-visible) .prompt {
+  top: var(--prompt-top);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: var(--prompt-wide);
+}
+
+/* ---------- a little film: an open hand goes to a piece on the shelf, and holds it in the gap in the door ---------- */
+.doors-film { left: var(--film-left); top: var(--film-top); bottom: auto; width: var(--film-width); min-width: 0; border-width: 4px; border-radius: 18px; }
+.film-shelf { fill: #e2c193; stroke: #a8683a; stroke-width: 3; }
+.film-door { fill: #a8683a; stroke: var(--ink); stroke-width: 3; }
+.film-paper { fill: #fff8e8; stroke: var(--ink); stroke-width: 1.5; }
+.film-red { fill: #e63946; stroke: var(--ink); stroke-width: 2; }
+.film-blue { fill: #3a86ff; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+.film-gap { fill: none; stroke: rgb(18 48 77 / 0.45); stroke-width: 2; stroke-dasharray: 5 4; }
+.film-piece { fill: #fffdf6; stroke: var(--ink); stroke-width: 2.5; }
+.film-hand rect { fill: #3ddc84; stroke: var(--ink); stroke-width: 3; }
+.film-finger-ink { fill: none; stroke: var(--ink); stroke-width: 12; stroke-linecap: round; }
+.film-finger { fill: none; stroke: #3ddc84; stroke-width: 6.5; stroke-linecap: round; }
+.film-ring { fill: none; stroke: #3ddc84; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 170; transform: rotate(-90deg); transform-origin: 180px 100px; }
+
+/* The piece waits on the shelf, goes across with the hand, is held in the gap while a ring fills, and stays in. */
+.film-carry { animation: film-carry 6s ease-in-out infinite; }
+/* The hand comes to the piece, stays on it all the way, and goes off once it's in. */
+.film-hand { animation: film-hand 6s ease-in-out infinite; }
+.film-ring { animation: film-ring 6s linear infinite; }
+
+@keyframes film-carry {
+  0%, 24% { transform: translate(35px, 80px); opacity: 1; }
+  52%, 90% { transform: translate(180px, 100px); opacity: 1; }
+  96% { transform: translate(180px, 100px); opacity: 0; }
+  97% { transform: translate(35px, 80px); opacity: 0; }
+  100% { transform: translate(35px, 80px); opacity: 1; }
+}
+
+@keyframes film-hand {
+  0% { transform: translate(52px, 46px); }
+  18%, 70% { transform: translate(0, 6px); }
+  86%, 100% { transform: translate(-80px, 40px); }
+}
+
+@keyframes film-ring {
+  0%, 52% { stroke-dashoffset: 170; opacity: 0; }
+  53% { stroke-dashoffset: 170; opacity: 1; }
+  68% { stroke-dashoffset: 0; opacity: 1; }
+  76%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film-carry, .film-hand, .film-ring { animation-duration: 9s; }
+}
+
+/* ---------- with friends: everyone along the top, after the tally ---------- */
+.door-scores {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 29vw;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.door-scores[hidden] { display: none; }
+.door-scores li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 3px 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4px 14px rgba(18, 48, 77, 0.18);
+  font-size: clamp(13px, 1.3vw, 16px);
+  font-weight: 700;
+}
+.door-scores li.is-you { background: var(--sun); }
+.door-scores img { width: 28px; height: 28px; border-radius: 50%; background: var(--surface-soft); }
+.door-score-name { max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.door-score { margin-left: 2px; font-variant-numeric: tabular-nums; }
+.door-score-flag { font-size: 1.1em; line-height: 1; }
+
+/*
+ * Two in one picture on one screen (core/one-picture.js): each player's mirror and hand meter are at the inner side of
+ * their own half, by the middle of the band, with what they're asked under them, over the wall above the shelves, so
+ * the doors opened, the candles and the scores keep the left of the band, and Giraffe's words go to the right of it,
+ * up to the gear. What's asked is the size it is anywhere else, as there's room for it there. The rules under 'under'
+ * are for the second player's, in the game under the picture, where what isn't theirs is hidden, as it could show
+ * through with what is. The first player's are the mirror image of the second's, but for what they're asked, which
+ * keeps to its own side of the middle however long it is.
+ */
+html[data-picture='under'] body:not([data-screen='check']) .camera-frame { left: 12px; right: auto; }
+html[data-picture='under'] .hands-bar { left: calc(24px + var(--camera-small)); right: auto; }
+html[data-picture='under'] body[data-screen='playing'] .prompt,
+html[data-picture='under'] body[data-screen='playing']:is([data-prompt='table'], :has(.story.is-visible)) .prompt {
+  top: calc(30px + var(--camera-small) / var(--camera-aspect));
+  left: 12px;
+  transform: none;
+  max-width: calc(100vw - 24px);
+  padding: 10px 26px 12px;
+  font-size: clamp(22px, 3.3vw, 42px);
+}
+html[data-picture='under'] :is(.story, .doors-hud, .film) { display: none !important; }
+html[data-picture='one'] body[data-screen='playing'] .prompt,
+html[data-picture='one'] body[data-screen='playing']:is([data-prompt='table'], :has(.story.is-visible)) .prompt {
+  left: auto !important;
+  right: calc(50% + 15px) !important;
+  transform: none;
+  max-width: calc(50vw - 32px);
+  padding: 10px 26px 12px;
+  font-size: clamp(22px, 1.65vw, 42px);
+}
+/*
+ * The second player's meter ends 27px past the middle, after their mirror and meter, as big as in half the screen, and
+ * the first player's starts as far before it, so the doors opened, the candles and the scores keep clear of it.
+ */
+html[data-picture='one'] body .story {
+  left: calc(50% + 39px + clamp(140px, 7.5vw, 230px) + clamp(66px, 3.5vw, 92px));
+  transform: none;
+  width: min(30vw, 360px, calc(50vw - 107px - clamp(140px, 7.5vw, 230px) - clamp(66px, 3.5vw, 92px)));
+}
+html[data-picture='one'] .doors-hud { max-width: calc(50vw - 63px - clamp(140px, 7.5vw, 230px) - clamp(66px, 3.5vw, 92px)); }

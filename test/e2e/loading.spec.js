@@ -45,8 +45,8 @@ const sheetBar = (page) => page.evaluate(() => {
   return { track: parseFloat(track.width), fill: parseFloat(fill.width), moving: fill.animationName };
 }).catch(() => null);
 
-test('there are 28 games, and each has a test of its bar here', () => {
-  expect(GAMES.length).toBe(28);
+test('there are 29 games, and each has a test of its bar here', () => {
+  expect(GAMES.length).toBe(29);
   for (const game of Object.keys(BODY_START)) expect(GAMES).toContain(game);
 });
 

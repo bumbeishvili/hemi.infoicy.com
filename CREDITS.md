@@ -92,6 +92,8 @@ Swamp Splash has no sounds of its own either, only voices: it plays Spider Catch
 
 Hat Chase has no sounds of its own either, only voices: it plays Spider Catcher's `birds.ogg`, Leap Trail's `music.ogg`, `step-1.ogg`, `step-2.ogg`, `jump.ogg`, `land.ogg`, `slide.ogg` and `bump.ogg`, Robot Rescue's `boing.ogg`, the Long Walk Home's `crunch.ogg`, and Mighty Moves' `sparkle.ogg`, `whoosh-1.ogg`, `bell.ogg` and `cheer.ogg`, with the shared sounds in `core/audio/sfx/`. Its hills, path, magpie, hat, streams, branches, hedgehogs, stepping stones, springboards, bees, apple trees and golden feathers are original designs, made from simple shapes in the game's own code, and its walkers are the ten characters of `core/body/roster.js`, drawn flat from their 3D models, seen from the side.
 
+Giraffe's Riddle Doors has no sounds of its own either, only voices: it plays Spider Catcher's `birds.ogg` and `home.ogg`, Robot Rescue's `unlock.ogg` and `boing.ogg`, and Mighty Moves' `cheer.ogg`, `sparkle.ogg` and `whoosh-2.ogg`, with the shared sounds in `core/audio/sfx/`. Its hall, door, shelves, candles and riddles are original designs, made from simple shapes in the game's own code. The riddles are in the style of the matrix puzzles in intelligence tests, such as Raven's Progressive Matrices, but none is taken from any test: the game makes each one itself.
+
 The ten pictures in Giraffe's Paint Box are drawn by the game itself from simple shapes, and are original designs made for it. Its hidden friends are the computer's own emoji.
 
 The engine loop's CC-BY licence requires this credit to stay with the game: **"Car Engine Loop 96kHz, 4s" by qubodup, CC-BY 3.0, resampled and level adjusted.**

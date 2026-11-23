@@ -1,0 +1,8 @@
+[
+  {"id": "doors-intro", "text": "Each door is missing a piece. Which one fits?", "ka": "ყველა კარს ერთი ნაწილი აკლია. რომელი ერგება?", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "pick-hint", "text": "Pick up a piece with your open hand!", "ka": "გაშლილი ხელით აიღე ნაწილი!"},
+  {"id": "open-to-pick", "text": "Open your hand to pick up a piece!", "ka": "გაშალე ხელი, რომ ნაწილი აიღო!"},
+  {"id": "place-hint", "text": "Hold it in the gap in the door!", "ka": "მიიტანე და გააჩერე კარის ცარიელ ადგილას!"},
+  {"id": "look-row", "text": "Look along the row!", "ka": "კარგად დააკვირდი რიგს!"},
+  {"id": "all-open", "text": "Every door is open!", "ka": "ყველა კარი გაიღო!"}
+]

@@ -10,7 +10,7 @@ import { COMES_BACK_WITHIN_MS, idFor, mostIn, RaceRoom, takeOver, validCode } fr
 const PORT = Number(process.env.RACE_PORT ?? 8643);
 // The games' pages on this computer, on whichever port they're served from.
 const allowed = (origin) => /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin ?? '');
-const GAMES = ['sky-wings', 'balloon-pop', 'mighty-moves', 'bounce-back', 'leap-trail', 'giraffe-maze', 'lighthouse', 'smoothie-stand', 'cannon-bay', 'spider-catcher', 'tank-patrol', 'giraffe-garden', 'frost-arena', 'arrow-meadow', 'giraffe-puzzles', 'chick-flap', 'mighty-lift', 'gobble-grow', 'giraffe-paint', 'moto-mountain', 'rooftop-rope']; // As on Cloudflare: High Five Racers' rooms are just the code.
+const GAMES = ['sky-wings', 'balloon-pop', 'mighty-moves', 'bounce-back', 'leap-trail', 'giraffe-maze', 'lighthouse', 'smoothie-stand', 'cannon-bay', 'spider-catcher', 'tank-patrol', 'giraffe-garden', 'frost-arena', 'arrow-meadow', 'giraffe-puzzles', 'chick-flap', 'mighty-lift', 'gobble-grow', 'giraffe-paint', 'moto-mountain', 'rooftop-rope', 'riddle-doors']; // As on Cloudflare: High Five Racers' rooms are just the code.
 const MAGIC = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
 const rooms = new Map(); // code: { players: Set, rules }
