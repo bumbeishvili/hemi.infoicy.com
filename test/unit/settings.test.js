@@ -158,5 +158,5 @@ test('every game says which of its own settings go on at once, and each of them 
       assert.equal(/Friends$/.test(name), false, `${game}: ${name} needn't be listed`);
     }
   }
-  assert.equal(count, 29);
+  assert.equal(count, 30);
 });

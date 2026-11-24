@@ -1,0 +1,671 @@
+// Left, Right, Pop!: coloured circles come up all over the screen, and the game asks for one of them with one hand:
+// the red one with the left hand, say. An open hand pops a circle, but only the colour asked for, with the hand asked
+// for. The other hand on it only makes it wobble, and so does any hand on another colour. Telling left from right,
+// and using the hand that's asked for, the weaker one as often as the other, is what it practises.
+//
+// The rules are here, with no screen, so they run in the unit tests. main.js says where each glove is and whether its
+// hand is open, and view.js draws what this says. Places are in shares of the screen, x across from the left and y
+// down from the top, and sizes and distances are in screen heights.
+//
+// Each circle asked for waits so long, on a clock, and one that isn't popped in time fades away. Too many fading
+// away before enough are popped loses the game. The clock only runs while a hand that's asked for is in the picture,
+// so a child who goes away, or a hand the camera can't find, isn't caught out for it. A grown-up can choose Gentle
+// instead, which has no clock: each circle waits for as long as it takes, and nothing can be lost.
+import { clampLevel, ramp, rampWhole } from '../../core/levels.js';
+
+// The colours, and what they're called on the screen. The voice says which hand; the colour is shown.
+export const COLOURS = {
+  red: { fill: '#ef4136', name: 'Red', nameKa: 'წითელი' },
+  blue: { fill: '#2f6fe4', name: 'Blue', nameKa: 'ლურჯი' },
+  yellow: { fill: '#ffd60a', name: 'Yellow', nameKa: 'ყვითელი' },
+  green: { fill: '#22a94a', name: 'Green', nameKa: 'მწვანე' },
+  purple: { fill: '#9b5de5', name: 'Purple', nameKa: 'იისფერი' },
+  orange: { fill: '#ff8a1f', name: 'Orange', nameKa: 'ნარინჯისფერი' },
+};
+export const FIRST_COLOURS = ['red', 'blue', 'yellow', 'green'];
+export const MORE_COLOURS = ['purple', 'orange']; // From level 6.
+
+// Where the circles come, which is how far to reach, as a grown-up chooses: the part of the screen their middles are
+// in. The top of the screen is left for what's asked, the counts and the mirror.
+export const REACHES = {
+  close: { x: [0.26, 0.74], y: [0.34, 0.82] },
+  middle: { x: [0.16, 0.84], y: [0.31, 0.85] },
+  far: { x: [0.06, 0.94], y: [0.28, 0.88] },
+};
+export const REACH_NAMES = Object.keys(REACHES);
+export const GOAL_CHOICES = [8, 12, 16]; // Circles to pop to win.
+// Which hand is asked for, as a grown-up chooses: each as often as the other, the hand in play twice as often as the
+// other, or only the hand in play.
+export const HAND_MODES = ['even', 'more', 'only'];
+// What's at stake: circles on a clock that can fade away (the default), or the gentle game, with no clock.
+export const CLOCKS = ['clock', 'gentle'];
+// With the clock, the game is lost once this many circles have faded away: a share of the circles to pop, which goes
+// down from level 1 to level 10, and never fewer than least.
+export const FADE_LIMIT = { first: 0.5, last: 0.25, least: 2 };
+
+const FIRST_ASK_AFTER = 0.9; // Seconds after "Go!" before the first circle is asked for.
+export const NEXT_ASK_AFTER = 0.55; // And after a circle is popped or fades, time to see what happened.
+export const GROW_SECONDS = 0.35; // A new circle grows in, and can be popped once it's most of the way.
+export const POP_SECONDS = 0.3; // A popped circle's burst.
+export const FADE_SECONDS = 0.9; // A circle that wasn't popped in time fading away.
+export const HOLD_SECONDS = 0.4; // How long the open hand stays on a circle to hold, before it pops.
+const HOLD_DRAINS = 1.5; // How fast a circle to hold empties again, once the hand is off it.
+const WRONG_AGAIN_AFTER = 1.6; // Seconds before the other hand on the same circle counts again.
+const BUMP_AGAIN_AFTER = 0.9;
+const WOBBLE_SETTLES = 2.5; // How quickly a wobbling circle settles.
+export const PARTY_SECONDS = 1.4; // After the last pop, before the finish card.
+export const LOST_SECONDS = 1.6; // After the last fade that loses the game.
+const GAP = 0.035; // The least room between two circles, in screen heights.
+const RUN = { even: 2, more: 3, only: Infinity }; // The most times in a row one hand is asked for.
+
+// What the levels bring. Missing any of it never costs anything.
+export const EXTRAS = {
+  starEvery: 3, // From level 2, every third circle asked for has a star in it.
+  holdEvery: 3, // From level 4, every third has to be held a moment.
+  bothEvery: 3, // From level 5, every third turn asks for one circle with each hand.
+  bothLonger: 1.6, // How much longer a turn with both hands waits.
+  splitEvery: 4, // At level 10, every fourth circle asked for is big, and splits in two.
+  splitBigger: 1.45,
+  splitSmaller: 0.75,
+  splitApart: 0.17,
+  splitExtra: 3, // Seconds more on the clock for its two halves.
+  swapSeconds: 1.1, // How long two circles take to swap places, from level 7.
+  rainbowEvery: 15, // From level 8, now and then a rainbow circle that any open hand can pop, for a gem.
+  rainbowSeconds: 7,
+  cloudEvery: 17, // From level 9, a cloud drifts across now and then, and the circles behind it are hard to see.
+  cloudSeconds: 11,
+  cloudSize: 0.34,
+};
+
+/** How many circles fading away lose the game, at a level, with so many to pop. */
+export function fadesToLose(level, goal) {
+  return Math.max(FADE_LIMIT.least, Math.round(goal * ramp(level, FADE_LIMIT.first, FADE_LIMIT.last)));
+}
+
+/**
+ * What changes from level 1 to 10. Each level from 2 brings something new: see NEWS. gentle is the game with no clock.
+ */
+export function popLevel(level, { gentle = false } = {}) {
+  const at = clampLevel(level);
+  return {
+    level: at,
+    // More circles at once to look through: 3 at level 1, up to 6.
+    circles: rampWhole(at, 3, 6),
+    // A little smaller, so a little harder to get to.
+    radius: ramp(at, 0.105, 0.085),
+    // Seconds each circle asked for waits, at level 10 half of level 1's.
+    wait: gentle ? Infinity : ramp(at, 10, 5),
+    // How fast circles drift, in screen heights a second, from level 3.
+    speed: at >= 3 ? ramp(at, 0.03, 0.06) : 0,
+    // Seconds between two circles swapping places, from level 7.
+    swapEvery: at >= 7 ? 7 - (at - 7) * 0.6 : Infinity,
+    stars: at >= 2,
+    drifting: at >= 3,
+    hold: at >= 4,
+    both: at >= 5,
+    colours: at >= 6,
+    swap: at >= 7,
+    rainbow: at >= 8,
+    cloud: at >= 9,
+    split: at >= 10,
+  };
+}
+
+// What each level brings that's new, for the title card, the countdown and the finish card. key says which part of
+// popLevel turns it on, which the unit tests check.
+export const NEWS = {
+  2: [{ key: 'stars', mark: '⭐', name: 'Star circles', nameKa: 'ვარსკვლავიანი წრეები' }],
+  3: [{ key: 'drifting', mark: '🎈', name: 'Circles that drift', nameKa: 'მოცურავე წრეები' }],
+  4: [{ key: 'hold', mark: '🫧', name: 'Circles to hold', nameKa: 'წრეები, რომლებიც უნდა გააჩერო' }],
+  5: [{ key: 'both', mark: '🙌', name: 'Both hands at once', nameKa: 'ორივე ხელი ერთად' }],
+  6: [{ key: 'colours', mark: '🎨', name: 'Purple and orange', nameKa: 'იისფერი და ნარინჯისფერი' }],
+  7: [{ key: 'swap', mark: '🔄', name: 'Circles that swap places', nameKa: 'წრეები ადგილს იცვლიან' }],
+  8: [{ key: 'rainbow', mark: '🌈', name: 'The rainbow circle', nameKa: 'ცისარტყელას წრე' }],
+  9: [{ key: 'cloud', mark: '☁️', name: 'A passing cloud', nameKa: 'გამვლელი ღრუბელი' }],
+  10: [{ key: 'split', mark: '✂️', name: 'Big circles that split in two', nameKa: 'დიდი წრეები, რომლებიც ორად იყოფა' }],
+};
+
+export const popNewAt = (level) => NEWS[clampLevel(level)] ?? [];
+
+const other = (side) => (side === 'left' ? 'right' : 'left');
+const ease = (t) => t * t * (3 - 2 * t);
+
+export class PopRules {
+  /**
+   * goal is how many to pop, reach how far to reach, clock 'clock' or 'gentle', hands which hand is asked for (see
+   * HAND_MODES), side the hand in play, and aspect the screen's width over its height. random is for the tests.
+   */
+  constructor({ level = 1, goal = 12, reach = 'middle', clock = 'clock', hands = 'even', side = 'right', aspect = 16 / 9, random = Math.random, onEvent = () => {} } = {}) {
+    this.level = clampLevel(level);
+    this.gentle = clock === 'gentle';
+    this.plan = popLevel(this.level, { gentle: this.gentle });
+    this.goal = GOAL_CHOICES.includes(Number(goal)) ? Number(goal) : 12;
+    this.toLose = this.gentle ? Infinity : fadesToLose(this.level, this.goal);
+    this.reachName = REACH_NAMES.includes(reach) ? reach : 'middle';
+    this.area = REACHES[this.reachName];
+    this.mode = HAND_MODES.includes(hands) ? hands : 'even';
+    this.side = side === 'left' ? 'left' : 'right';
+    this.aspect = aspect;
+    this.random = random;
+    this.onEvent = onEvent;
+
+    this.phase = 'ready'; // 'ready' before the game starts, then 'play', and 'won' or 'lost' at the end.
+    this.done = false;
+    this.endIn = 0;
+    this.time = 0;
+    this.circles = [];
+    this.turn = null; // What's asked for now: { asks, wait, left }, each ask { id, hand, colour, circles, ... }.
+    this.askIn = Infinity;
+    this.nextId = 1;
+    this.asked = 0; // Circles asked for so far, for which have a star, or have to be held.
+    this.turns = 0;
+    this.singles = 0; // Turns with one hand asked for, for which circle is big and splits.
+    this.history = []; // The hands asked for, in order.
+    this.lastColour = null;
+    this.cloud = null;
+    this.swapIn = this.plan.swapEvery;
+    this.rainbowIn = EXTRAS.rainbowEvery;
+    this.cloudIn = EXTRAS.cloudEvery * 0.6;
+    this.stats = {
+      pops: 0,
+      faded: 0,
+      stars: 0,
+      gems: 0,
+      asked: { left: 0, right: 0 },
+      popped: { left: 0, right: 0 },
+      wrong: { left: 0, right: 0 }, // Times each hand tried a circle that was the other hand's.
+      seconds: { left: 0, right: 0 }, // Time from being asked to the pop, added up for each hand.
+    };
+    this.fill();
+  }
+
+  /* ---------- the circles ---------- */
+
+  get palette() {
+    return this.plan.colours ? [...FIRST_COLOURS, ...MORE_COLOURS] : FIRST_COLOURS;
+  }
+
+  /** The circles that are there to be popped: not popped, fading or gone. */
+  get live() {
+    return this.circles.filter((circle) => circle.state === 'growing' || circle.state === 'waiting');
+  }
+
+  /** The ordinary circles, which are what's asked for and what's kept on the screen. */
+  get plain() {
+    return this.live.filter((circle) => circle.kind === 'plain');
+  }
+
+  /** What's asked for now and hasn't been popped yet, in order: the left hand's first when both are asked. */
+  get asks() {
+    return this.turn ? this.turn.asks.filter((ask) => !ask.done) : [];
+  }
+
+  get current() {
+    return this.asks[0] ?? null;
+  }
+
+  /** How much of the clock is left for this turn, from 1 to 0, or null with no clock. */
+  get clockShare() {
+    if (!this.turn || !Number.isFinite(this.turn.wait)) return null;
+    return Math.max(0, this.turn.left / this.turn.wait);
+  }
+
+  gap(a, b) {
+    return Math.hypot((a.x - b.x) * this.aspect, a.y - b.y);
+  }
+
+  /** Keeps a circle's middle where the whole circle is in the area. */
+  clampInto(circle) {
+    const { x, y } = this.area;
+    const across = circle.r / this.aspect;
+    circle.x = Math.min(x[1] - across, Math.max(x[0] + across, circle.x));
+    circle.y = Math.min(y[1] - circle.r, Math.max(y[0] + circle.r, circle.y));
+  }
+
+  /**
+   * A place for a circle of radius r, never on top of another. The places are a grid, spread over where circles can
+   * be and nudged a little each time, so that there's room for all of a level's circles even where they only just
+   * fit, and a free place is taken at random. Failing that, the place with the most room.
+   */
+  place(r) {
+    const { x, y } = this.area;
+    const left = x[0] + r / this.aspect;
+    const right = Math.max(left, x[1] - r / this.aspect);
+    const top = y[0] + r;
+    const bottom = Math.max(top, y[1] - r);
+    const others = this.live;
+    const roomAt = (spot) => Math.min(Infinity, ...others.map((circle) => this.gap(spot, circle) - circle.r - r));
+    const step = 2 * r + GAP;
+    const across = Math.max(1, Math.floor(((right - left) * this.aspect) / step) + 1);
+    const down = Math.max(1, Math.floor((bottom - top) / step) + 1);
+    const spread = (from, to, count, index) => (count === 1 ? (from + to) / 2 : from + ((to - from) * index) / (count - 1));
+    const grid = [];
+    for (let i = 0; i < across; i += 1) for (let j = 0; j < down; j += 1) grid.push({ x: spread(left, right, across, i), y: spread(top, bottom, down, j) });
+    const free = grid.filter((spot) => roomAt(spot) >= GAP);
+    if (free.length) {
+      const spot = free[Math.floor(this.random() * free.length)];
+      // Nudged, if there's room for it, so the circles don't stand in rows.
+      const nudged = {
+        x: Math.min(right, Math.max(left, spot.x + ((this.random() - 0.5) * GAP * 2) / this.aspect)),
+        y: Math.min(bottom, Math.max(top, spot.y + (this.random() - 0.5) * GAP * 2)),
+      };
+      return roomAt(nudged) >= GAP ? nudged : spot;
+    }
+    let best = grid[0];
+    for (let tries = 0; tries < 60; tries += 1) {
+      const spot = { x: left + this.random() * (right - left), y: top + this.random() * (bottom - top) };
+      if (roomAt(spot) > roomAt(best)) best = spot;
+    }
+    return best;
+  }
+
+  /** A colour that isn't on the screen yet, if there is one, so that each colour is only there once. */
+  freeColour() {
+    const showing = new Set(this.plain.map((circle) => circle.colour));
+    const free = this.palette.filter((colour) => !showing.has(colour));
+    const from = free.length ? free : this.palette;
+    return from[Math.floor(this.random() * from.length)];
+  }
+
+  addCircle({ colour, r = this.plan.radius, kind = 'plain', at = null }) {
+    const spot = at ?? this.place(r);
+    const angle = this.random() * Math.PI * 2;
+    const circle = {
+      id: this.nextId++,
+      kind, // 'plain', 'half' (one of a split circle's two), or 'rainbow'
+      colour,
+      x: spot.x,
+      y: spot.y,
+      r,
+      state: 'growing',
+      age: 0,
+      endAge: 0,
+      vx: Math.cos(angle) * this.plan.speed,
+      vy: Math.sin(angle) * this.plan.speed,
+      wobble: 0,
+      bumpedAt: -Infinity,
+      ask: null,
+      star: false,
+      hold: false,
+      big: false,
+      holding: 0,
+      glide: null,
+    };
+    this.clampInto(circle);
+    this.circles.push(circle);
+    return circle;
+  }
+
+  /** Enough ordinary circles on the screen, each colour once. */
+  fill() {
+    while (this.plain.length < this.plan.circles) this.addCircle({ colour: this.freeColour() });
+  }
+
+  /* ---------- what's asked for ---------- */
+
+  begin() {
+    this.phase = 'play';
+    this.askIn = FIRST_ASK_AFTER;
+  }
+
+  /** The next hand to ask for: as the grown-up chose, and never the same hand too many times in a row. */
+  pickHand() {
+    if (this.mode === 'only') return this.side;
+    const share = this.mode === 'more' ? 2 / 3 : 1 / 2;
+    let hand = this.random() < share ? this.side : other(this.side);
+    const run = RUN[this.mode];
+    const recent = this.history.slice(-run);
+    if (recent.length === run && recent.every((each) => each === hand)) hand = other(hand);
+    return hand;
+  }
+
+  /** A circle to ask for, not the colour asked for last time if there's another. */
+  pickCircle(not = []) {
+    const choices = this.plain.filter((circle) => !not.includes(circle) && !circle.ask);
+    const fresh = choices.filter((circle) => circle.colour !== this.lastColour);
+    const from = fresh.length ? fresh : choices;
+    return from[Math.floor(this.random() * from.length)] ?? null;
+  }
+
+  newTurn() {
+    this.fill();
+    const { plan } = this;
+    const both = plan.both && this.mode !== 'only' && this.turns % EXTRAS.bothEvery === EXTRAS.bothEvery - 1 && this.plain.length >= 2;
+    const hands = both ? ['left', 'right'] : [this.pickHand()];
+    if (!both) this.singles += 1;
+    const asks = [];
+    const taken = [];
+    for (const hand of hands) {
+      const circle = this.pickCircle(taken);
+      if (!circle) break;
+      taken.push(circle);
+      this.asked += 1;
+      const ask = {
+        id: this.asked,
+        hand,
+        colour: circle.colour,
+        circles: [circle.id],
+        star: plan.stars && this.asked % EXTRAS.starEvery === 1,
+        hold: plan.hold && this.asked % EXTRAS.holdEvery === 2,
+        split: plan.split && !both && this.singles % EXTRAS.splitEvery === 3,
+        started: this.time,
+        wrongAt: -Infinity,
+        done: false,
+      };
+      circle.ask = ask.id;
+      circle.star = ask.star;
+      circle.hold = ask.hold;
+      if (ask.split) {
+        circle.big = true;
+        circle.r = plan.radius * EXTRAS.splitBigger;
+        this.clampInto(circle);
+      }
+      this.stats.asked[hand] += 1;
+      this.history.push(hand);
+      asks.push(ask);
+    }
+    if (!asks.length) {
+      this.askIn = NEXT_ASK_AFTER;
+      return;
+    }
+    this.lastColour = asks[asks.length - 1].colour;
+    const wait = plan.wait * (asks.length > 1 ? EXTRAS.bothLonger : 1);
+    this.turn = { asks, wait, left: wait };
+    this.turns += 1;
+    this.askIn = Infinity;
+    this.emit('ask', { asks });
+  }
+
+  /* ---------- each frame ---------- */
+
+  /**
+   * gloves is { left, right }, each { visible, open, x, y, reach(x, y) }: reach is how near the glove comes to a
+   * point, from its palm or a fingertip, in screen heights, and 0 or less is on it.
+   */
+  update(dt, { gloves = {} } = {}) {
+    this.time += dt;
+    this.animate(dt);
+    if (this.phase === 'won' || this.phase === 'lost') {
+      this.endIn -= dt;
+      if (this.endIn <= 0) this.done = true;
+      return;
+    }
+    if (this.phase !== 'play') return;
+
+    this.extras(dt);
+    const touched = new Set();
+    for (const side of ['left', 'right']) {
+      const glove = gloves[side];
+      if (!glove?.visible || !glove.open) continue;
+      for (const circle of this.live) {
+        if (circle.state === 'growing' && circle.age < GROW_SECONDS * 0.6) continue;
+        if (glove.reach(circle.x, circle.y) > circle.r) continue;
+        touched.add(circle);
+        this.touch(side, circle, dt);
+        if (this.phase !== 'play') return;
+      }
+    }
+    for (const circle of this.live) {
+      if (circle.hold && !touched.has(circle)) circle.holding = Math.max(0, circle.holding - dt * HOLD_DRAINS);
+    }
+
+    if (this.turn) {
+      // The clock only runs while a hand that's asked for is in the picture.
+      const seen = this.asks.some((ask) => gloves[ask.hand]?.visible);
+      if (seen) this.turn.left -= dt;
+      if (this.turn.left <= 0) this.timeUp();
+    } else if (Number.isFinite(this.askIn)) {
+      this.askIn -= dt;
+      if (this.askIn <= 0) this.newTurn();
+    }
+  }
+
+  /** An open hand on a circle. */
+  touch(side, circle, dt) {
+    if (circle.kind === 'rainbow') {
+      this.pop(circle, side);
+      this.stats.gems += 1;
+      this.emit('gem', { at: { x: circle.x, y: circle.y }, side });
+      return;
+    }
+    const ask = this.asks.find((each) => each.circles.includes(circle.id));
+    if (!ask) {
+      // Not a colour that's asked for: it just wobbles.
+      circle.wobble = Math.max(circle.wobble, 0.7);
+      if (this.time - circle.bumpedAt > BUMP_AGAIN_AFTER) {
+        circle.bumpedAt = this.time;
+        this.emit('bump', { circle, side });
+      }
+      return;
+    }
+    if (ask.hand !== side) {
+      // The colour asked for, with the other hand: it wobbles, and the hand that's asked for is said again.
+      circle.wobble = 1;
+      if (this.time - ask.wrongAt > WRONG_AGAIN_AFTER) {
+        ask.wrongAt = this.time;
+        this.stats.wrong[side] += 1;
+        this.emit('wrong-hand', { ask, side, circle });
+      }
+      return;
+    }
+    if (circle.hold && circle.holding < HOLD_SECONDS) {
+      circle.holding += dt;
+      if (circle.holding < HOLD_SECONDS) return;
+    }
+    if (circle.big) {
+      this.split(circle, ask);
+      return;
+    }
+    this.pop(circle, side);
+    if (ask.circles.every((id) => this.circles.find((each) => each.id === id)?.state === 'popped' || !this.circles.some((each) => each.id === id))) this.askDone(ask, side, circle);
+  }
+
+  pop(circle, side) {
+    circle.state = 'popped';
+    circle.endAge = 0;
+    this.emit('pop', { circle, side });
+  }
+
+  /** A big circle popped: two halves of the same colour come out of it, and both have to be popped. */
+  split(circle, ask) {
+    circle.state = 'popped';
+    circle.endAge = 0;
+    const r = this.plan.radius * EXTRAS.splitSmaller;
+    const halves = [-1, 1].map((way) => {
+      const half = this.addCircle({ colour: circle.colour, r, kind: 'half', at: { x: circle.x + (way * EXTRAS.splitApart) / this.aspect, y: circle.y } });
+      half.ask = ask.id;
+      half.state = 'waiting';
+      half.age = GROW_SECONDS;
+      half.vx = way * Math.max(this.plan.speed, 0.03);
+      half.vy = 0;
+      return half;
+    });
+    ask.circles = halves.map((half) => half.id);
+    if (Number.isFinite(this.turn.left)) this.turn.left += EXTRAS.splitExtra;
+    this.emit('split', { circle, halves });
+  }
+
+  askDone(ask, side, circle) {
+    ask.done = true;
+    const { stats } = this;
+    stats.pops += 1;
+    stats.popped[side] += 1;
+    stats.seconds[side] += this.time - ask.started;
+    if (ask.star) {
+      stats.stars += 1;
+      this.emit('star', { at: { x: circle.x, y: circle.y } });
+    }
+    this.emit('popped', { ask, side, at: { x: circle.x, y: circle.y } });
+    if (stats.pops >= this.goal) {
+      this.turn = null;
+      this.phase = 'won';
+      this.endIn = PARTY_SECONDS;
+      this.emit('won');
+      return;
+    }
+    if (!this.asks.length) this.endTurn();
+  }
+
+  /** The clock ran out: what's still asked for fades away. */
+  timeUp() {
+    const missed = this.asks;
+    for (const ask of missed) {
+      ask.done = true;
+      for (const circle of this.live) {
+        if (!ask.circles.includes(circle.id)) continue;
+        circle.state = 'fading';
+        circle.endAge = 0;
+      }
+    }
+    this.stats.faded += missed.length;
+    this.emit('faded', { asks: missed });
+    if (this.stats.faded >= this.toLose) {
+      this.turn = null;
+      this.phase = 'lost';
+      this.endIn = LOST_SECONDS;
+      this.emit('lost');
+      return;
+    }
+    this.endTurn();
+  }
+
+  endTurn() {
+    this.turn = null;
+    for (const circle of this.live) circle.ask = null;
+    this.fill();
+    this.askIn = NEXT_ASK_AFTER;
+  }
+
+  /** Circles growing, popping, fading, wobbling, drifting and swapping places. */
+  animate(dt) {
+    const drifting = this.plan.drifting && this.phase !== 'ready';
+    for (const circle of this.circles) {
+      circle.age += dt;
+      circle.wobble = Math.max(0, circle.wobble - dt * WOBBLE_SETTLES);
+      if (circle.state === 'growing' && circle.age >= GROW_SECONDS) circle.state = 'waiting';
+      if (circle.state === 'popped' || circle.state === 'fading') circle.endAge += dt;
+      if (circle.kind === 'rainbow' && circle.state === 'waiting' && circle.age > EXTRAS.rainbowSeconds) {
+        circle.state = 'fading';
+        circle.endAge = 0;
+      }
+      if (circle.glide) {
+        const { glide } = circle;
+        glide.t = Math.min(1, glide.t + dt / EXTRAS.swapSeconds);
+        const along = ease(glide.t);
+        circle.x = glide.from.x + (glide.to.x - glide.from.x) * along;
+        circle.y = glide.from.y + (glide.to.y - glide.from.y) * along;
+        if (glide.t >= 1) circle.glide = null;
+      } else if (drifting && (circle.state === 'waiting' || circle.state === 'growing')) {
+        this.drift(circle, dt);
+      }
+    }
+    this.circles = this.circles.filter((circle) => !((circle.state === 'popped' && circle.endAge > POP_SECONDS) || (circle.state === 'fading' && circle.endAge > FADE_SECONDS)));
+    if (drifting) this.keepApart();
+    if (this.cloud) {
+      this.cloud.x += this.cloud.way * dt * ((1 + 2 * EXTRAS.cloudSize) / EXTRAS.cloudSeconds);
+      if (this.cloud.x < -EXTRAS.cloudSize - 0.05 || this.cloud.x > 1 + EXTRAS.cloudSize + 0.05) this.cloud = null;
+    }
+  }
+
+  /** A circle drifting along, turning back at the edges of where circles can be. */
+  drift(circle, dt) {
+    if (circle.holding > 0) return; // A circle being held stays put.
+    circle.x += (circle.vx / this.aspect) * dt;
+    circle.y += circle.vy * dt;
+    const { x, y } = this.area;
+    const across = circle.r / this.aspect;
+    if (circle.x < x[0] + across || circle.x > x[1] - across) circle.vx = Math.sign(circle.x < x[0] + across ? 1 : -1) * Math.abs(circle.vx);
+    if (circle.y < y[0] + circle.r || circle.y > y[1] - circle.r) circle.vy = Math.sign(circle.y < y[0] + circle.r ? 1 : -1) * Math.abs(circle.vy);
+    this.clampInto(circle);
+  }
+
+  /** Drifting circles that come too close push each other gently apart, and bounce off each other. */
+  keepApart() {
+    const moving = this.live.filter((circle) => !circle.glide);
+    for (let i = 0; i < moving.length; i += 1) {
+      for (let j = i + 1; j < moving.length; j += 1) {
+        const a = moving[i];
+        const b = moving[j];
+        const apart = this.gap(a, b);
+        const wanted = a.r + b.r + GAP * 0.5;
+        if (apart >= wanted || apart === 0) continue;
+        const push = (wanted - apart) / 2;
+        const nx = ((a.x - b.x) * this.aspect) / apart;
+        const ny = (a.y - b.y) / apart;
+        a.x += (nx * push) / this.aspect;
+        a.y += ny * push;
+        b.x -= (nx * push) / this.aspect;
+        b.y -= ny * push;
+        [a.vx, b.vx] = [b.vx, a.vx];
+        [a.vy, b.vy] = [b.vy, a.vy];
+        this.clampInto(a);
+        this.clampInto(b);
+      }
+    }
+  }
+
+  /** The things later levels bring: circles swapping places, the rainbow circle and the cloud. */
+  extras(dt) {
+    const { plan } = this;
+    if (plan.swap) {
+      this.swapIn -= dt;
+      if (this.swapIn <= 0) {
+        this.swapIn = plan.swapEvery;
+        this.swap();
+      }
+    }
+    if (plan.rainbow) {
+      this.rainbowIn -= dt;
+      if (this.rainbowIn <= 0) {
+        this.rainbowIn = EXTRAS.rainbowEvery;
+        if (!this.live.some((circle) => circle.kind === 'rainbow')) {
+          const rainbow = this.addCircle({ colour: 'rainbow', kind: 'rainbow', r: plan.radius * 0.9 });
+          this.emit('rainbow', { circle: rainbow });
+        }
+      }
+    }
+    if (plan.cloud) {
+      this.cloudIn -= dt;
+      if (this.cloudIn <= 0 && !this.cloud) {
+        this.cloudIn = EXTRAS.cloudEvery;
+        const way = this.random() < 0.5 ? 1 : -1;
+        const { y } = this.area;
+        this.cloud = { x: way > 0 ? -EXTRAS.cloudSize : 1 + EXTRAS.cloudSize, y: y[0] + this.random() * (y[1] - y[0]), size: EXTRAS.cloudSize, way };
+        this.emit('cloud');
+      }
+    }
+  }
+
+  /** Two ordinary circles glide to each other's places. */
+  swap() {
+    const free = this.plain.filter((circle) => !circle.glide && circle.holding === 0 && circle.state === 'waiting');
+    if (free.length < 2) return;
+    const a = free.splice(Math.floor(this.random() * free.length), 1)[0];
+    const b = free[Math.floor(this.random() * free.length)];
+    a.glide = { from: { x: a.x, y: a.y }, to: { x: b.x, y: b.y }, t: 0 };
+    b.glide = { from: { x: b.x, y: b.y }, to: { x: a.x, y: a.y }, t: 0 };
+    this.emit('swap', { circles: [a, b] });
+  }
+
+  /* ---------- a grown-up's choices that go on at once ---------- */
+
+  /** How far to reach: the circles move into the new area. */
+  setReach(name) {
+    if (!REACH_NAMES.includes(name)) return;
+    this.reachName = name;
+    this.area = REACHES[name];
+    for (const circle of this.circles) {
+      circle.glide = null;
+      this.clampInto(circle);
+    }
+  }
+
+  /** The hand in play, which is the one asked for more often, or only, if a grown-up chose that. */
+  setSide(side) {
+    this.side = side === 'left' ? 'left' : 'right';
+  }
+
+  emit(type, detail = {}) {
+    this.onEvent({ type, ...detail });
+  }
+}

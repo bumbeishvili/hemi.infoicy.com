@@ -141,7 +141,7 @@ test('in a body game, how a jump is made goes on at once, and how many obstacles
 });
 
 // Every other hand game, started the same way: both hands shown open, so the games played with two are in it too.
-const HAND_GAMES = ['arrow-meadow', 'bounce-back', 'cannon-bay', 'chick-flap', 'frost-arena', 'giraffe-garden', 'giraffe-goal', 'giraffe-maze', 'giraffe-paint', 'giraffe-puzzles', 'giraffe-walk', 'high-five-racers', 'robot-rescue', 'smoothie-stand', 'spider-catcher', 'tank-patrol', 'world-tour', 'riddle-doors'];
+const HAND_GAMES = ['arrow-meadow', 'bounce-back', 'cannon-bay', 'chick-flap', 'frost-arena', 'giraffe-garden', 'giraffe-goal', 'giraffe-maze', 'giraffe-paint', 'giraffe-puzzles', 'giraffe-walk', 'high-five-racers', 'robot-rescue', 'smoothie-stand', 'spider-catcher', 'tank-patrol', 'world-tour', 'riddle-doors', 'left-right-pop'];
 for (const game of HAND_GAMES) {
   test(`a level chosen in the middle of ${game} starts it again at that level, and it plays on`, async ({ page }) => {
     test.setTimeout(240_000);

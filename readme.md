@@ -18,7 +18,7 @@ Movement-based games for children, played in front of a webcam.
 | ![Giraffe's Paint Box](demos/gif/giraffe-paint.gif)<br>**Giraffe's Paint Box:** colour in pictures with your open hand as the brush | ![Moto Mountain](demos/gif/moto-mountain.gif)<br>**Moto Mountain:** lean your body into the bends to race a motorbike up a mountain, flying off the hills |
 | ![Rooftop Rope](demos/gif/rooftop-rope.gif)<br>**Rooftop Rope:** stand on one leg to walk the ropes between the rooftops of a city | ![Giraffe's World Tour](demos/gif/world-tour.gif)<br>**Giraffe's World Tour:** fly round the globe, find each country with an open hand, then paint its flag and raise it |
 | ![Swamp Splash](demos/gif/swamp-splash.gif)<br>**Swamp Splash:** jump in the swamp to throw mud on the window, more for a bigger jump, and cover it before the rain comes | ![Hat Chase](demos/gif/hat-chase.gif)<br>**Hat Chase:** march on the spot to walk after the magpie that took the hat, jumping streams and ducking branches on the way |
-| ![Giraffe's Riddle Doors](demos/gif/riddle-doors.gif)<br>**Giraffe's Riddle Doors:** each door has a riddle of pictures with one missing, like the picture puzzles in intelligence tests; carry the piece that fits to the gap with an open hand | |
+| ![Giraffe's Riddle Doors](demos/gif/riddle-doors.gif)<br>**Giraffe's Riddle Doors:** each door has a riddle of pictures with one missing, like the picture puzzles in intelligence tests; carry the piece that fits to the gap with an open hand | **Left, Right, Pop!:** pop the colour on the card, with the hand it shows: left or right |
 
 - Resting never costs anything.
 - Each game has 10 levels.

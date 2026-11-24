@@ -1,0 +1,164 @@
+/* Left, Right, Pop!: the sky fills the screen, under a band along the top: the counts on the left, the card with what's
+   asked for in the middle, and the hand meter and the mirror on the right. */
+:root {
+  --meter-size: clamp(66px, 7vw, 92px);
+  --camera-small: clamp(140px, 15vw, 230px);
+}
+
+/* The mirror, in the top right corner, by the gear. */
+body:not([data-screen='check']) .camera-frame { left: auto; right: 70px; transform: none; }
+
+/* The hand meter, beside the mirror. */
+.hands-bar {
+  top: 12px;
+  bottom: auto;
+  left: auto;
+  right: calc(70px + var(--camera-small) + 12px);
+  transform: none;
+}
+body[data-screen='check'] .hands-bar { top: auto; bottom: 10px; left: 50%; right: auto; transform: translateX(-50%); }
+.meter { padding: 6px 6px 4px; border-radius: 20px; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* ---------- the counts, down the left ---------- */
+.pop-hud {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  top: 12px;
+  left: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+body[data-screen='playing'] .pop-hud,
+body[data-screen='countdown'] .pop-hud { display: flex; }
+.pop-hud .chip { min-width: clamp(64px, 7vw, 96px); padding: 4px 10px 6px; }
+.pop-hud .chip[hidden] { display: none; }
+.chip-pops .chip-label::before { content: '🔴 '; }
+.chip-faded .chip-label::before { content: '💨 '; }
+.chip-stars .chip-label::before { content: '⭐ '; }
+.chip-gems .chip-label::before { content: '💎 '; }
+
+/* ---------- what's asked for: the colour, big, and the hand ---------- */
+.pop-ask {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  gap: 14px;
+}
+body[data-screen='playing'] .pop-ask:not([data-count='0']) { display: flex; }
+
+.pop-ask-slot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 20px 8px 10px;
+  background: var(--surface);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+}
+.pop-ask-slot[hidden] { display: none; }
+/* The right hand's card has its colour on the side nearer that hand. */
+.pop-ask-slot[data-hand='right'] { flex-direction: row-reverse; padding: 8px 10px 8px 20px; }
+
+.pop-ask-disc {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(64px, 8vh, 92px);
+  aspect-ratio: 1;
+}
+.pop-ask-clock { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pop-clock-track { fill: none; stroke: rgb(18 48 77 / 0.12); stroke-width: 8; }
+.pop-clock-fill { fill: none; stroke: var(--ink); stroke-width: 8; stroke-linecap: round; stroke-dasharray: 100 100; }
+.pop-ask[data-clock='off'] .pop-ask-clock { display: none; }
+.pop-ask-dot {
+  width: 76%;
+  aspect-ratio: 1;
+  border: 4px solid var(--ink);
+  border-radius: 50%;
+  box-shadow: inset -6px -8px 0 rgb(0 0 0 / 0.08);
+}
+
+.pop-ask-words { display: grid; gap: 2px; }
+.pop-ask-slot[data-hand='right'] .pop-ask-words { justify-items: end; }
+.pop-ask-colour {
+  font-size: clamp(26px, 3.4vw, 44px);
+  font-weight: 800;
+  line-height: 1.05;
+}
+.pop-ask-hand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: clamp(16px, 1.8vw, 22px);
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.pop-ask-slot[data-hand='right'] .pop-ask-hand { flex-direction: row-reverse; }
+.pop-hand-icon { width: clamp(26px, 2.6vw, 34px); height: auto; }
+.pop-hand-icon rect { fill: var(--good); stroke: var(--ink); stroke-width: 4; }
+.pop-hand-ink { fill: none; stroke: var(--ink); stroke-width: 14; stroke-linecap: round; }
+.pop-hand-finger { fill: none; stroke: var(--good); stroke-width: 7; stroke-linecap: round; }
+
+/* What the child is told goes along the bottom, so it never hides a circle near the top. */
+body[data-screen='playing'] .prompt { top: auto; bottom: 18px; }
+
+/* ---------- the finish card: both hands play, so both have a column, and only the game's own rows ---------- */
+.summary tr:has(#sum-left-open),
+.summary tr:has(#sum-left-openings),
+.summary tr:has(#sum-left-hold),
+.summary tr:has(#sum-left-peak) { display: none; }
+body[data-hands] .summary tr > :nth-child(2),
+body[data-hands] .summary tr > :nth-child(3) { display: table-cell; }
+.finish-prizes { margin: 0 0 6px; font-size: clamp(16px, 1.8vw, 22px); font-weight: 700; }
+.finish-prizes[hidden] { display: none; }
+
+/* ---------- a little film: the card asks for red with the left hand, and the open hand pops it ---------- */
+.pop-film { width: min(17vw, 25vh); }
+.film-grass { fill: #cdeccb; }
+.film-card rect { fill: #ffffff; stroke: var(--ink); stroke-width: 2.5; }
+.film-card text { font: 700 15px system-ui, sans-serif; fill: var(--ink); }
+.film-red { fill: #ef4136; stroke: var(--ink); stroke-width: 3; }
+.film-blue { fill: #2f6fe4; stroke: var(--ink); stroke-width: 3; }
+.film-hand rect { stroke: var(--ink); stroke-width: 3; }
+.film-finger-ink { fill: none; stroke: var(--ink); stroke-width: 14; stroke-linecap: round; }
+.film-finger { fill: none; stroke-width: 8; stroke-linecap: round; }
+
+.film-hand { animation: film-hand 5s ease-in-out infinite; }
+.film-hand rect { animation: film-colour 5s ease-in-out infinite; }
+.film-finger { animation: film-fingers 5s ease-in-out infinite; }
+.film-pop { transform-origin: 64px 80px; animation: film-pop 5s ease-in-out infinite; }
+
+@keyframes film-hand {
+  0%, 15% { transform: translate(40px, 170px); }
+  45%, 70% { transform: translate(64px, 96px); }
+  100% { transform: translate(40px, 170px); }
+}
+
+@keyframes film-colour {
+  0%, 40% { fill: #ffc21a; }
+  48%, 80% { fill: #3ddc84; }
+  100% { fill: #ffc21a; }
+}
+
+@keyframes film-fingers {
+  0%, 40% { stroke: #ffc21a; }
+  48%, 80% { stroke: #3ddc84; }
+  100% { stroke: #ffc21a; }
+}
+
+@keyframes film-pop {
+  0%, 50% { transform: scale(1); opacity: 1; }
+  58% { transform: scale(1.25); opacity: 0; }
+  88% { transform: scale(0.4); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film-hand, .film-hand rect, .film-finger, .film-pop { animation-duration: 8s; }
+}
