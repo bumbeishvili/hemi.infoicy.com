@@ -1,0 +1,73 @@
+# The friends server (server/, the Cloudflare Worker hemi-race) deploys itself when a push to main changes it, as the
+# games site does on Vercel. The unit tests run first, and it only deploys if they pass. Then it checks the live
+# server: a room for a game it knows opens, and one for a game it doesn't is refused.
+#
+# It needs a Cloudflare API token, kept in the repository's secrets as CLOUDFLARE_API_TOKEN (made from the "Edit
+# Cloudflare Workers" template), and the account's id as CLOUDFLARE_ACCOUNT_ID if the token can see more than one
+# account. Without the token, the tests still run and nothing is deployed. It can also be run by hand, from the
+# Actions tab.
+name: Deploy the friends server
+
+on:
+  push:
+    branches: [main]
+    paths: ['server/**', '.github/workflows/deploy-server.yml']
+  workflow_dispatch:
+
+# One deploy at a time, in the order they were pushed.
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: No Cloudflare token yet, so nothing is deployed
+        if: env.HAS_TOKEN != 'true'
+        run: echo "::notice::Add CLOUDFLARE_API_TOKEN to the repository's secrets for this to deploy hemi-race."
+
+      - name: Deploy hemi-race
+        if: env.HAS_TOKEN == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$ACCOUNT" ]; then export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT"; fi
+          npx --yes wrangler@4.158.0 deploy --config server/wrangler.jsonc
+
+      - name: Check the live server
+        if: env.HAS_TOKEN == 'true'
+        run: |
+          # What the server answers a browser on the games site opening a room: 101 when it opens.
+          answer() {
+            curl -s --http1.1 -o /dev/null -w '%{http_code}' --max-time 5 \
+              -H 'Upgrade: websocket' -H 'Connection: Upgrade' -H 'Sec-WebSocket-Version: 13' \
+              -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H 'Origin: https://hemi.infoicy.com' \
+              "https://hemi-race.infoicy.com/room/$1/ZZQ?make=1" || true
+          }
+          # The newest version can take a few seconds to reach everywhere.
+          for try in 1 2 3 4 5 6; do
+            known=$(answer riddle-doors)
+            unknown=$(answer not-a-game)
+            echo "a game it knows: $known, one it doesn't: $unknown"
+            if [ "$known" = 101 ] && [ "$unknown" = 404 ]; then exit 0; fi
+            sleep 10
+          done
+          echo "::error::The live server didn't answer as it should."
+          exit 1
