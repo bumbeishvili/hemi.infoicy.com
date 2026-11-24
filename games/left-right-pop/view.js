@@ -1,10 +1,12 @@
-// Left, Right, Pop!: draws what rules.js says, on the game's canvas: a soft sky with a strip of grass, the circles,
-// the bursts when they pop, the passing cloud, and the two gloves, each with its name under it. Nothing flashes: a
-// pop is a small burst of its own colour, and a circle that fades just goes paler and smaller.
+// Left, Right, Pop!: draws what rules.js says, on the game's canvas: a soft sky with a strip of grass, the circles, the
+// big balloons for both hands, the bursts when they pop, and the two gloves, each with its name under it. Nothing
+// flashes: a pop is a small burst of its own colour, and a circle that fades just goes paler and smaller.
 import { INK } from '../../core/glove.js';
-import { COLOURS, FADE_SECONDS, GROW_SECONDS, HOLD_SECONDS, POP_SECONDS } from './rules.js';
+import { COLOURS, FADE_SECONDS, GROW_SECONDS, HAND_COLOURS, HOLD_SECONDS, POP_SECONDS } from './rules.js';
 
 const RAINBOW = ['#ef4136', '#ff8a1f', '#ffd60a', '#22a94a', '#2f6fe4', '#9b5de5'];
+// A big balloon is the left hand's red on its left and the right hand's green on its right.
+const BALLOON = [COLOURS[HAND_COLOURS.left].fill, COLOURS[HAND_COLOURS.right].fill];
 const PALM_SIZE = 0.12; // The glove's palm, in screen heights.
 const BURST_SECONDS = 0.6;
 const TAG_WORDS = { left: { en: 'Left', ka: 'მარცხენა' }, right: { en: 'Right', ka: 'მარჯვენა' } };
@@ -53,10 +55,12 @@ export class PopView {
   /** A small burst of a circle's own colour where it popped. */
   burst(x, y, colour, r) {
     const at = this.at(x, y);
-    const fill = colour === 'rainbow' ? null : COLOURS[colour]?.fill ?? '#ffffff';
+    const fill = colour === 'rainbow' || colour === 'balloon' ? null : COLOURS[colour]?.fill ?? '#ffffff';
     const size = r * this.height;
     for (let index = 0; index < 14; index += 1) {
       const angle = (index / 14) * Math.PI * 2 + Math.random() * 0.3;
+      // A balloon's bits are red on its left and green on its right, as it was.
+      const balloonBit = Math.cos(angle) < 0 ? BALLOON[0] : BALLOON[1];
       const speed = size * (2.2 + Math.random() * 1.6);
       this.bursts.push({
         x: at.x + Math.cos(angle) * size * 0.5,
@@ -64,7 +68,7 @@ export class PopView {
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         size: size * (0.12 + Math.random() * 0.08),
-        colour: fill ?? RAINBOW[index % RAINBOW.length],
+        colour: fill ?? (colour === 'balloon' ? balloonBit : RAINBOW[index % RAINBOW.length]),
         age: 0,
       });
     }
@@ -101,8 +105,8 @@ export class PopView {
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     this.drawSky();
     if (rules) {
-      for (const circle of rules.circles) this.drawCircle(circle, names);
-      if (rules.cloud) this.drawCloud(rules.cloud);
+      // Names only go on the circles from level 6, where there are colours to tell apart.
+      for (const circle of rules.circles) this.drawCircle(circle, names && !rules.plan.simple);
     }
     for (const bit of this.bursts) {
       ctx.globalAlpha = 1 - bit.age / BURST_SECONDS;
@@ -125,7 +129,7 @@ export class PopView {
         const glove = gloves[side];
         if (!glove?.visible) continue;
         glove.draw(ctx, palm);
-        this.drawTag(glove, side, palm, asked.find((ask) => ask.hand === side));
+        this.drawTag(glove, side, palm, asked.find((ask) => ask.hand === side || ask.hand === 'both'));
       }
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -161,7 +165,7 @@ export class PopView {
       // A ring that widens and goes, where the burst is.
       const t = Math.min(1, circle.endAge / POP_SECONDS);
       ctx.globalAlpha = 1 - t;
-      ctx.strokeStyle = circle.kind === 'rainbow' ? '#ffffff' : COLOURS[circle.colour]?.fill ?? '#ffffff';
+      ctx.strokeStyle = circle.kind === 'rainbow' || circle.kind === 'balloon' ? '#ffffff' : COLOURS[circle.colour]?.fill ?? '#ffffff';
       ctx.lineWidth = circle.r * height * 0.12;
       ctx.beginPath();
       ctx.arc(at.x, at.y, circle.r * height * (1 + t * 0.4), 0, Math.PI * 2);
@@ -179,6 +183,10 @@ export class PopView {
     const wobble = Math.sin(this.time * 28) * circle.wobble * r * 0.12;
     const x = at.x + wobble;
     const { y } = at;
+    if (circle.kind === 'balloon') {
+      this.drawBalloon(x, y, r, alpha);
+      return;
+    }
     ctx.save();
     ctx.globalAlpha = alpha;
 
@@ -275,24 +283,69 @@ export class PopView {
     ctx.stroke();
   }
 
-  /** A soft white cloud: the circles behind it can only just be seen. */
-  drawCloud(cloud) {
-    const { ctx, width, height } = this;
-    const size = cloud.size * height;
-    const x = cloud.x * width;
-    const y = cloud.y * height;
+  /**
+   * A big balloon for both hands: red on the left, for the left hand, and green on the right, for the right hand, a
+   * little taller than wide, with its knot and a string hanging from it.
+   */
+  drawBalloon(x, y, r, alpha) {
+    const { ctx } = this;
+    const tall = r * 1.08;
     ctx.save();
-    ctx.globalAlpha = 0.78;
-    ctx.fillStyle = '#ffffff';
-    for (const [dx, dy, r] of [[-0.55, 0.12, 0.42], [-0.12, -0.12, 0.55], [0.4, 0.05, 0.46], [0.05, 0.25, 0.42], [0.72, 0.25, 0.3], [-0.85, 0.3, 0.28]]) {
+    ctx.globalAlpha = alpha;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // The string, swaying a little.
+    const sway = Math.sin(this.time * 1.6) * r * 0.12;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = Math.max(2, r * 0.03);
+    ctx.beginPath();
+    ctx.moveTo(x, y + tall + r * 0.1);
+    ctx.quadraticCurveTo(x + sway + r * 0.25, y + tall + r * 0.45, x - sway * 0.5, y + tall + r * 0.8);
+    ctx.stroke();
+    // The knot.
+    ctx.fillStyle = BALLOON[0];
+    ctx.beginPath();
+    ctx.moveTo(x, y + tall - r * 0.02);
+    ctx.lineTo(x - r * 0.1, y + tall + r * 0.13);
+    ctx.lineTo(x + r * 0.1, y + tall + r * 0.13);
+    ctx.closePath();
+    ctx.fill();
+    ctx.lineWidth = Math.max(2, r * 0.04);
+    ctx.stroke();
+    // The two halves.
+    const shape = () => {
       ctx.beginPath();
-      ctx.arc(x + dx * size, y + dy * size, r * size, 0, Math.PI * 2);
+      ctx.ellipse(x, y, r, tall, 0, 0, Math.PI * 2);
+    };
+    for (const [index, from] of [[0, Math.PI / 2], [1, -Math.PI / 2]]) {
+      ctx.save();
+      shape();
+      ctx.clip();
+      ctx.fillStyle = BALLOON[index];
+      ctx.beginPath();
+      ctx.ellipse(x, y, r, tall, 0, from, from + Math.PI);
+      ctx.lineTo(x, y);
       ctx.fill();
+      ctx.restore();
     }
+    shape();
+    ctx.lineWidth = Math.max(3, r * 0.06);
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y - tall);
+    ctx.lineTo(x, y + tall);
+    ctx.lineWidth = Math.max(2, r * 0.025);
+    ctx.stroke();
+    // A shine, so it looks round.
+    ctx.fillStyle = 'rgb(255 255 255 / 0.42)';
+    ctx.beginPath();
+    ctx.ellipse(x - r * 0.42, y - tall * 0.45, r * 0.2, r * 0.12, -0.7, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 
-  /** The glove's name under its wrist: in the asked colour when that hand is asked for. */
+  /** The glove's name under its wrist: in the asked colour when that hand is asked for, and its own for a balloon. */
   drawTag(glove, side, palm, ask) {
     const { ctx } = this;
     const wrist = glove.points[0];
@@ -304,7 +357,8 @@ export class PopView {
     ctx.font = `700 ${size}px system-ui, sans-serif`;
     const w = ctx.measureText(word).width + size * 1.1;
     const h = size * 1.5;
-    const colour = ask ? COLOURS[ask.colour]?.fill ?? '#ffffff' : '#ffffff';
+    const asked = ask?.hand === 'both' ? HAND_COLOURS[side] : ask?.colour;
+    const colour = asked ? COLOURS[asked]?.fill ?? '#ffffff' : '#ffffff';
     ctx.fillStyle = colour;
     ctx.strokeStyle = INK;
     ctx.lineWidth = Math.max(2, size * 0.14);
@@ -314,7 +368,7 @@ export class PopView {
     ctx.stroke();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = ask && ask.colour !== 'yellow' ? '#ffffff' : INK;
+    ctx.fillStyle = asked && asked !== 'yellow' ? '#ffffff' : INK;
     ctx.fillText(word, x, y + size * 0.05);
     ctx.restore();
   }

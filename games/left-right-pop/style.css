@@ -84,6 +84,24 @@ body[data-screen='playing'] .pop-ask:not([data-count='0']) { display: flex; }
   box-shadow: inset -6px -8px 0 rgb(0 0 0 / 0.08);
 }
 
+/* Up to level 5 the card shows only the hand, in its circle's colour: a little hand in the ring, and its name. A big
+   balloon's card has both hands in the ring. From level 6 the ring holds the colour to pop. */
+.pop-ask-disc-hands { display: none; position: relative; align-items: center; justify-content: center; gap: 2px; width: 70%; height: 70%; }
+.pop-ask-disc-hands .pop-hand-icon { width: 100%; height: 100%; }
+.pop-ask-slot[data-hand='both'] .pop-ask-disc-hands .pop-hand-icon { width: 50%; }
+.pop-ask[data-simple='on'] .pop-ask-dot,
+.pop-ask-slot[data-hand='both'] .pop-ask-dot { display: none; }
+.pop-ask[data-simple='on'] .pop-ask-disc-hands,
+.pop-ask-slot[data-hand='both'] .pop-ask-disc-hands { display: flex; }
+.pop-ask[data-simple='on'] .pop-ask-hand,
+.pop-ask-slot[data-hand='both'] .pop-ask-hand { display: none; }
+.pop-ask[data-simple='on'] .pop-ask-disc-hands rect { fill: var(--hand-colour, var(--good)); }
+.pop-ask[data-simple='on'] .pop-ask-disc-hands .pop-hand-finger { stroke: var(--hand-colour, var(--good)); }
+.pop-ask-slot[data-hand='both'] .pop-hand-icon[data-side='left'] rect { fill: #ef4136; }
+.pop-ask-slot[data-hand='both'] .pop-hand-icon[data-side='left'] .pop-hand-finger { stroke: #ef4136; }
+.pop-ask-slot[data-hand='both'] .pop-hand-icon[data-side='right'] rect { fill: #22a94a; }
+.pop-ask-slot[data-hand='both'] .pop-hand-icon[data-side='right'] .pop-hand-finger { stroke: #22a94a; }
+
 .pop-ask-words { display: grid; gap: 2px; }
 .pop-ask-slot[data-hand='right'] .pop-ask-words { justify-items: end; }
 .pop-ask-colour {
@@ -118,7 +136,7 @@ body[data-hands] .summary tr > :nth-child(3) { display: table-cell; }
 .finish-prizes { margin: 0 0 6px; font-size: clamp(16px, 1.8vw, 22px); font-weight: 700; }
 .finish-prizes[hidden] { display: none; }
 
-/* ---------- a little film: the card asks for red with the left hand, and the open hand pops it ---------- */
+/* ---------- a little film: the card asks for the left hand, and the open hand pops the red circle ---------- */
 .pop-film { width: min(17vw, 25vh); }
 .film-grass { fill: #cdeccb; }
 .film-card rect { fill: #ffffff; stroke: var(--ink); stroke-width: 2.5; }

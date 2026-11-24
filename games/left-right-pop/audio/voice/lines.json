@@ -1,0 +1,7 @@
+[
+  {"id": "left-hand", "text": "Left hand!", "ka": "გაშალე მარცხენა ხელი!"},
+  {"id": "right-hand", "text": "Right hand!", "ka": "გაშალე მარჯვენა ხელი!"},
+  {"id": "left", "text": "Left!", "ka": "გაშალე მარცხენა ხელი!"},
+  {"id": "right", "text": "Right!", "ka": "გაშალე მარჯვენა ხელი!"},
+  {"id": "both-hands", "text": "Pop with both hands!", "ka": "მაჩვენე ორივე ხელი!"}
+]

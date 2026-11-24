@@ -1,33 +1,36 @@
-// Left, Right, Pop!: coloured circles come up all over the screen, and the game asks for one of them, with one hand.
-// The card at the top shows the colour, big, with its name, and which hand, and the voice says the hand: "Open your
-// left hand to pop it!". An open hand pops a circle, but only the colour asked for, with the hand asked for. Both
-// hands play, so telling left from right is half of it, and using the hand that's asked for, the weaker one too, is
-// the other half. The rules are in rules.js, and view.js draws them.
-//
-// The voice doesn't say the colour: every line is a recording, and there are none of colour names yet. So the colour
-// is shown, on the card and, if a grown-up chooses, written on each circle.
+// Left, Right, Pop!: the game asks for a hand, left or right, and the circle for it pops when that hand opens on it.
+// Up to level 5 there's one circle at a time, red for the left hand and green for the right, and the voice says only
+// the hand: "Left hand!", and from level 3, when the circle moves, just "Left!". From level 6 there are circles of
+// every colour, and the card at the top shows which colour to pop, big, with which hand, which the voice says: "Open
+// your left hand to pop it!". At every level a big balloon comes now and then: "Pop with both hands!". Both hands
+// play, so telling left from right is half of it, and using the hand that's asked for, the weaker one too, is the
+// other half. The rules are in rules.js, and view.js draws them.
 import { Glove } from '../../core/glove.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
-import { CLOCKS, COLOURS, GOAL_CHOICES, HAND_MODES, PopRules, popNewAt, REACH_NAMES } from './rules.js';
+import { CLOCKS, COLOURS, GOAL_CHOICES, HAND_COLOURS, HAND_MODES, PopRules, popNewAt, REACH_NAMES } from './rules.js';
 import { PopView } from './view.js';
 
 const byId = (id) => document.getElementById(id);
 
-// Every line said here has a rendered voice file: see core/audio/voice/lines.json.
-const OPEN_TO_POP = {
-  left: 'Open your left hand to pop it!',
-  right: 'Open your right hand to pop it!',
-};
+// Every line said here has a rendered voice file: the game's own in audio/voice/lines.json, and the rest in
+// core/audio/voice/lines.json.
+const HAND_LINE = { left: 'Left hand!', right: 'Right hand!' }; // Levels 1 and 2.
+const SHORT_LINE = { left: 'Left!', right: 'Right!' }; // Levels 3 to 5.
+const OPEN_TO_POP = { left: 'Open your left hand to pop it!', right: 'Open your right hand to pop it!' }; // From level 6.
+const BOTH_LINE = 'Pop with both hands!'; // A big balloon, at any level.
 const PRAISE = ['Great job!', 'Nice one!', 'Way to go!'];
 const FINISH = 'You popped them all!';
 // On the card when too many circles faded away. It's only shown, not said: the voice says what it says after any
 // game that was lost.
 const LOST = 'The circles faded away!';
+// The words on the card at the top.
 const HAND_WORDS = {
   left: { en: 'Left hand', ka: 'მარცხენა ხელი' },
   right: { en: 'Right hand', ka: 'მარჯვენა ხელი' },
+  both: { en: 'Both hands', ka: 'ორივე ხელი' },
 };
+const SHORT_WORDS = { left: { en: 'Left', ka: 'მარცხენა' }, right: { en: 'Right', ka: 'მარჯვენა' } };
 
 const PRAISE_EVERY = 4; // Pops between one word of praise and the next.
 const SAY_AGAIN_AFTER = 8; // A circle that's still waiting has its hand said once more, after this long.
@@ -38,16 +41,17 @@ const FILM_SECONDS = 20; // The little film of what to do shows until the first 
 const BIRDS_LEVEL = 0.08;
 
 /** A little open hand, drawn as the meters draw theirs: the thumb on the right is the hand on the left of the screen. */
-function handIcon(side) {
+function handIcon(side, extra = '') {
   const flip = side === 'right' ? ' transform="translate(120 0) scale(-1 1)"' : '';
   const box = side === 'right' ? '20 20 66 76' : '34 20 66 76';
-  return `<svg class="pop-hand-icon" viewBox="${box}" aria-hidden="true"><g${flip}>
+  return `<svg class="pop-hand-icon ${extra}" data-side="${side}" viewBox="${box}" aria-hidden="true"><g${flip}>
       <path class="pop-hand-ink" d="M44 62V36M53.5 58V30M63 58V27M72.5 62V31M75 78L92 64" />
       <rect x="39" y="58" width="38" height="33" rx="13" />
       <path class="pop-hand-finger" d="M44 62V36M53.5 58V30M63 58V27M72.5 62V31M75 78L92 64" />
     </g></svg>`;
 }
 
+/** One hand's part of the card: the ring that empties with the clock, what to pop, and the hand. */
 const askSlot = (side) => `
   <div class="pop-ask-slot" data-hand="${side}" hidden>
     <span class="pop-ask-disc">
@@ -56,10 +60,11 @@ const askSlot = (side) => `
         <circle class="pop-clock-fill" cx="50" cy="50" r="45" pathLength="100" transform="rotate(-90 50 50)" />
       </svg>
       <span class="pop-ask-dot"></span>
+      <span class="pop-ask-disc-hands">${side === 'both' ? `${handIcon('left')}${handIcon('right')}` : handIcon(side)}</span>
     </span>
     <span class="pop-ask-words">
       <span class="pop-ask-colour"></span>
-      <span class="pop-ask-hand">${handIcon(side)}<span class="pop-ask-hand-word"></span></span>
+      <span class="pop-ask-hand">${side === 'both' ? '' : handIcon(side)}<span class="pop-ask-hand-word"></span></span>
     </span>
   </div>`;
 
@@ -73,7 +78,7 @@ class PopGame {
     this.gloves = { left: new Glove('left'), right: new Glove('right') };
     this.rules = this.newRules(session.level);
     this.card = byId('pop-ask');
-    this.slots = Object.fromEntries(['left', 'right'].map((side) => [side, this.card.querySelector(`[data-hand="${side}"]`)]));
+    this.slots = Object.fromEntries(['left', 'both', 'right'].map((side) => [side, this.card.querySelector(`[data-hand="${side}"]`)]));
     this.shownAsk = '';
     // The finish card lists the prizes won, if there were any.
     byId('finish-hero')?.closest('.finish-hero')?.insertAdjacentHTML('afterend', '<p id="finish-prizes" class="finish-prizes" hidden></p>');
@@ -157,10 +162,17 @@ class PopGame {
     this.session.sound.startLoop('birds', BIRDS_LEVEL);
   }
 
-  /** The line that asks for a hand: in the hand shape's own words, for the hand in play, if a grown-up chose one. */
-  lineFor(hand) {
+  /**
+   * What's said, and written along the bottom, for what's asked for: only the hand up to level 5, and from level 6
+   * the hand to pop the colour on the card with, in the hand shape's own words for the hand in play if a grown-up
+   * chose one. A big balloon is both hands.
+   */
+  lineFor(ask) {
+    if (ask.hand === 'both') return BOTH_LINE;
+    const { plan } = this.rules;
+    if (plan.simple) return plan.short ? SHORT_LINE[ask.hand] : HAND_LINE[ask.hand];
     const { shapes, monitor } = this.session;
-    return hand === monitor.side && shapes?.open?.prompt ? shapes.open.prompt : OPEN_TO_POP[hand];
+    return ask.hand === monitor.side && shapes?.open?.prompt ? shapes.open.prompt : OPEN_TO_POP[ask.hand];
   }
 
   /** What the rules say happens, heard and seen. */
@@ -171,14 +183,14 @@ class PopGame {
       case 'ask':
         // Each hand asked for is said once now, the left hand's first when it's both, and once more later if it's
         // still waiting.
-        for (const ask of event.asks) sound.say(this.lineFor(ask.hand));
+        for (const ask of event.asks) sound.say(this.lineFor(ask));
         this.sayAgainIn = SAY_AGAIN_AFTER;
         this.showAsk();
         break;
       case 'pop':
         view.burst(event.circle.x, event.circle.y, event.circle.colour, event.circle.r);
-        // Never quite the same twice.
-        sound.play('pop', { gain: 0.5, rate: 0.88 + Math.random() * 0.3 });
+        // Never quite the same twice, and a big balloon lower.
+        sound.play('pop', { gain: 0.5, rate: (event.circle.kind === 'balloon' ? 0.7 : 0.88) + Math.random() * 0.3 });
         break;
       case 'split':
         view.burst(event.circle.x, event.circle.y, event.circle.colour, event.circle.r);
@@ -201,14 +213,19 @@ class PopGame {
         this.showProgress();
         break;
       case 'wrong-hand':
+      case 'one-hand':
+        // The other hand on a circle, or one hand alone on a big balloon: the hands asked for are said again.
         sound.play('boing', { gain: 0.3 });
         if (this.rules.time - this.wrongSaidAt > WRONG_SAID_EVERY) {
           this.wrongSaidAt = this.rules.time;
-          sound.say(this.lineFor(event.ask.hand), { ifQuiet: true });
+          sound.say(this.lineFor(event.ask), { ifQuiet: true });
         }
         break;
       case 'bump':
         sound.play('boing', { gain: 0.14, rate: 1.5 });
+        break;
+      case 'hop':
+        sound.play('boing', { gain: 0.18, rate: 1.9 });
         break;
       case 'faded':
         sound.play('whoosh', { gain: 0.3, rate: 0.8 });
@@ -285,7 +302,7 @@ class PopGame {
       if (this.sayAgainIn <= 0) {
         this.sayAgainIn = Infinity;
         const ask = rules.current;
-        if (ask) session.sound.say(this.lineFor(ask.hand), { ifQuiet: true });
+        if (ask) session.sound.say(this.lineFor(ask), { ifQuiet: true });
       }
     }
     const anyOpen = this.gloves.left.status === 'open' || this.gloves.right.status === 'open';
@@ -332,28 +349,43 @@ class PopGame {
 
   /* ---------- the top of the screen ---------- */
 
-  /** The card that shows what's asked for: the colour, big, with its name, and the hand, for each hand asked for. */
+  /**
+   * The card that shows what's asked for. Up to level 5 it's only the hand, in its colour, as the voice says it; from
+   * level 6, the colour to pop, big, with its name, and the hand; and for a big balloon, both hands.
+   */
   showAsk() {
-    const ka = this.settings.language === 'ka';
+    const ka = this.settings.language === 'ka' ? 'ka' : 'en';
+    const { plan } = this.rules;
     const asks = this.rules.phase === 'play' ? this.rules.asks : [];
-    const key = `${ka}|${asks.map((ask) => `${ask.id}:${ask.hand}:${ask.colour}`).join(',')}`;
+    const key = `${ka}|${plan.level}|${asks.map((ask) => `${ask.id}:${ask.hand}:${ask.colour}`).join(',')}`;
     if (key === this.shownAsk) return;
     this.shownAsk = key;
     this.card.dataset.count = String(asks.length);
-    for (const side of ['left', 'right']) {
-      const slot = this.slots[side];
+    this.card.dataset.simple = plan.simple ? 'on' : 'off';
+    for (const [side, slot] of Object.entries(this.slots)) {
       const ask = asks.find((each) => each.hand === side);
       slot.hidden = !ask;
       if (!ask) continue;
-      const colour = COLOURS[ask.colour];
-      slot.dataset.colour = ask.colour;
-      slot.querySelector('.pop-ask-dot').style.background = colour.fill;
-      slot.querySelector('.pop-ask-colour').textContent = ka ? colour.nameKa : colour.name;
-      slot.querySelector('.pop-ask-hand-word').textContent = HAND_WORDS[side][ka ? 'ka' : 'en'];
+      const words = slot.querySelector('.pop-ask-colour');
+      const hand = slot.querySelector('.pop-ask-hand-word');
+      if (side === 'both') {
+        words.textContent = HAND_WORDS.both[ka];
+        hand.textContent = '';
+      } else if (plan.simple) {
+        // Only the hand, as it's said, and its circle's colour on the little hand.
+        words.textContent = (plan.short ? SHORT_WORDS : HAND_WORDS)[side][ka];
+        hand.textContent = '';
+        slot.style.setProperty('--hand-colour', COLOURS[HAND_COLOURS[side]].fill);
+      } else {
+        const colour = COLOURS[ask.colour];
+        slot.querySelector('.pop-ask-dot').style.background = colour.fill;
+        words.textContent = ka === 'ka' ? colour.nameKa : colour.name;
+        hand.textContent = HAND_WORDS[side][ka];
+      }
     }
   }
 
-  /** The ring round each colour on the card empties as its time runs out. With no clock there's no ring. */
+  /** The ring round each part of the card empties as its time runs out. With no clock there's no ring. */
   showClock() {
     const share = this.rules.clockShare;
     this.card.dataset.clock = share === null ? 'off' : 'on';
@@ -378,26 +410,28 @@ class PopGame {
   /* ---------- what to tell the child ---------- */
 
   prompt(snapshot, dt) {
-    const { rules, session } = this;
+    const { rules } = this;
     if (rules.phase !== 'play') return null;
     if (snapshot.overlap) return { key: 'apart', text: 'Keep your hands apart', side: null };
     const ask = rules.current;
     if (!ask) return null;
-    const { hand } = ask;
-    const view = this.viewOf(snapshot, hand);
-    const reason = view && view.status !== 'missing' ? view.reason : 'missing';
-    if (reason === 'missing') {
-      if (this.missingFor[hand] > CLOSER_AFTER) return { key: 'closer', text: SPOKEN.holdCloser, side: null };
-      return { key: `missing-${hand}`, text: `Show your ${hand} hand!`, side: hand };
+    // A hand that's asked for and can't be seen is asked for: for a big balloon, each of them.
+    for (const hand of ask.hand === 'both' ? ['left', 'right'] : [ask.hand]) {
+      const view = this.viewOf(snapshot, hand);
+      const reason = view && view.status !== 'missing' ? view.reason : 'missing';
+      if (reason === 'missing') {
+        if (this.missingFor[hand] > CLOSER_AFTER) return { key: 'closer', text: SPOKEN.holdCloser, side: null };
+        return { key: `missing-${hand}`, text: `Show your ${hand} hand!`, side: hand };
+      }
+      if (reason === 'edge') return { key: `edge-${hand}`, text: `Move your ${hand} hand into the picture`, side: hand };
+      if (reason === 'small') return { key: 'small', text: 'Come a little closer', side: null };
     }
-    if (reason === 'edge') return { key: `edge-${hand}`, text: `Move your ${hand} hand into the picture`, side: hand };
-    if (reason === 'small') return { key: 'small', text: 'Come a little closer', side: null };
     // In the gentle game the hands can rest whenever they like: the circle just waits. After a while, it's said
     // that's fine. With the clock, it isn't said, as the circle won't wait.
     if (rules.gentle && this.restFor > RESTING_AFTER) return { key: 'resting', text: SPOKEN.resting, side: null };
     // What's asked for, shown with an arrow to the hand. It's said when it's asked for, and once more, above.
-    const inPlay = hand === snapshot.side;
-    return { key: `ask-${ask.id}`, text: OPEN_TO_POP[hand], side: hand, silent: true, ...(inPlay ? { asks: 'open' } : {}) };
+    const inPlay = ask.hand === snapshot.side && !rules.plan.simple;
+    return { key: `ask-${ask.id}`, text: this.lineFor(ask), side: ask.hand === 'both' ? null : ask.hand, silent: true, ...(inPlay ? { asks: 'open' } : {}) };
   }
 
   finished() {
@@ -423,6 +457,8 @@ class PopGame {
       noun: 'game',
       rows: {
         popped: each((side) => `${stats.popped[side]} of ${stats.asked[side]}`),
+        // Both hands together, so the same in each column.
+        balloons: each(() => `${stats.balloons} of ${stats.balloonsAsked}`),
         wrong: each((side) => stats.wrong[side]),
         quick: each(average),
       },
@@ -444,7 +480,12 @@ new GameSession({
     finishTitle: FINISH,
     heroMark: '🔴',
     heroNoun: 'popped',
-    extraRows: [{ id: 'popped', label: 'Popped, of the times asked' }, { id: 'wrong', label: 'Tried the other hand’s circle' }, { id: 'quick', label: 'Time to pop, on average' }],
+    extraRows: [
+      { id: 'popped', label: 'Popped, of the times asked' },
+      { id: 'balloons', label: 'Big balloons, with both hands' },
+      { id: 'wrong', label: 'Tried the other hand’s circle' },
+      { id: 'quick', label: 'Time to pop, on average' },
+    ],
     hudTop: `
       <div class="pop-hud">
         <div class="chip chip-pops"><span class="chip-label">Popped</span><span id="chip-pops" class="chip-value">0 of 12</span></div>
@@ -452,16 +493,14 @@ new GameSession({
         <div id="chip-stars-box" class="chip chip-stars" hidden><span class="chip-label">Stars</span><span id="chip-stars" class="chip-value">0</span></div>
         <div id="chip-gems-box" class="chip chip-gems" hidden><span class="chip-label">Gems</span><span id="chip-gems" class="chip-value">0</span></div>
       </div>
-      <div id="pop-ask" class="pop-ask" data-count="0" data-clock="off">${askSlot('left')}${askSlot('right')}</div>
+      <div id="pop-ask" class="pop-ask" data-count="0" data-clock="off" data-simple="on">${askSlot('left')}${askSlot('both')}${askSlot('right')}</div>
       <div class="film pop-film" aria-hidden="true">
         <svg viewBox="0 0 220 160">
           <rect class="film-grass" x="0" y="136" width="220" height="24" />
           <g class="film-card">
-            <rect x="62" y="8" width="96" height="30" rx="15" />
-            <circle class="film-red" cx="80" cy="23" r="10" />
-            <text x="96" y="28">Left</text>
+            <rect x="72" y="8" width="76" height="30" rx="15" />
+            <text x="110" y="28" text-anchor="middle">Left</text>
           </g>
-          <circle class="film-blue" cx="160" cy="84" r="22" />
           <g class="film-pop"><circle class="film-red" cx="64" cy="80" r="22" /></g>
           <g class="film-hand">
             <path class="film-finger-ink" d="M-15 -8V-32M-5 -11V-41M5 -11V-41M15 -8V-32M22 12L40 -4" />
@@ -475,7 +514,7 @@ new GameSession({
         <legend>Which hand is asked for</legend>
         ${choice('popHands', 'even', 'Both hands, each as often as the other')}
         ${choice('popHands', 'more', 'The hand in play twice as often as the other')}
-        ${choice('popHands', 'only', 'Only the hand in play: just the colours')}
+        ${choice('popHands', 'only', 'Only the hand in play, and no big balloons for both')}
       </fieldset>
       <fieldset class="choice">
         <legend>Circles that fade away</legend>
@@ -495,7 +534,7 @@ new GameSession({
         ${choice('popGoal', '16', '16')}
       </fieldset>
       <fieldset class="choice">
-        <legend>Colour names on the circles, for a child who finds some colours hard to tell apart, or is learning to read them</legend>
+        <legend>Colour names on the circles, from level 6, for a child who finds some colours hard to tell apart, or is learning to read them</legend>
         ${choice('popNames', 'off', 'No names')}
         ${choice('popNames', 'on', 'Each circle has its colour written on it')}
       </fieldset>`,
@@ -504,8 +543,9 @@ new GameSession({
   choices: { popHands: String, popClock: String, popReach: String, popGoal: Number, popNames: String },
   // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
   atOnce: ['popReach', 'popNames'],
-  tagline: () => 'Circles of every colour! Pop the colour on the card with the hand it shows: left or right, with your hand open.',
+  tagline: () => 'Pop the circle with the hand you’re told: red for your left hand, green for your right, and later every colour. A big balloon needs both!',
   finishLine: FINISH,
+  lines: new URL('./audio/voice/lines.json', import.meta.url),
   createSound: (options) => new Sound({
     ...options,
     sounds: {

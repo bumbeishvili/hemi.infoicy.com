@@ -1,7 +1,11 @@
-// Left, Right, Pop!: coloured circles come up all over the screen, and the game asks for one of them with one hand:
-// the red one with the left hand, say. An open hand pops a circle, but only the colour asked for, with the hand asked
-// for. The other hand on it only makes it wobble, and so does any hand on another colour. Telling left from right,
-// and using the hand that's asked for, the weaker one as often as the other, is what it practises.
+// Left, Right, Pop!: the game asks for a hand, left or right, and the circle for it pops when that hand opens on it.
+// The other hand on it only makes it wobble. Telling left from right, and using the hand that's asked for, the weaker
+// one as often as the other, is what it practises.
+//
+// Levels 1 to 5 keep it simple: one circle on the screen at a time, at a random place, red for the left hand and green
+// for the right, and the voice says only the hand. From level 3 the circle moves a little, and the voice says only
+// "Left!" or "Right!". From level 6 there are several circles, of every colour, and the card at the top shows which
+// colour to pop with which hand. At every level a big balloon comes now and then, to be popped with both hands at once.
 //
 // The rules are here, with no screen, so they run in the unit tests. main.js says where each glove is and whether its
 // hand is open, and view.js draws what this says. Places are in shares of the screen, x across from the left and y
@@ -11,19 +15,21 @@
 // away before enough are popped loses the game. The clock only runs while a hand that's asked for is in the picture,
 // so a child who goes away, or a hand the camera can't find, isn't caught out for it. A grown-up can choose Gentle
 // instead, which has no clock: each circle waits for as long as it takes, and nothing can be lost.
-import { clampLevel, ramp, rampWhole } from '../../core/levels.js';
+import { clampLevel, ramp } from '../../core/levels.js';
 
-// The colours, and what they're called on the screen. The voice says which hand; the colour is shown.
+// The colours, and what they're called on the screen. Up to level 5 the colour goes with the hand: see HAND_COLOURS.
 export const COLOURS = {
   red: { fill: '#ef4136', name: 'Red', nameKa: 'წითელი' },
+  green: { fill: '#22a94a', name: 'Green', nameKa: 'მწვანე' },
   blue: { fill: '#2f6fe4', name: 'Blue', nameKa: 'ლურჯი' },
   yellow: { fill: '#ffd60a', name: 'Yellow', nameKa: 'ყვითელი' },
-  green: { fill: '#22a94a', name: 'Green', nameKa: 'მწვანე' },
   purple: { fill: '#9b5de5', name: 'Purple', nameKa: 'იისფერი' },
   orange: { fill: '#ff8a1f', name: 'Orange', nameKa: 'ნარინჯისფერი' },
 };
-export const FIRST_COLOURS = ['red', 'blue', 'yellow', 'green'];
-export const MORE_COLOURS = ['purple', 'orange']; // From level 6.
+// Up to level 5, the left hand's circle is red and the right hand's green.
+export const HAND_COLOURS = { left: 'red', right: 'green' };
+export const ALL_COLOURS = Object.keys(COLOURS); // From level 6.
+export const SIMPLE_UP_TO = 5; // The last level with one circle at a time, its colour the hand's.
 
 // Where the circles come, which is how far to reach, as a grown-up chooses: the part of the screen their middles are
 // in. The top of the screen is left for what's asked, the counts and the mirror.
@@ -58,23 +64,25 @@ export const LOST_SECONDS = 1.6; // After the last fade that loses the game.
 const GAP = 0.035; // The least room between two circles, in screen heights.
 const RUN = { even: 2, more: 3, only: Infinity }; // The most times in a row one hand is asked for.
 
-// What the levels bring. Missing any of it never costs anything.
+// What the levels bring, and the big balloon every level has. Missing any of it never costs anything.
 export const EXTRAS = {
+  balloonChance: 0.22, // Of each turn after the first, never two in a row: a big balloon for both hands.
+  balloonSize: 0.2, // Its radius, big enough for a hand on each side of it that don't touch each other.
   starEvery: 3, // From level 2, every third circle asked for has a star in it.
   holdEvery: 3, // From level 4, every third has to be held a moment.
-  bothEvery: 3, // From level 5, every third turn asks for one circle with each hand.
-  bothLonger: 1.6, // How much longer a turn with both hands waits.
-  splitEvery: 4, // At level 10, every fourth circle asked for is big, and splits in two.
+  hopAfter: [1.4, 2.6], // From level 5, a circle hops once to another place, this many seconds after it comes,
+  hopAfterMany: [3, 9], // or from level 6, with several on the screen, after this many.
+  hopSeconds: 0.35,
+  bothEvery: 3, // From level 7, every third turn asks for one circle with each hand.
+  bothLonger: 1.6, // How much longer a turn with both hands, or a big balloon, waits.
+  swapSeconds: 1.1, // How long two circles take to swap places, from level 8.
+  rainbowEvery: 15, // From level 9, now and then a rainbow circle that any open hand can pop, for a gem.
+  rainbowSeconds: 7,
+  splitEvery: 4, // At level 10, every fourth circle asked for with one hand is big, and splits in two.
   splitBigger: 1.45,
   splitSmaller: 0.75,
   splitApart: 0.17,
   splitExtra: 3, // Seconds more on the clock for its two halves.
-  swapSeconds: 1.1, // How long two circles take to swap places, from level 7.
-  rainbowEvery: 15, // From level 8, now and then a rainbow circle that any open hand can pop, for a gem.
-  rainbowSeconds: 7,
-  cloudEvery: 17, // From level 9, a cloud drifts across now and then, and the circles behind it are hard to see.
-  cloudSeconds: 11,
-  cloudSize: 0.34,
 };
 
 /** How many circles fading away lose the game, at a level, with so many to pop. */
@@ -87,26 +95,32 @@ export function fadesToLose(level, goal) {
  */
 export function popLevel(level, { gentle = false } = {}) {
   const at = clampLevel(level);
+  const simple = at <= SIMPLE_UP_TO;
   return {
     level: at,
-    // More circles at once to look through: 3 at level 1, up to 6.
-    circles: rampWhole(at, 3, 6),
-    // A little smaller, so a little harder to get to.
-    radius: ramp(at, 0.105, 0.085),
+    // Up to level 5, one circle at a time, its colour the hand's, and only the hand is said.
+    simple,
+    // From level 3 to 5, the voice says only "Left!" or "Right!".
+    short: simple && at >= 3,
+    // From level 6, several circles at once to look through: 3, up to 5 at level 10.
+    circles: simple ? 1 : Math.round(3 + (at - 6) * 0.5),
+    // A little smaller each level, so a little harder to get to.
+    radius: ramp(at, 0.115, 0.085),
     // Seconds each circle asked for waits, at level 10 half of level 1's.
     wait: gentle ? Infinity : ramp(at, 10, 5),
-    // How fast circles drift, in screen heights a second, from level 3.
+    // How fast circles move, in screen heights a second, from level 3.
     speed: at >= 3 ? ramp(at, 0.03, 0.06) : 0,
-    // Seconds between two circles swapping places, from level 7.
-    swapEvery: at >= 7 ? 7 - (at - 7) * 0.6 : Infinity,
+    // Seconds between two circles swapping places, from level 8.
+    swapEvery: at >= 8 ? 7 - (at - 8) * 0.9 : Infinity,
+    balloons: true,
     stars: at >= 2,
     drifting: at >= 3,
     hold: at >= 4,
-    both: at >= 5,
+    hop: at >= 5,
     colours: at >= 6,
-    swap: at >= 7,
-    rainbow: at >= 8,
-    cloud: at >= 9,
+    both: at >= 7,
+    swap: at >= 8,
+    rainbow: at >= 9,
     split: at >= 10,
   };
 }
@@ -115,13 +129,13 @@ export function popLevel(level, { gentle = false } = {}) {
 // popLevel turns it on, which the unit tests check.
 export const NEWS = {
   2: [{ key: 'stars', mark: '⭐', name: 'Star circles', nameKa: 'ვარსკვლავიანი წრეები' }],
-  3: [{ key: 'drifting', mark: '🎈', name: 'Circles that drift', nameKa: 'მოცურავე წრეები' }],
+  3: [{ key: 'drifting', mark: '🎈', name: 'A moving circle, and just “Left!” or “Right!”', nameKa: 'მოძრავი წრე' }],
   4: [{ key: 'hold', mark: '🫧', name: 'Circles to hold', nameKa: 'წრეები, რომლებიც უნდა გააჩერო' }],
-  5: [{ key: 'both', mark: '🙌', name: 'Both hands at once', nameKa: 'ორივე ხელი ერთად' }],
-  6: [{ key: 'colours', mark: '🎨', name: 'Purple and orange', nameKa: 'იისფერი და ნარინჯისფერი' }],
-  7: [{ key: 'swap', mark: '🔄', name: 'Circles that swap places', nameKa: 'წრეები ადგილს იცვლიან' }],
-  8: [{ key: 'rainbow', mark: '🌈', name: 'The rainbow circle', nameKa: 'ცისარტყელას წრე' }],
-  9: [{ key: 'cloud', mark: '☁️', name: 'A passing cloud', nameKa: 'გამვლელი ღრუბელი' }],
+  5: [{ key: 'hop', mark: '🐸', name: 'Circles that hop', nameKa: 'მხტუნავი წრეები' }],
+  6: [{ key: 'colours', mark: '🎨', name: 'Circles of every colour', nameKa: 'ყველა ფერის წრეები' }],
+  7: [{ key: 'both', mark: '🙌', name: 'A circle for each hand at once', nameKa: 'თითო წრე ორივე ხელისთვის' }],
+  8: [{ key: 'swap', mark: '🔄', name: 'Circles that swap places', nameKa: 'წრეები ადგილს იცვლიან' }],
+  9: [{ key: 'rainbow', mark: '🌈', name: 'The rainbow circle', nameKa: 'ცისარტყელას წრე' }],
   10: [{ key: 'split', mark: '✂️', name: 'Big circles that split in two', nameKa: 'დიდი წრეები, რომლებიც ორად იყოფა' }],
 };
 
@@ -129,6 +143,7 @@ export const popNewAt = (level) => NEWS[clampLevel(level)] ?? [];
 
 const other = (side) => (side === 'left' ? 'right' : 'left');
 const ease = (t) => t * t * (3 - 2 * t);
+const between = (random, [low, high]) => low + random() * (high - low);
 
 export class PopRules {
   /**
@@ -154,23 +169,27 @@ export class PopRules {
     this.endIn = 0;
     this.time = 0;
     this.circles = [];
-    this.turn = null; // What's asked for now: { asks, wait, left }, each ask { id, hand, colour, circles, ... }.
+    // What's asked for now: { asks, wait, left }. Each ask is { id, hand, colour, circles, ... }, and hand is 'left',
+    // 'right', or 'both' for a big balloon.
+    this.turn = null;
     this.askIn = Infinity;
     this.nextId = 1;
-    this.asked = 0; // Circles asked for so far, for which have a star, or have to be held.
+    this.askCount = 0;
+    this.asked = 0; // Circles asked for with one hand so far, for which have a star, or have to be held.
     this.turns = 0;
     this.singles = 0; // Turns with one hand asked for, for which circle is big and splits.
+    this.lastWasBalloon = false;
     this.history = []; // The hands asked for, in order.
     this.lastColour = null;
-    this.cloud = null;
     this.swapIn = this.plan.swapEvery;
     this.rainbowIn = EXTRAS.rainbowEvery;
-    this.cloudIn = EXTRAS.cloudEvery * 0.6;
     this.stats = {
       pops: 0,
       faded: 0,
       stars: 0,
       gems: 0,
+      balloons: 0, // Big balloons popped with both hands,
+      balloonsAsked: 0, // of how many.
       asked: { left: 0, right: 0 },
       popped: { left: 0, right: 0 },
       wrong: { left: 0, right: 0 }, // Times each hand tried a circle that was the other hand's.
@@ -182,7 +201,7 @@ export class PopRules {
   /* ---------- the circles ---------- */
 
   get palette() {
-    return this.plan.colours ? [...FIRST_COLOURS, ...MORE_COLOURS] : FIRST_COLOURS;
+    return this.plan.colours ? ALL_COLOURS : Object.values(HAND_COLOURS);
   }
 
   /** The circles that are there to be popped: not popped, fading or gone. */
@@ -190,7 +209,7 @@ export class PopRules {
     return this.circles.filter((circle) => circle.state === 'growing' || circle.state === 'waiting');
   }
 
-  /** The ordinary circles, which are what's asked for and what's kept on the screen. */
+  /** The ordinary circles, which are what's asked for and, from level 6, what's kept on the screen. */
   get plain() {
     return this.live.filter((circle) => circle.kind === 'plain');
   }
@@ -244,10 +263,11 @@ export class PopRules {
     const free = grid.filter((spot) => roomAt(spot) >= GAP);
     if (free.length) {
       const spot = free[Math.floor(this.random() * free.length)];
-      // Nudged, if there's room for it, so the circles don't stand in rows.
+      // Nudged a lot when it's alone on the screen, and a little when it isn't, so the circles don't stand in rows.
+      const nudge = others.length ? GAP : step / 2;
       const nudged = {
-        x: Math.min(right, Math.max(left, spot.x + ((this.random() - 0.5) * GAP * 2) / this.aspect)),
-        y: Math.min(bottom, Math.max(top, spot.y + (this.random() - 0.5) * GAP * 2)),
+        x: Math.min(right, Math.max(left, spot.x + ((this.random() - 0.5) * nudge * 2) / this.aspect)),
+        y: Math.min(bottom, Math.max(top, spot.y + (this.random() - 0.5) * nudge * 2)),
       };
       return roomAt(nudged) >= GAP ? nudged : spot;
     }
@@ -272,7 +292,7 @@ export class PopRules {
     const angle = this.random() * Math.PI * 2;
     const circle = {
       id: this.nextId++,
-      kind, // 'plain', 'half' (one of a split circle's two), or 'rainbow'
+      kind, // 'plain', 'half' (one of a split circle's two), 'rainbow', or 'balloon'
       colour,
       x: spot.x,
       y: spot.y,
@@ -290,14 +310,17 @@ export class PopRules {
       big: false,
       holding: 0,
       glide: null,
+      // From level 5 an ordinary circle hops once, when it's been there so long.
+      hopAt: kind === 'plain' && this.plan.hop ? between(this.random, this.plan.simple ? EXTRAS.hopAfter : EXTRAS.hopAfterMany) : Infinity,
     };
     this.clampInto(circle);
     this.circles.push(circle);
     return circle;
   }
 
-  /** Enough ordinary circles on the screen, each colour once. */
+  /** From level 6, enough ordinary circles on the screen, each colour once. Up to level 5 a circle comes when it's asked for. */
   fill() {
+    if (this.plan.simple) return;
     while (this.plain.length < this.plan.circles) this.addCircle({ colour: this.freeColour() });
   }
 
@@ -319,7 +342,7 @@ export class PopRules {
     return hand;
   }
 
-  /** A circle to ask for, not the colour asked for last time if there's another. */
+  /** From level 6, a circle on the screen to ask for, not the colour asked for last time if there's another. */
   pickCircle(not = []) {
     const choices = this.plain.filter((circle) => !not.includes(circle) && !circle.ask);
     const fresh = choices.filter((circle) => circle.colour !== this.lastColour);
@@ -327,21 +350,41 @@ export class PopRules {
     return from[Math.floor(this.random() * from.length)] ?? null;
   }
 
+  /** Whether this turn is a big balloon: now and then, never the first turn or two in a row, and never with one hand only. */
+  balloonTurn() {
+    return this.plan.balloons && this.mode !== 'only' && this.turns > 0 && !this.lastWasBalloon && this.random() < EXTRAS.balloonChance;
+  }
+
   newTurn() {
     this.fill();
     const { plan } = this;
+    if (this.balloonTurn()) {
+      const balloon = this.addCircle({ colour: 'balloon', kind: 'balloon', r: EXTRAS.balloonSize });
+      const ask = { id: ++this.askCount, hand: 'both', colour: 'balloon', circles: [balloon.id], started: this.time, wrongAt: -Infinity, done: false };
+      balloon.ask = ask.id;
+      this.stats.balloonsAsked += 1;
+      this.lastWasBalloon = true;
+      const wait = plan.wait * EXTRAS.bothLonger;
+      this.turn = { asks: [ask], wait, left: wait };
+      this.turns += 1;
+      this.askIn = Infinity;
+      this.emit('ask', { asks: [ask] });
+      return;
+    }
+    this.lastWasBalloon = false;
     const both = plan.both && this.mode !== 'only' && this.turns % EXTRAS.bothEvery === EXTRAS.bothEvery - 1 && this.plain.length >= 2;
     const hands = both ? ['left', 'right'] : [this.pickHand()];
     if (!both) this.singles += 1;
     const asks = [];
     const taken = [];
     for (const hand of hands) {
-      const circle = this.pickCircle(taken);
+      // Up to level 5 the circle is the hand's colour, and comes now, wherever there's room.
+      const circle = plan.simple ? this.addCircle({ colour: HAND_COLOURS[hand] }) : this.pickCircle(taken);
       if (!circle) break;
       taken.push(circle);
       this.asked += 1;
       const ask = {
-        id: this.asked,
+        id: ++this.askCount,
         hand,
         colour: circle.colour,
         circles: [circle.id],
@@ -394,6 +437,7 @@ export class PopRules {
 
     this.extras(dt);
     const touched = new Set();
+    const onBalloon = new Map(); // Each balloon, and the open hands on it.
     for (const side of ['left', 'right']) {
       const glove = gloves[side];
       if (!glove?.visible || !glove.open) continue;
@@ -401,9 +445,17 @@ export class PopRules {
         if (circle.state === 'growing' && circle.age < GROW_SECONDS * 0.6) continue;
         if (glove.reach(circle.x, circle.y) > circle.r) continue;
         touched.add(circle);
+        if (circle.kind === 'balloon') {
+          onBalloon.set(circle, [...(onBalloon.get(circle) ?? []), side]);
+          continue;
+        }
         this.touch(side, circle, dt);
         if (this.phase !== 'play') return;
       }
+    }
+    for (const [balloon, sides] of onBalloon) {
+      this.touchBalloon(balloon, sides);
+      if (this.phase !== 'play') return;
     }
     for (const circle of this.live) {
       if (circle.hold && !touched.has(circle)) circle.holding = Math.max(0, circle.holding - dt * HOLD_DRAINS);
@@ -411,7 +463,7 @@ export class PopRules {
 
     if (this.turn) {
       // The clock only runs while a hand that's asked for is in the picture.
-      const seen = this.asks.some((ask) => gloves[ask.hand]?.visible);
+      const seen = this.asks.some((ask) => (ask.hand === 'both' ? gloves.left?.visible || gloves.right?.visible : gloves[ask.hand]?.visible));
       if (seen) this.turn.left -= dt;
       if (this.turn.left <= 0) this.timeUp();
     } else if (Number.isFinite(this.askIn)) {
@@ -439,7 +491,7 @@ export class PopRules {
       return;
     }
     if (ask.hand !== side) {
-      // The colour asked for, with the other hand: it wobbles, and the hand that's asked for is said again.
+      // The circle asked for, with the other hand: it wobbles, and the hand that's asked for is said again.
       circle.wobble = 1;
       if (this.time - ask.wrongAt > WRONG_AGAIN_AFTER) {
         ask.wrongAt = this.time;
@@ -458,6 +510,22 @@ export class PopRules {
     }
     this.pop(circle, side);
     if (ask.circles.every((id) => this.circles.find((each) => each.id === id)?.state === 'popped' || !this.circles.some((each) => each.id === id))) this.askDone(ask, side, circle);
+  }
+
+  /** Open hands on a big balloon: it pops with both on it at once, and wobbles with one. */
+  touchBalloon(balloon, sides) {
+    const ask = this.asks.find((each) => each.circles.includes(balloon.id));
+    if (!ask) return;
+    if (sides.length < 2) {
+      balloon.wobble = Math.max(balloon.wobble, 0.6);
+      if (this.time - ask.wrongAt > WRONG_AGAIN_AFTER) {
+        ask.wrongAt = this.time;
+        this.emit('one-hand', { ask, side: sides[0], circle: balloon });
+      }
+      return;
+    }
+    this.pop(balloon, 'both');
+    this.askDone(ask, 'both', balloon);
   }
 
   pop(circle, side) {
@@ -485,12 +553,17 @@ export class PopRules {
     this.emit('split', { circle, halves });
   }
 
+  /** side is the hand that popped it, or 'both' for a big balloon. */
   askDone(ask, side, circle) {
     ask.done = true;
     const { stats } = this;
     stats.pops += 1;
-    stats.popped[side] += 1;
-    stats.seconds[side] += this.time - ask.started;
+    if (side === 'both') {
+      stats.balloons += 1;
+    } else {
+      stats.popped[side] += 1;
+      stats.seconds[side] += this.time - ask.started;
+    }
     if (ask.star) {
       stats.stars += 1;
       this.emit('star', { at: { x: circle.x, y: circle.y } });
@@ -536,9 +609,9 @@ export class PopRules {
     this.askIn = NEXT_ASK_AFTER;
   }
 
-  /** Circles growing, popping, fading, wobbling, drifting and swapping places. */
+  /** Circles growing, popping, fading, wobbling, moving, hopping and swapping places. */
   animate(dt) {
-    const drifting = this.plan.drifting && this.phase !== 'ready';
+    const moving = this.plan.drifting && this.phase !== 'ready';
     for (const circle of this.circles) {
       circle.age += dt;
       circle.wobble = Math.max(0, circle.wobble - dt * WOBBLE_SETTLES);
@@ -550,36 +623,34 @@ export class PopRules {
       }
       if (circle.glide) {
         const { glide } = circle;
-        glide.t = Math.min(1, glide.t + dt / EXTRAS.swapSeconds);
+        glide.t = Math.min(1, glide.t + dt / glide.seconds);
         const along = ease(glide.t);
         circle.x = glide.from.x + (glide.to.x - glide.from.x) * along;
         circle.y = glide.from.y + (glide.to.y - glide.from.y) * along;
         if (glide.t >= 1) circle.glide = null;
-      } else if (drifting && (circle.state === 'waiting' || circle.state === 'growing')) {
+      } else if (moving && circle.kind !== 'balloon' && (circle.state === 'waiting' || circle.state === 'growing')) {
         this.drift(circle, dt);
       }
     }
     this.circles = this.circles.filter((circle) => !((circle.state === 'popped' && circle.endAge > POP_SECONDS) || (circle.state === 'fading' && circle.endAge > FADE_SECONDS)));
-    if (drifting) this.keepApart();
-    if (this.cloud) {
-      this.cloud.x += this.cloud.way * dt * ((1 + 2 * EXTRAS.cloudSize) / EXTRAS.cloudSeconds);
-      if (this.cloud.x < -EXTRAS.cloudSize - 0.05 || this.cloud.x > 1 + EXTRAS.cloudSize + 0.05) this.cloud = null;
-    }
+    if (moving) this.keepApart();
   }
 
-  /** A circle drifting along, turning back at the edges of where circles can be. */
+  /** A circle moving along, turning back at the edges of where circles can be. */
   drift(circle, dt) {
     if (circle.holding > 0) return; // A circle being held stays put.
     circle.x += (circle.vx / this.aspect) * dt;
     circle.y += circle.vy * dt;
     const { x, y } = this.area;
     const across = circle.r / this.aspect;
-    if (circle.x < x[0] + across || circle.x > x[1] - across) circle.vx = Math.sign(circle.x < x[0] + across ? 1 : -1) * Math.abs(circle.vx);
-    if (circle.y < y[0] + circle.r || circle.y > y[1] - circle.r) circle.vy = Math.sign(circle.y < y[0] + circle.r ? 1 : -1) * Math.abs(circle.vy);
+    if (circle.x < x[0] + across) circle.vx = Math.abs(circle.vx);
+    if (circle.x > x[1] - across) circle.vx = -Math.abs(circle.vx);
+    if (circle.y < y[0] + circle.r) circle.vy = Math.abs(circle.vy);
+    if (circle.y > y[1] - circle.r) circle.vy = -Math.abs(circle.vy);
     this.clampInto(circle);
   }
 
-  /** Drifting circles that come too close push each other gently apart, and bounce off each other. */
+  /** Moving circles that come too close push each other gently apart, and bounce off each other. */
   keepApart() {
     const moving = this.live.filter((circle) => !circle.glide);
     for (let i = 0; i < moving.length; i += 1) {
@@ -604,9 +675,22 @@ export class PopRules {
     }
   }
 
-  /** The things later levels bring: circles swapping places, the rainbow circle and the cloud. */
+  /** Glides a circle to a place, over so many seconds. */
+  glideTo(circle, to, seconds) {
+    circle.glide = { from: { x: circle.x, y: circle.y }, to, t: 0, seconds };
+  }
+
+  /** The things later levels bring: circles hopping and swapping places, and the rainbow circle. */
   extras(dt) {
     const { plan } = this;
+    if (plan.hop) {
+      for (const circle of this.plain) {
+        if (circle.age < circle.hopAt || circle.state !== 'waiting' || circle.glide || circle.holding > 0) continue;
+        circle.hopAt = Infinity;
+        this.glideTo(circle, this.place(circle.r), EXTRAS.hopSeconds);
+        this.emit('hop', { circle });
+      }
+    }
     if (plan.swap) {
       this.swapIn -= dt;
       if (this.swapIn <= 0) {
@@ -624,16 +708,6 @@ export class PopRules {
         }
       }
     }
-    if (plan.cloud) {
-      this.cloudIn -= dt;
-      if (this.cloudIn <= 0 && !this.cloud) {
-        this.cloudIn = EXTRAS.cloudEvery;
-        const way = this.random() < 0.5 ? 1 : -1;
-        const { y } = this.area;
-        this.cloud = { x: way > 0 ? -EXTRAS.cloudSize : 1 + EXTRAS.cloudSize, y: y[0] + this.random() * (y[1] - y[0]), size: EXTRAS.cloudSize, way };
-        this.emit('cloud');
-      }
-    }
   }
 
   /** Two ordinary circles glide to each other's places. */
@@ -642,8 +716,9 @@ export class PopRules {
     if (free.length < 2) return;
     const a = free.splice(Math.floor(this.random() * free.length), 1)[0];
     const b = free[Math.floor(this.random() * free.length)];
-    a.glide = { from: { x: a.x, y: a.y }, to: { x: b.x, y: b.y }, t: 0 };
-    b.glide = { from: { x: b.x, y: b.y }, to: { x: a.x, y: a.y }, t: 0 };
+    const [toA, toB] = [{ x: b.x, y: b.y }, { x: a.x, y: a.y }];
+    this.glideTo(a, toA, EXTRAS.swapSeconds);
+    this.glideTo(b, toB, EXTRAS.swapSeconds);
     this.emit('swap', { circles: [a, b] });
   }
 
