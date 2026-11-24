@@ -25,23 +25,24 @@ body.hub {
   text-align: center;
 }
 
-/* The code on GitHub, in the top right corner. */
+/* The code on GitHub, in the top right corner: only its icon, in a round button. */
 .hub-github {
   position: absolute;
   top: 16px;
   right: 16px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  border-radius: 999px;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
   background: #1f2328;
   color: #fff;
-  font-size: 18px;
-  font-weight: 700;
   text-decoration: none;
   box-shadow: 0 4px 12px rgb(0 0 0 / 0.2);
 }
+
+.hub-github svg { width: 24px; height: 24px; }
 
 .hub-github:hover { background: #000; }
 
