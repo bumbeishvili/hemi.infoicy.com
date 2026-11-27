@@ -3,5 +3,5 @@
   {"id": "right-hand", "text": "Right hand!", "ka": "გაშალე მარჯვენა ხელი!"},
   {"id": "left", "text": "Left!", "ka": "გაშალე მარცხენა ხელი!"},
   {"id": "right", "text": "Right!", "ka": "გაშალე მარჯვენა ხელი!"},
-  {"id": "fists", "text": "Make two fists, then open your hands!", "ka": "მაჩვენე ორივე ხელი!"}
+  {"id": "both-open", "text": "Open both hands!", "ka": "მაჩვენე ორივე ხელი!"}
 ]

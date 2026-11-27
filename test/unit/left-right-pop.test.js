@@ -1,14 +1,13 @@
 // Left, Right, Pop!: up to level 5, one circle at a time, red for the left hand and green for the right; from level 6,
 // circles of every colour, each once; only the circle asked for, with the hand asked for and open, pops it; the other
-// hand only makes it wobble; the big balloon that two fists and then both hands opened on it pop; the clock that fades a
-// circle away, and
+// hand only makes it wobble; the big balloon that both hands shown open pop; the clock that fades a circle away, and
 // only runs while a hand that's asked for can be seen; the gentle game with no clock; and what each level brings.
 // Everything here runs without a screen, with pretend gloves.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  ALL_COLOURS, CLOCKS, COLOURS, EXTRAS, FISTS, FADE_SECONDS, GOAL_CHOICES, HAND_COLOURS, HAND_MODES, HOLD_SECONDS, LOST_SECONDS,
+  ALL_COLOURS, BOTH_OPEN, CLOCKS, COLOURS, EXTRAS, FADE_SECONDS, GOAL_CHOICES, HAND_COLOURS, HAND_MODES, HOLD_SECONDS, LOST_SECONDS,
   NEWS, NEXT_ASK_AFTER, PARTY_SECONDS, POP_SECONDS, PopRules, REACHES, REACH_NAMES, SIMPLE_UP_TO, fadesToLose, popLevel, popNewAt,
 } from '../../games/left-right-pop/rules.js';
 
@@ -36,14 +35,18 @@ function makeRules(options = {}) {
 const said = (rules, type) => rules.log.filter((event) => event.type === type);
 const gap = (a, b) => Math.hypot((a.x - b.x) * ASPECT, a.y - b.y);
 
-/** A pretend glove at a place, open unless it's said not to be, and a fist if it's said to be. */
-function gloveAt(at, { open = true, visible = true, fist = false } = {}) {
-  return { visible, open: visible && open && !fist, fist: visible && fist, x: at.x, y: at.y, reach: (x, y) => gap({ x, y }, at) - GLOVE };
+/** A pretend glove at a place, open unless it's said not to be. */
+function gloveAt(at, { open = true, visible = true } = {}) {
+  return { visible, open: visible && open, x: at.x, y: at.y, reach: (x, y) => gap({ x, y }, at) - GLOVE };
 }
 
 const AWAY = { x: 0.5, y: 0.05 }; // In the picture, but nowhere near a circle.
-// Both hands resting, nowhere near a circle, and apart.
-const away = () => ({ left: gloveAt({ x: 0.3, y: 0.05 }), right: gloveAt({ x: 0.7, y: 0.05 }) });
+const LEFT_AWAY = { x: 0.3, y: 0.05 };
+const RIGHT_AWAY = { x: 0.7, y: 0.05 };
+// Both hands resting: in the picture, nowhere near a circle, and closed, as both shown open would pop a big balloon.
+const away = () => ({ left: gloveAt(LEFT_AWAY, { open: false }), right: gloveAt(RIGHT_AWAY, { open: false }) });
+// Both hands shown open, nowhere near a circle.
+const bothOpen = () => ({ left: gloveAt(LEFT_AWAY), right: gloveAt(RIGHT_AWAY) });
 const hidden = () => gloveAt(AWAY, { visible: false });
 
 /** Plays for so long, with gloves that can follow what's going on: gloves(rules) is { left, right }. */
@@ -67,24 +70,13 @@ function untilAsk(rules, wanted, seconds = 120) {
 const circleOf = (rules, ask) => rules.circles.find((circle) => circle.id === ask.circles[0]);
 const live = (rules, ask) => rules.circles.find((each) => ask.circles.includes(each.id) && (each.state === 'waiting' || each.state === 'growing'));
 
-/** Both hands on either side of a point, so far from it: open unless it's said otherwise, or fists. */
-function handsAt(at, half, { open = true, fist = false } = {}) {
-  return {
-    left: gloveAt({ x: at.x - half / ASPECT, y: at.y }, { open, fist }),
-    right: gloveAt({ x: at.x + half / ASPECT, y: at.y }, { open, fist }),
-  };
-}
-
-/**
- * The hands asked for, open, on what's asked for, and any other hand away. A big balloon has a hand on each side of
- * it, both fists and then both open, over and over.
- */
+/** The hands asked for, open, on what's asked for, and any other hand away. For a big balloon both are shown open. */
 function rightOn(rules) {
   const ask = rules.current;
   if (!ask) return away();
   const circle = live(rules, ask);
   if (!circle) return away();
-  if (ask.hand === 'both') return handsAt(circle, circle.r * 0.8, { fist: (rules.time - ask.started) % 1 < 0.4 });
+  if (ask.hand === 'both') return bothOpen();
   const on = gloveAt(circle);
   return ask.hand === 'left' ? { left: on, right: gloveAt(AWAY) } : { left: gloveAt(AWAY), right: on };
 }
@@ -292,7 +284,7 @@ function untilBalloon(rules) {
   return { ask, balloon: live(rules, ask) };
 }
 
-test('now and then a big balloon comes, and it pops with both hands made into fists and then opened on it', () => {
+test('now and then a big balloon comes, and both hands shown open at once, anywhere, for a moment, pop it', () => {
   const rules = makeRules({ clock: 'gentle', goal: 16 });
   rules.begin();
   const { balloon } = untilBalloon(rules);
@@ -300,64 +292,52 @@ test('now and then a big balloon comes, and it pops with both hands made into fi
   assert.equal(balloon.r, EXTRAS.balloonSize);
   assert.equal(rules.live.length, 1, 'on its own up to level 5');
   const pops = rules.stats.pops;
-  const side = balloon.r * 0.8;
-  // Open hands held on it, without fists first, only make it wobble, and the fists are asked for again.
-  play(rules, 1.5, () => handsAt(balloon, side));
-  assert.equal(rules.stats.pops, pops);
-  assert.ok(balloon.wobble > 0);
-  assert.ok(said(rules, 'touch-balloon').length >= 1);
-  assert.equal(said(rules, 'fists').length, 0);
-  // Both fists, anywhere, for long enough: it's squeezed, and ready.
-  play(rules, FISTS.hold + 0.1, () => handsAt({ x: 0.5, y: 0.1 }, 0.3, { fist: true }));
-  assert.equal(said(rules, 'fists').length, 1, 'once, however long they stay fists');
-  assert.ok(balloon.squeezed && balloon.ready);
-  assert.equal(rules.stats.pops, pops);
-  // Then both opened on it: it pops.
-  play(rules, 0.2, () => handsAt(balloon, side));
+  // Both open, nowhere near it: the ring round it fills, and then it pops.
+  play(rules, BOTH_OPEN.hold / 2, bothOpen);
+  assert.equal(rules.stats.pops, pops, 'not straight away');
+  assert.ok(balloon.opened > 0.3 && balloon.opened < 0.7);
+  play(rules, BOTH_OPEN.hold / 2 + 0.05, bothOpen);
   assert.equal(rules.stats.pops, pops + 1);
   assert.equal(rules.stats.balloons, 1);
   assert.equal(said(rules, 'popped').at(-1).side, 'both');
 });
 
-test('one fist, fists too short, or opening too late or with one hand, don\'t pop a big balloon', () => {
+test('one hand open, or both open too briefly, or closed, don\'t pop a big balloon, and one alone is told again', () => {
   const rules = makeRules({ clock: 'gentle', goal: 16 });
   rules.begin();
-  const { balloon } = untilBalloon(rules);
+  const { ask, balloon } = untilBalloon(rules);
   const pops = rules.stats.pops;
-  const side = balloon.r * 0.8;
-  const elsewhere = { x: 0.5, y: 0.1 };
-  // One fist, and the other hand open: not a squeeze.
-  play(rules, 1, () => ({ left: gloveAt(elsewhere, { fist: true }), right: gloveAt(AWAY) }));
-  assert.equal(said(rules, 'fists').length, 0);
-  // Both fists for too short a moment: not a squeeze either.
-  play(rules, FISTS.hold / 2, () => handsAt(elsewhere, 0.3, { fist: true }));
-  play(rules, 0.1, () => handsAt(elsewhere, 0.3));
-  play(rules, 0.3, () => handsAt(balloon, side));
-  assert.equal(said(rules, 'fists').length, 0);
+  // Both closed: nothing.
+  play(rules, 1, away);
+  assert.equal(balloon.opened, 0);
+  // One open alone: nothing, and after a while the hands are asked for again.
+  play(rules, BOTH_OPEN.oneFor + 0.2, () => ({ left: gloveAt(LEFT_AWAY), right: gloveAt(RIGHT_AWAY, { open: false }) }));
   assert.equal(rules.stats.pops, pops);
-  // A squeeze, and then only one hand opened on it: no.
-  play(rules, FISTS.hold + 0.1, () => handsAt(elsewhere, 0.3, { fist: true }));
-  play(rules, 1, () => ({ left: gloveAt({ x: balloon.x - side / ASPECT, y: balloon.y }), right: gloveAt(AWAY) }));
+  assert.equal(said(rules, 'one-open').length, 1);
+  assert.equal(said(rules, 'one-open')[0].ask, ask);
+  // One open and the other not in the picture: nothing either.
+  play(rules, 1, () => ({ left: gloveAt(LEFT_AWAY), right: hidden() }));
   assert.equal(rules.stats.pops, pops);
-  // A squeeze, and both opened on it too late: no.
-  play(rules, FISTS.hold + 0.1, () => handsAt(elsewhere, 0.3, { fist: true }));
-  play(rules, FISTS.openWithin + 0.2, () => handsAt(elsewhere, 0.3));
-  assert.equal(balloon.ready, false);
-  play(rules, 0.3, () => handsAt(balloon, side));
-  assert.equal(rules.stats.pops, pops);
-  // But with the fists made again, it does.
-  play(rules, FISTS.hold + 0.1, () => handsAt(balloon, side, { fist: true }));
-  play(rules, 0.2, () => handsAt(balloon, side));
+  // Both open for a moment, then one closes: the ring empties again, and it doesn't pop.
+  play(rules, BOTH_OPEN.hold * 0.6, bothOpen);
+  const filled = balloon.opened;
+  assert.ok(filled > 0.4);
+  play(rules, 1, away);
+  assert.equal(balloon.opened, 0);
+  play(rules, BOTH_OPEN.hold * 0.6, bothOpen);
+  assert.equal(rules.stats.pops, pops, 'the ring started again from empty');
+  play(rules, BOTH_OPEN.hold * 0.5, bothOpen);
   assert.equal(rules.stats.pops, pops + 1);
 });
 
-test('with no big balloon asked for, fists are nothing', () => {
+test('with no big balloon asked for, both hands open are nothing special', () => {
   const rules = makeRules({ clock: 'gentle', goal: 16 });
   rules.begin();
   untilAsked(rules);
-  play(rules, 1, () => handsAt({ x: 0.5, y: 0.1 }, 0.3, { fist: true }));
-  assert.equal(said(rules, 'fists').length, 0);
+  play(rules, 1, bothOpen);
   assert.equal(rules.stats.pops, 0);
+  assert.equal(rules.stats.balloons, 0);
+  assert.equal(said(rules, 'one-open').length, 0);
 });
 
 test('big balloons come in about a fifth of the turns, never first and never twice running, and not with one hand only', () => {

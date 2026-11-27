@@ -5,8 +5,8 @@
 // Levels 1 to 5 keep it simple: one circle on the screen at a time, at a random place, red for the left hand and green
 // for the right, and the voice says only the hand. From level 3 the circle moves a little, and the voice says only
 // "Left!" or "Right!". From level 6 there are several circles, of every colour, and the card at the top shows which
-// colour to pop with which hand. At every level a big balloon comes now and then, to be popped with both hands made
-// into fists and then opened on it.
+// colour to pop with which hand. At every level a big balloon comes now and then, to be popped with both hands shown
+// open at once.
 //
 // The rules are here, with no screen, so they run in the unit tests. main.js says where each glove is and whether its
 // hand is open, and view.js draws what this says. Places are in shares of the screen, x across from the left and y
@@ -65,18 +65,18 @@ export const LOST_SECONDS = 1.6; // After the last fade that loses the game.
 const GAP = 0.035; // The least room between two circles, in screen heights.
 const RUN = { even: 2, more: 3, only: Infinity }; // The most times in a row one hand is asked for.
 
-// A big balloon pops with both hands made into fists, and then both opened on it: closing the hand and opening it
-// again, with each hand at once, which is the movement these games practise. A fist is a hand closed up tight, read
-// from how open it is (see core/hands.js): main.js says which hands are. Times are in seconds.
-export const FISTS = {
-  hold: 0.2, // Both hands fists together for this long squeezes the balloon,
-  openWithin: 4, // and both opened on it within this long after they were last fists pops it.
+// A big balloon pops with both hands shown open at once, anywhere in the picture, for a moment: each open by its own
+// measure, as for any circle (see core/hands.js), and two hands that touch are never open. Times are in seconds.
+export const BOTH_OPEN = {
+  hold: 0.4, // Both open together for this long pops it, and a ring round it fills as they are.
+  drains: 2, // How fast the ring empties again, once they aren't.
+  oneFor: 1.5, // One hand open alone for this long, and the other hand is asked for again.
 };
 
 // What the levels bring, and the big balloon every level has. Missing any of it never costs anything.
 export const EXTRAS = {
   balloonChance: 0.22, // Of each turn after the first, never two in a row: a big balloon, for both hands.
-  balloonSize: 0.2, // Its radius, big enough for an open hand on each side of it that don't touch each other.
+  balloonSize: 0.2, // Its radius.
   starEvery: 3, // From level 2, every third circle asked for has a star in it.
   holdEvery: 3, // From level 4, every third has to be held a moment.
   hopAfter: [1.4, 2.6], // From level 5, a circle hops once to another place, this many seconds after it comes,
@@ -369,8 +369,8 @@ export class PopRules {
     const { plan } = this;
     if (this.balloonTurn()) {
       const balloon = this.addCircle({ colour: 'balloon', kind: 'balloon', r: EXTRAS.balloonSize });
-      // fistsFor is how long both hands have been fists just now, and fistsAt when they last were, long enough.
-      const ask = { id: ++this.askCount, hand: 'both', colour: 'balloon', circles: [balloon.id], started: this.time, wrongAt: -Infinity, fistsFor: 0, fistsAt: -Infinity, done: false };
+      // opened is how far the ring round it has filled, with both hands open, and oneFor how long one has been open alone.
+      const ask = { id: ++this.askCount, hand: 'both', colour: 'balloon', circles: [balloon.id], started: this.time, wrongAt: -Infinity, opened: 0, oneFor: 0, done: false };
       balloon.ask = ask.id;
       this.stats.balloonsAsked += 1;
       this.lastWasBalloon = true;
@@ -432,9 +432,8 @@ export class PopRules {
   /* ---------- each frame ---------- */
 
   /**
-   * gloves is { left, right }, each { visible, open, fist, x, y, reach(x, y) }: reach is how near the glove comes to a
-   * point, from its palm or a fingertip, in screen heights, and 0 or less is on it. fist says the hand is closed up
-   * tight.
+   * gloves is { left, right }, each { visible, open, x, y, reach(x, y) }: reach is how near the glove comes to a
+   * point, from its palm or a fingertip, in screen heights, and 0 or less is on it.
    */
   update(dt, { gloves = {} } = {}) {
     this.time += dt;
@@ -447,27 +446,21 @@ export class PopRules {
     if (this.phase !== 'play') return;
 
     this.extras(dt);
-    this.readFists(gloves, dt);
+    this.readBothOpen(gloves, dt);
+    if (this.phase !== 'play') return;
     const touched = new Set();
-    const onBalloon = new Map(); // Each balloon, and the open hands on it.
     for (const side of ['left', 'right']) {
       const glove = gloves[side];
       if (!glove?.visible || !glove.open) continue;
       for (const circle of this.live) {
+        // A big balloon isn't touched: it pops with both hands shown open, wherever they are.
+        if (circle.kind === 'balloon') continue;
         if (circle.state === 'growing' && circle.age < GROW_SECONDS * 0.6) continue;
         if (glove.reach(circle.x, circle.y) > circle.r) continue;
         touched.add(circle);
-        if (circle.kind === 'balloon') {
-          onBalloon.set(circle, [...(onBalloon.get(circle) ?? []), side]);
-          continue;
-        }
         this.touch(side, circle, dt);
         if (this.phase !== 'play') return;
       }
-    }
-    for (const [balloon, sides] of onBalloon) {
-      this.touchBalloon(balloon, sides);
-      if (this.phase !== 'play') return;
     }
     for (const circle of this.live) {
       if (circle.hold && !touched.has(circle)) circle.holding = Math.max(0, circle.holding - dt * HOLD_DRAINS);
@@ -525,43 +518,33 @@ export class PopRules {
   }
 
   /**
-   * Open hands on a big balloon: both on it at once pop it if they were both fists a moment ago, and otherwise it only
-   * wobbles, and the fists are asked for again.
+   * While a big balloon is asked for: both hands open at once fill the ring round it, and once it's full the balloon
+   * pops. A hand that closes, or is lost, lets the ring empty again, and one hand open alone for a while has the
+   * other asked for again.
    */
-  touchBalloon(balloon, sides) {
-    const ask = this.asks.find((each) => each.circles.includes(balloon.id));
-    if (!ask) return;
-    if (sides.length === 2 && this.time - ask.fistsAt <= FISTS.openWithin) {
-      this.pop(balloon, 'both');
-      this.askDone(ask, 'both', balloon);
-      return;
-    }
-    balloon.wobble = Math.max(balloon.wobble, 0.6);
-    if (this.time - ask.wrongAt > WRONG_AGAIN_AFTER) {
-      ask.wrongAt = this.time;
-      this.emit('touch-balloon', { ask, side: sides[0], circle: balloon });
-    }
-  }
-
-  /**
-   * While a big balloon is asked for: both hands fists at once, for long enough, squeeze it, and from then until
-   * FISTS.openWithin after they stop being fists, both hands opening on it pop it. The fists can be made anywhere.
-   */
-  readFists(gloves, dt) {
+  readBothOpen(gloves, dt) {
     const ask = this.asks.find((each) => each.hand === 'both');
     if (!ask) return;
     const balloon = this.live.find((circle) => ask.circles.includes(circle.id));
-    const fists = ['left', 'right'].every((side) => gloves[side]?.visible && gloves[side].fist);
-    ask.fistsFor = fists ? ask.fistsFor + dt : 0;
-    if (ask.fistsFor >= FISTS.hold) {
-      // Heard once, as the fists have been held long enough.
-      if (ask.fistsFor - dt < FISTS.hold) this.emit('fists', { ask, circle: balloon });
-      ask.fistsAt = this.time;
+    if (!balloon) return;
+    const open = ['left', 'right'].filter((side) => gloves[side]?.visible && gloves[side].open);
+    if (open.length === 2) {
+      ask.opened = Math.min(1, ask.opened + dt / BOTH_OPEN.hold);
+      ask.oneFor = 0;
+    } else {
+      ask.opened = Math.max(0, ask.opened - (dt * BOTH_OPEN.drains) / BOTH_OPEN.hold);
+      ask.oneFor = open.length === 1 ? ask.oneFor + dt : 0;
+      if (ask.oneFor >= BOTH_OPEN.oneFor && this.time - ask.wrongAt > WRONG_AGAIN_AFTER) {
+        ask.wrongAt = this.time;
+        balloon.wobble = Math.max(balloon.wobble, 0.6);
+        this.emit('one-open', { ask, side: open[0], circle: balloon });
+      }
     }
-    // For how it's drawn: squeezed while both are fists, and ready to pop while they may open.
-    if (balloon) {
-      balloon.squeezed = fists && ask.fistsFor >= FISTS.hold;
-      balloon.ready = this.time - ask.fistsAt <= FISTS.openWithin;
+    // For how it's drawn: the ring round it, filling.
+    balloon.opened = ask.opened;
+    if (ask.opened >= 1) {
+      this.pop(balloon, 'both');
+      this.askDone(ask, 'both', balloon);
     }
   }
 

@@ -2,8 +2,8 @@
 // Up to level 5 there's one circle at a time, red for the left hand and green for the right, and the voice says only
 // the hand: "Left hand!", and from level 3, when the circle moves, just "Left!". From level 6 there are circles of
 // every colour, and the card at the top shows which colour to pop, big, with which hand, which the voice says: "Open
-// your left hand to pop it!". At every level a big balloon comes now and then, and both hands made into fists and then
-// opened on it pop it: "Make two fists, then open your hands!". Both hands
+// your left hand to pop it!". At every level a big balloon comes now and then, and both hands shown open at once pop
+// it, wherever they are: "Open both hands!". Both hands
 // play, so telling left from right is half of it, and using the hand that's asked for, the weaker one too, is the
 // other half. The rules are in rules.js, and view.js draws them.
 import { Glove } from '../../core/glove.js';
@@ -19,10 +19,7 @@ const byId = (id) => document.getElementById(id);
 const HAND_LINE = { left: 'Left hand!', right: 'Right hand!' }; // Levels 1 and 2.
 const SHORT_LINE = { left: 'Left!', right: 'Right!' }; // Levels 3 to 5.
 const OPEN_TO_POP = { left: 'Open your left hand to pop it!', right: 'Open your right hand to pop it!' }; // From level 6.
-const FISTS_LINE = 'Make two fists, then open your hands!'; // A big balloon, at any level.
-// A hand this closed, or more, is a fist: a fist scores 0 to 0.2 on real photos, and a loosely open hand 0.55 or more
-// (see core/hands.js).
-const FIST_OPENNESS = 0.3;
+const BOTH_LINE = 'Open both hands!'; // A big balloon, at any level.
 const PRAISE = ['Great job!', 'Nice one!', 'Way to go!'];
 const FINISH = 'You popped them all!';
 // On the card when too many circles faded away. It's only shown, not said: the voice says what it says after any
@@ -32,7 +29,7 @@ const LOST = 'The circles faded away!';
 const HAND_WORDS = {
   left: { en: 'Left hand', ka: 'მარცხენა ხელი' },
   right: { en: 'Right hand', ka: 'მარჯვენა ხელი' },
-  both: { en: 'Fists, then open!', ka: 'მოკუმე, მერე გაშალე!' },
+  both: { en: 'Both hands open!', ka: 'გაშალე ორივე ხელი!' },
 };
 const SHORT_WORDS = { left: { en: 'Left', ka: 'მარცხენა' }, right: { en: 'Right', ka: 'მარჯვენა' } };
 
@@ -120,7 +117,6 @@ class PopGame {
 
   resetCounts() {
     this.missingFor = { left: 0, right: 0 };
-    this.fists = { left: false, right: false };
     this.restFor = 0;
     this.sayAgainIn = Infinity;
     this.wrongSaidAt = -Infinity;
@@ -170,10 +166,10 @@ class PopGame {
   /**
    * What's said, and written along the bottom, for what's asked for: only the hand up to level 5, and from level 6
    * the hand to pop the colour on the card with, in the hand shape's own words for the hand in play if a grown-up
-   * chose one. A big balloon is both hands made into fists, and then opened.
+   * chose one. A big balloon is both hands open.
    */
   lineFor(ask) {
-    if (ask.hand === 'both') return FISTS_LINE;
+    if (ask.hand === 'both') return BOTH_LINE;
     const { plan } = this.rules;
     if (plan.simple) return plan.short ? SHORT_LINE[ask.hand] : HAND_LINE[ask.hand];
     const { shapes, monitor } = this.session;
@@ -217,13 +213,9 @@ class PopGame {
         sound.star();
         this.showProgress();
         break;
-      case 'fists':
-        // Both fists made: the balloon is squeezed, with a soft squeak, and the hands can open on it.
-        sound.play('boing', { gain: 0.25, rate: 0.7 });
-        break;
       case 'wrong-hand':
-      case 'touch-balloon':
-        // The other hand on a circle, or open hands on a big balloon without fists first: what's asked for is said again.
+      case 'one-open':
+        // The other hand on a circle, or one hand open alone for a big balloon: what's asked for is said again.
         sound.play('boing', { gain: 0.3 });
         if (this.rules.time - this.wrongSaidAt > WRONG_SAID_EVERY) {
           this.wrongSaidAt = this.rules.time;
@@ -276,8 +268,6 @@ class PopGame {
     const { view, session } = this;
     for (const [side, glove] of Object.entries(this.gloves)) {
       const hand = this.viewOf(snapshot, side);
-      // Whether it's a fist: closed up tight, and in the picture properly, not at its edge or too far away.
-      this.fists[side] = Boolean(hand && hand.status !== 'missing' && hand.reason !== 'edge' && hand.reason !== 'small' && hand.openness <= FIST_OPENNESS);
       if (!hand) {
         glove.hide();
         continue;
@@ -297,7 +287,6 @@ class PopGame {
       x: glove.x / width,
       y: glove.y / height,
       reach: (x, y) => glove.reachTo(x * width, y * height, palmSize) / height,
-      fist: glove.visible && this.fists[side],
     };
   }
 
@@ -494,7 +483,7 @@ new GameSession({
     heroNoun: 'popped',
     extraRows: [
       { id: 'popped', label: 'Popped, of the times asked' },
-      { id: 'balloons', label: 'Big balloons, with two fists and then open' },
+      { id: 'balloons', label: 'Big balloons, with both hands open' },
       { id: 'wrong', label: 'Tried the other hand’s circle' },
       { id: 'quick', label: 'Time to pop, on average' },
     ],
@@ -555,7 +544,7 @@ new GameSession({
   choices: { popHands: String, popClock: String, popReach: String, popGoal: Number, popNames: String },
   // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
   atOnce: ['popReach', 'popNames'],
-  tagline: () => 'Pop the circle with the hand you’re told: red for your left hand, green for your right, and later every colour. A big balloon pops with two fists, then both hands opened on it!',
+  tagline: () => 'Pop the circle with the hand you’re told: red for your left hand, green for your right, and later every colour. A big balloon pops when you show both hands open!',
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),
   createSound: (options) => new Sound({

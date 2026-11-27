@@ -1,6 +1,6 @@
 // Left, Right, Pop!: draws what rules.js says, on the game's canvas: a soft sky with a strip of grass, the circles, the
-// big balloons for both hands, squeezed by two fists, the bursts when they pop, and the two gloves, each with its name
-// under it. Nothing
+// big balloons for both hands, with the ring that fills round one as both are shown open, the bursts when they pop,
+// and the two gloves, each with its name under it. Nothing
 // flashes: a pop is a small burst of its own colour, and a circle that fades just goes paler and smaller.
 import { INK } from '../../core/glove.js';
 import { COLOURS, FADE_SECONDS, GROW_SECONDS, HAND_COLOURS, HOLD_SECONDS, POP_SECONDS } from './rules.js';
@@ -286,20 +286,20 @@ export class PopView {
 
   /**
    * A big balloon for both hands: red on the left, for the left hand, and green on the right, for the right hand, a
-   * little taller than wide, with its knot and a string hanging from it. Squeezed by two fists it goes a little wider
-   * and shorter, and while the hands can open on it to pop it, a white ring stands round it.
+   * little taller than wide, with its knot and a string hanging from it. While both hands are shown open, a white
+   * ring fills round it, and it pops once the ring is full.
    */
-  drawBalloon(x, y, wide, alpha, balloon = {}) {
+  drawBalloon(x, y, r, alpha, balloon = {}) {
     const { ctx } = this;
-    const r = balloon.squeezed ? wide * 1.07 : wide;
-    const tall = wide * (balloon.squeezed ? 0.92 : 1.08);
+    const tall = r * 1.08;
     ctx.save();
     ctx.globalAlpha = alpha;
-    if (balloon.ready && !balloon.squeezed) {
-      ctx.strokeStyle = 'rgb(255 255 255 / 0.9)';
-      ctx.lineWidth = Math.max(4, wide * 0.07);
+    if (balloon.opened > 0) {
+      ctx.strokeStyle = 'rgb(255 255 255 / 0.95)';
+      ctx.lineWidth = Math.max(5, r * 0.09);
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.ellipse(x, y, r * 1.16, tall * 1.14, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, y, r * 1.18, tall * 1.16, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, balloon.opened));
       ctx.stroke();
     }
     ctx.lineCap = 'round';
