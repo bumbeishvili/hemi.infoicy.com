@@ -1,13 +1,13 @@
 // Left, Right, Pop!: up to level 5, one circle at a time, red for the left hand and green for the right; from level 6,
 // circles of every colour, each once; only the circle asked for, with the hand asked for and open, pops it; the other
-// hand only makes it wobble; the big balloon that only both hands at once pop; the clock that fades a circle away, and
+// hand only makes it wobble; the big balloon that only a clap on it pops; the clock that fades a circle away, and
 // only runs while a hand that's asked for can be seen; the gentle game with no clock; and what each level brings.
 // Everything here runs without a screen, with pretend gloves.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  ALL_COLOURS, CLOCKS, COLOURS, EXTRAS, FADE_SECONDS, GOAL_CHOICES, HAND_COLOURS, HAND_MODES, HOLD_SECONDS, LOST_SECONDS,
+  ALL_COLOURS, CLAP, CLOCKS, COLOURS, EXTRAS, FADE_SECONDS, GOAL_CHOICES, HAND_COLOURS, HAND_MODES, HOLD_SECONDS, LOST_SECONDS,
   NEWS, NEXT_ASK_AFTER, PARTY_SECONDS, POP_SECONDS, PopRules, REACHES, REACH_NAMES, SIMPLE_UP_TO, fadesToLose, popLevel, popNewAt,
 } from '../../games/left-right-pop/rules.js';
 
@@ -41,7 +41,8 @@ function gloveAt(at, { open = true, visible = true } = {}) {
 }
 
 const AWAY = { x: 0.5, y: 0.05 }; // In the picture, but nowhere near a circle.
-const away = () => ({ left: gloveAt(AWAY), right: gloveAt(AWAY) });
+// Both hands resting, nowhere near a circle and apart, as two hands in one place would be a clap.
+const away = () => ({ left: gloveAt({ x: 0.3, y: 0.05 }), right: gloveAt({ x: 0.7, y: 0.05 }) });
 const hidden = () => gloveAt(AWAY, { visible: false });
 
 /** Plays for so long, with gloves that can follow what's going on: gloves(rules) is { left, right }. */
@@ -65,16 +66,21 @@ function untilAsk(rules, wanted, seconds = 120) {
 const circleOf = (rules, ask) => rules.circles.find((circle) => circle.id === ask.circles[0]);
 const live = (rules, ask) => rules.circles.find((each) => ask.circles.includes(each.id) && (each.state === 'waiting' || each.state === 'growing'));
 
-/** The hands asked for, open, on what's asked for, and any other hand away: a big balloon has a hand on each side. */
+/** Both hands on either side of a point, so far from it: open, and seen by the tracker, unless it's said otherwise. */
+function handsAt(at, half, { open = true, tracked = { left: true, right: true } } = {}) {
+  return {
+    left: { ...gloveAt({ x: at.x - half / ASPECT, y: at.y }, { open }), tracked: tracked.left },
+    right: { ...gloveAt({ x: at.x + half / ASPECT, y: at.y }, { open }), tracked: tracked.right },
+  };
+}
+
+/** The hands asked for, open, on what's asked for, and any other hand away: a big balloon is clapped on, over and over. */
 function rightOn(rules) {
   const ask = rules.current;
   if (!ask) return away();
   const circle = live(rules, ask);
   if (!circle) return away();
-  if (ask.hand === 'both') {
-    const side = (circle.r * 0.8) / ASPECT;
-    return { left: gloveAt({ x: circle.x - side, y: circle.y }), right: gloveAt({ x: circle.x + side, y: circle.y }) };
-  }
+  if (ask.hand === 'both') return handsAt(circle, (rules.time - ask.started) % 0.8 < 0.4 ? 0.2 : 0.03);
   const on = gloveAt(circle);
   return ask.hand === 'left' ? { left: on, right: gloveAt(AWAY) } : { left: gloveAt(AWAY), right: on };
 }
@@ -275,33 +281,88 @@ test('a circle that has only just come can\'t be popped until it has grown', () 
 
 /* ---------- the big balloon ---------- */
 
-test('now and then a big balloon comes, and only both hands open on it at once pop it', () => {
-  const rules = makeRules({ clock: 'gentle', goal: 16 });
-  rules.begin();
+/** Plays until a big balloon is asked for, and returns it and its ask. */
+function untilBalloon(rules) {
   const ask = untilAsk(rules, (each) => each.hand === 'both');
   assert.ok(ask, 'a big balloon comes');
-  const balloon = live(rules, ask);
+  return { ask, balloon: live(rules, ask) };
+}
+
+test('now and then a big balloon comes, and only a clap on it pops it: hands apart, then quickly together', () => {
+  const rules = makeRules({ clock: 'gentle', goal: 16 });
+  rules.begin();
+  const { balloon } = untilBalloon(rules);
   assert.equal(balloon.kind, 'balloon');
   assert.equal(balloon.r, EXTRAS.balloonSize);
   assert.equal(rules.live.length, 1, 'on its own up to level 5');
   const pops = rules.stats.pops;
-  // One hand alone only makes it wobble.
-  const side = (balloon.r * 0.8) / ASPECT;
-  play(rules, 1, () => ({ left: gloveAt({ x: balloon.x - side, y: balloon.y }), right: gloveAt(AWAY) }));
+  // Open hands held on it only make it wobble, and the clap is asked for again.
+  play(rules, 1.5, () => handsAt(balloon, 0.15));
   assert.equal(rules.stats.pops, pops);
   assert.ok(balloon.wobble > 0);
-  assert.equal(said(rules, 'one-hand').length, 1);
-  // Two closed hands don't either.
-  play(rules, 0.5, () => ({ left: gloveAt({ x: balloon.x - side, y: balloon.y }, { open: false }), right: gloveAt({ x: balloon.x + side, y: balloon.y }, { open: false }) }));
+  assert.ok(said(rules, 'touch-balloon').length >= 1);
+  assert.equal(said(rules, 'clap').length, 0);
+  // Hands coming together slowly aren't a clap.
+  for (let t = 0; t < 4; t += FRAME) rules.update(FRAME, { gloves: handsAt(balloon, 0.2 - (0.18 * t) / 4) });
+  assert.equal(said(rules, 'clap').length, 0);
   assert.equal(rules.stats.pops, pops);
-  // Both open, one on each side, pop it.
-  play(rules, 0.1, rightOn);
+  // Apart, then quickly together on it, closed or open: a clap, and it pops.
+  play(rules, 0.3, () => handsAt(balloon, 0.2));
+  play(rules, 0.2, () => handsAt(balloon, 0.03, { open: false }));
+  assert.equal(said(rules, 'clap').length, 1);
+  assert.equal(said(rules, 'clap')[0].on, true);
   assert.equal(rules.stats.pops, pops + 1);
   assert.equal(rules.stats.balloons, 1);
   assert.equal(said(rules, 'popped').at(-1).side, 'both');
-  // A balloon a hand on each side of can be popped by hands that don't touch: far enough apart that one couldn't be
-  // holding the other open. Hands closer than about a third of the screen's height are read as touching.
-  assert.ok(2 * (EXTRAS.balloonSize + 0.06) > 0.4);
+});
+
+test('a clap away from the big balloon is just a clap, one hand alone can\'t clap, and with no balloon a clap is nothing', () => {
+  const rules = makeRules({ clock: 'gentle', goal: 16 });
+  rules.begin();
+  // With a circle asked for, hands coming together are nothing.
+  const first = circleOf(rules, untilAsked(rules));
+  play(rules, 0.3, () => handsAt({ x: first.x > 0.5 ? 0.2 : 0.8, y: 0.6 }, 0.2, { open: false }));
+  play(rules, 0.2, () => handsAt({ x: first.x > 0.5 ? 0.2 : 0.8, y: 0.6 }, 0.03, { open: false }));
+  assert.equal(said(rules, 'clap').length, 0);
+  const { balloon } = untilBalloon(rules);
+  const pops = rules.stats.pops;
+  const elsewhere = { x: balloon.x > 0.5 ? 0.2 : 0.8, y: 0.6 };
+  assert.ok(gap(elsewhere, balloon) > balloon.r + CLAP.reach + 0.05);
+  play(rules, 0.3, () => handsAt(elsewhere, 0.2));
+  play(rules, 0.2, () => handsAt(elsewhere, 0.03));
+  assert.equal(said(rules, 'clap').length, 1);
+  assert.equal(said(rules, 'clap')[0].on, false);
+  assert.equal(rules.stats.pops, pops);
+  // Staying together isn't another clap: they have to be apart again first.
+  play(rules, 1, () => handsAt(balloon, 0.03));
+  assert.equal(said(rules, 'clap').length, 1);
+  assert.equal(rules.stats.pops, pops);
+  // One hand going to and fro on its own isn't a clap.
+  for (let t = 0; t < 2; t += FRAME) rules.update(FRAME, { gloves: { left: gloveAt({ x: balloon.x - (t % 0.6 < 0.3 ? 0.2 : 0.02) / ASPECT, y: balloon.y }), right: hidden() } });
+  assert.equal(said(rules, 'clap').length, 1);
+  assert.equal(rules.stats.pops, pops);
+});
+
+test('a clap still counts when the tracker takes the two hands for one just as they meet', () => {
+  const rules = makeRules({ clock: 'gentle', goal: 16 });
+  rules.begin();
+  const { balloon } = untilBalloon(rules);
+  const pops = rules.stats.pops;
+  play(rules, 0.3, () => handsAt(balloon, 0.2));
+  // Nearly together, and then the right hand is lost: its glove waits where it was, but the tracker doesn't see it.
+  play(rules, 2 * FRAME, () => handsAt(balloon, 0.1));
+  assert.equal(said(rules, 'clap').length, 0);
+  play(rules, 0.1, () => handsAt(balloon, 0.04, { tracked: { left: true, right: false } }));
+  assert.equal(said(rules, 'clap').length, 1);
+  assert.equal(said(rules, 'clap')[0].on, true);
+  assert.equal(rules.stats.pops, pops + 1);
+  // But a hand lost while the two were still well apart isn't a clap.
+  const other = makeRules({ clock: 'gentle', goal: 16, seed: 9 });
+  other.begin();
+  const second = untilBalloon(other).balloon;
+  play(other, 0.3, () => handsAt(second, 0.2));
+  play(other, 0.3, () => handsAt(second, 0.2, { tracked: { left: true, right: false } }));
+  assert.equal(said(other, 'clap').length, 0);
 });
 
 test('big balloons come in about a fifth of the turns, never first and never twice running, and not with one hand only', () => {
