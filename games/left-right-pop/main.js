@@ -34,8 +34,9 @@ const HAND_WORDS = {
 const SHORT_WORDS = { left: { en: 'Left', ka: 'მარცხენა' }, right: { en: 'Right', ka: 'მარჯვენა' } };
 
 const PRAISE_EVERY = 4; // Pops between one word of praise and the next.
-const SAY_AGAIN_AFTER = 8; // A circle that's still waiting has its hand said once more, after this long.
-const WRONG_SAID_EVERY = 3; // The other hand on a circle says the hand again, at most this often.
+// Each thing asked for is said once, as it comes, and once more this many seconds later if it hasn't been done by then:
+// never more than that, whatever the hands do in the meantime.
+const SAY_AGAIN_AFTER = 3;
 const CLOSER_AFTER = 4; // Seconds of the hand asked for not being seen before asking for it closer.
 const RESTING_AFTER = 15; // In the gentle game, seconds of no open hand before saying resting is fine.
 const FILM_SECONDS = 20; // The little film of what to do shows until the first pop, or this long.
@@ -120,7 +121,6 @@ class PopGame {
     this.missingFor = { left: 0, right: 0 };
     this.restFor = 0;
     this.sayAgainIn = Infinity;
-    this.wrongSaidAt = -Infinity;
     this.praised = 0;
     this.filmShown = false;
   }
@@ -185,8 +185,8 @@ class PopGame {
     const { view } = this;
     switch (event.type) {
       case 'ask':
-        // Each hand asked for is said once now, the left hand's first when it's both, and once more later if it's
-        // still waiting.
+        // Each thing asked for is said once now, the left hand's first when it's one for each hand, and once more
+        // SAY_AGAIN_AFTER seconds later if it hasn't been done.
         for (const ask of event.asks) sound.say(this.lineFor(ask));
         this.sayAgainIn = SAY_AGAIN_AFTER;
         this.showAsk();
@@ -218,12 +218,9 @@ class PopGame {
         break;
       case 'wrong-hand':
       case 'one-open':
-        // The other hand on a circle, or one hand open alone for a big balloon: what's asked for is said again.
+        // The other hand on a circle, or one hand open alone for a big balloon: a soft boing, and no more words, as
+        // what's asked for is only said again once, after SAY_AGAIN_AFTER seconds.
         sound.play('boing', { gain: 0.3 });
-        if (this.rules.time - this.wrongSaidAt > WRONG_SAID_EVERY) {
-          this.wrongSaidAt = this.rules.time;
-          sound.say(this.lineFor(event.ask), { ifQuiet: true });
-        }
         break;
       case 'bump':
         sound.play('boing', { gain: 0.14, rate: 1.5 });
@@ -300,13 +297,13 @@ class PopGame {
     rules.update(dt, { gloves: { left: this.gloveFor('left'), right: this.gloveFor('right') } });
     this.view.update(dt);
 
-    // Said once more, if it's still waiting.
+    // Said once more, SAY_AGAIN_AFTER seconds after it was asked for, if it hasn't been done: each thing still asked
+    // for, once, after anything that's being said.
     if (rules.turn) {
       this.sayAgainIn -= dt;
       if (this.sayAgainIn <= 0) {
         this.sayAgainIn = Infinity;
-        const ask = rules.current;
-        if (ask) session.sound.say(this.lineFor(ask), { ifQuiet: true });
+        for (const ask of rules.asks) session.sound.say(this.lineFor(ask));
       }
     }
     const anyOpen = this.gloves.left.status === 'open' || this.gloves.right.status === 'open';
