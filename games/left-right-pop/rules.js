@@ -5,7 +5,8 @@
 // Levels 1 to 5 keep it simple: one circle on the screen at a time, at a random place, red for the left hand and green
 // for the right, and the voice says only the hand. From level 3 the circle moves a little, and the voice says only
 // "Left!" or "Right!". From level 6 there are several circles, of every colour, and the card at the top shows which
-// colour to pop with which hand. At every level a big balloon comes now and then, to be popped with a clap on it.
+// colour to pop with which hand. At every level a big balloon comes now and then, to be popped with both hands made
+// into fists and then opened on it.
 //
 // The rules are here, with no screen, so they run in the unit tests. main.js says where each glove is and whether its
 // hand is open, and view.js draws what this says. Places are in shares of the screen, x across from the left and y
@@ -64,23 +65,18 @@ export const LOST_SECONDS = 1.6; // After the last fade that loses the game.
 const GAP = 0.035; // The least room between two circles, in screen heights.
 const RUN = { even: 2, more: 3, only: Infinity }; // The most times in a row one hand is asked for.
 
-// A clap: both hands seen apart, and then together, quickly. Hands that touch are never open (see core/hands.js), so a
-// clap is read from where the two hands are, and not from how open they are. Two hands pressed together can also be
-// taken by the tracker for one, so a hand lost just as the two were nearly together counts as having met the other.
-// Distances are between the middles of the two palms, in screen heights, and times in seconds.
-export const CLAP = {
-  apart: 0.3, // Hands this far apart are apart, which a clap starts from,
-  together: 0.15, // and this near are together.
-  within: 1.2, // From apart to together in this long is a clap; slower is just hands coming together.
-  close: 0.3, // A hand lost within lost of being this near the other met it.
-  lost: 0.4,
-  reach: 0.1, // A clap pops the balloon where the hands meet within this much of its edge.
+// A big balloon pops with both hands made into fists, and then both opened on it: closing the hand and opening it
+// again, with each hand at once, which is the movement these games practise. A fist is a hand closed up tight, read
+// from how open it is (see core/hands.js): main.js says which hands are. Times are in seconds.
+export const FISTS = {
+  hold: 0.2, // Both hands fists together for this long squeezes the balloon,
+  openWithin: 4, // and both opened on it within this long after they were last fists pops it.
 };
 
 // What the levels bring, and the big balloon every level has. Missing any of it never costs anything.
 export const EXTRAS = {
-  balloonChance: 0.22, // Of each turn after the first, never two in a row: a big balloon, to clap on.
-  balloonSize: 0.2, // Its radius.
+  balloonChance: 0.22, // Of each turn after the first, never two in a row: a big balloon, for both hands.
+  balloonSize: 0.2, // Its radius, big enough for an open hand on each side of it that don't touch each other.
   starEvery: 3, // From level 2, every third circle asked for has a star in it.
   holdEvery: 3, // From level 4, every third has to be held a moment.
   hopAfter: [1.4, 2.6], // From level 5, a circle hops once to another place, this many seconds after it comes,
@@ -196,17 +192,12 @@ export class PopRules {
     this.lastColour = null;
     this.swapIn = this.plan.swapEvery;
     this.rainbowIn = EXTRAS.rainbowEvery;
-    // For reading a clap: when the hands were last apart, and how near they were when last both seen.
-    this.apartAt = -Infinity;
-    this.bothSeenAt = -Infinity;
-    this.lastGap = Infinity;
-    this.lastMiddle = null;
     this.stats = {
       pops: 0,
       faded: 0,
       stars: 0,
       gems: 0,
-      balloons: 0, // Big balloons popped with a clap,
+      balloons: 0, // Big balloons popped with both hands,
       balloonsAsked: 0, // of how many.
       asked: { left: 0, right: 0 },
       popped: { left: 0, right: 0 },
@@ -378,7 +369,8 @@ export class PopRules {
     const { plan } = this;
     if (this.balloonTurn()) {
       const balloon = this.addCircle({ colour: 'balloon', kind: 'balloon', r: EXTRAS.balloonSize });
-      const ask = { id: ++this.askCount, hand: 'both', colour: 'balloon', circles: [balloon.id], started: this.time, wrongAt: -Infinity, done: false };
+      // fistsFor is how long both hands have been fists just now, and fistsAt when they last were, long enough.
+      const ask = { id: ++this.askCount, hand: 'both', colour: 'balloon', circles: [balloon.id], started: this.time, wrongAt: -Infinity, fistsFor: 0, fistsAt: -Infinity, done: false };
       balloon.ask = ask.id;
       this.stats.balloonsAsked += 1;
       this.lastWasBalloon = true;
@@ -440,9 +432,9 @@ export class PopRules {
   /* ---------- each frame ---------- */
 
   /**
-   * gloves is { left, right }, each { visible, open, x, y, reach(x, y), tracked }: reach is how near the glove comes
-   * to a point, from its palm or a fingertip, in screen heights, and 0 or less is on it. tracked says the tracker saw
-   * that hand just now, rather than the glove waiting where it was for a hand that's gone for a moment.
+   * gloves is { left, right }, each { visible, open, fist, x, y, reach(x, y) }: reach is how near the glove comes to a
+   * point, from its palm or a fingertip, in screen heights, and 0 or less is on it. fist says the hand is closed up
+   * tight.
    */
   update(dt, { gloves = {} } = {}) {
     this.time += dt;
@@ -455,11 +447,7 @@ export class PopRules {
     if (this.phase !== 'play') return;
 
     this.extras(dt);
-    const clap = this.readClap(gloves);
-    if (clap) {
-      this.clapped(clap);
-      if (this.phase !== 'play') return;
-    }
+    this.readFists(gloves, dt);
     const touched = new Set();
     const onBalloon = new Map(); // Each balloon, and the open hands on it.
     for (const side of ['left', 'right']) {
@@ -536,10 +524,18 @@ export class PopRules {
     if (ask.circles.every((id) => this.circles.find((each) => each.id === id)?.state === 'popped' || !this.circles.some((each) => each.id === id))) this.askDone(ask, side, circle);
   }
 
-  /** Open hands on a big balloon only make it wobble, and the clap is asked for again: it pops with a clap. */
+  /**
+   * Open hands on a big balloon: both on it at once pop it if they were both fists a moment ago, and otherwise it only
+   * wobbles, and the fists are asked for again.
+   */
   touchBalloon(balloon, sides) {
     const ask = this.asks.find((each) => each.circles.includes(balloon.id));
     if (!ask) return;
+    if (sides.length === 2 && this.time - ask.fistsAt <= FISTS.openWithin) {
+      this.pop(balloon, 'both');
+      this.askDone(ask, 'both', balloon);
+      return;
+    }
     balloon.wobble = Math.max(balloon.wobble, 0.6);
     if (this.time - ask.wrongAt > WRONG_AGAIN_AFTER) {
       ask.wrongAt = this.time;
@@ -548,48 +544,25 @@ export class PopRules {
   }
 
   /**
-   * Where a clap happened just now, or null. Both hands have to be seen apart first, and come together within
-   * CLAP.within seconds, so hands that drift together slowly, or stay together, aren't a clap. After a clap the hands
-   * have to be apart again for the next.
+   * While a big balloon is asked for: both hands fists at once, for long enough, squeeze it, and from then until
+   * FISTS.openWithin after they stop being fists, both hands opening on it pop it. The fists can be made anywhere.
    */
-  readClap(gloves) {
-    const seen = (side) => Boolean(gloves[side]?.visible && (gloves[side].tracked ?? true));
-    const quick = () => this.time - this.apartAt <= CLAP.within;
-    if (seen('left') && seen('right')) {
-      const { left, right } = gloves;
-      const gap = Math.hypot((left.x - right.x) * this.aspect, left.y - right.y);
-      this.bothSeenAt = this.time;
-      this.lastGap = gap;
-      this.lastMiddle = { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
-      if (gap >= CLAP.apart) this.apartAt = this.time;
-      else if (gap <= CLAP.together && quick()) {
-        this.apartAt = -Infinity;
-        return this.lastMiddle;
-      }
-      return null;
-    }
-    // One hand lost just as the two were nearly together: the tracker took them for one, and they met.
-    const one = seen('left') ? gloves.left : seen('right') ? gloves.right : null;
-    if (one && this.time - this.bothSeenAt <= CLAP.lost && this.lastGap <= CLAP.close && quick()) {
-      this.apartAt = -Infinity;
-      return { x: (one.x + this.lastMiddle.x) / 2, y: (one.y + this.lastMiddle.y) / 2 };
-    }
-    return null;
-  }
-
-  /**
-   * A clap: on a big balloon that's asked for, it pops, and anywhere else then it's just a clap. With no balloon asked
-   * for it's nothing at all, as hands come together for all sorts of reasons.
-   */
-  clapped(at) {
+  readFists(gloves, dt) {
     const ask = this.asks.find((each) => each.hand === 'both');
     if (!ask) return;
     const balloon = this.live.find((circle) => ask.circles.includes(circle.id));
-    const on = Boolean(balloon && this.gap(at, balloon) <= balloon.r + CLAP.reach);
-    this.emit('clap', { at, on });
-    if (!on) return;
-    this.pop(balloon, 'both');
-    this.askDone(ask, 'both', balloon);
+    const fists = ['left', 'right'].every((side) => gloves[side]?.visible && gloves[side].fist);
+    ask.fistsFor = fists ? ask.fistsFor + dt : 0;
+    if (ask.fistsFor >= FISTS.hold) {
+      // Heard once, as the fists have been held long enough.
+      if (ask.fistsFor - dt < FISTS.hold) this.emit('fists', { ask, circle: balloon });
+      ask.fistsAt = this.time;
+    }
+    // For how it's drawn: squeezed while both are fists, and ready to pop while they may open.
+    if (balloon) {
+      balloon.squeezed = fists && ask.fistsFor >= FISTS.hold;
+      balloon.ready = this.time - ask.fistsAt <= FISTS.openWithin;
+    }
   }
 
   pop(circle, side) {

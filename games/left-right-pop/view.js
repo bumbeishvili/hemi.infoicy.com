@@ -1,6 +1,6 @@
 // Left, Right, Pop!: draws what rules.js says, on the game's canvas: a soft sky with a strip of grass, the circles, the
-// big balloons to clap on, the bursts when they pop, a clap where the hands meet, and the two gloves, each with its
-// name under it. Nothing
+// big balloons for both hands, squeezed by two fists, the bursts when they pop, and the two gloves, each with its name
+// under it. Nothing
 // flashes: a pop is a small burst of its own colour, and a circle that fades just goes paler and smaller.
 import { INK } from '../../core/glove.js';
 import { COLOURS, FADE_SECONDS, GROW_SECONDS, HAND_COLOURS, HOLD_SECONDS, POP_SECONDS } from './rules.js';
@@ -10,7 +10,6 @@ const RAINBOW = ['#ef4136', '#ff8a1f', '#ffd60a', '#22a94a', '#2f6fe4', '#9b5de5
 const BALLOON = [COLOURS[HAND_COLOURS.left].fill, COLOURS[HAND_COLOURS.right].fill];
 const PALM_SIZE = 0.12; // The glove's palm, in screen heights.
 const BURST_SECONDS = 0.6;
-const CLAP_SECONDS = 0.35;
 const TAG_WORDS = { left: { en: 'Left', ka: 'მარცხენა' }, right: { en: 'Right', ka: 'მარჯვენა' } };
 
 const easeOutBack = (t) => {
@@ -26,7 +25,6 @@ export class PopView {
     this.language = language;
     this.bursts = [];
     this.marks = [];
-    this.claps = [];
     this.time = 0;
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -77,12 +75,6 @@ export class PopView {
     }
   }
 
-  /** Short lines out from where two hands met in a clap, which widen and go in a third of a second. */
-  clap(x, y) {
-    const at = this.at(x, y);
-    this.claps.push({ x: at.x, y: at.y, age: 0 });
-  }
-
   /** A star or a gem that floats up from where it was won, and goes. */
   prize(x, y, mark) {
     const at = this.at(x, y);
@@ -101,14 +93,11 @@ export class PopView {
     this.bursts = this.bursts.filter((bit) => bit.age < BURST_SECONDS);
     for (const mark of this.marks) mark.age += dt;
     this.marks = this.marks.filter((mark) => mark.age < 1.4);
-    for (const clap of this.claps) clap.age += dt;
-    this.claps = this.claps.filter((clap) => clap.age < CLAP_SECONDS);
   }
 
   reset() {
     this.bursts = [];
     this.marks = [];
-    this.claps = [];
   }
 
   /** rules is what's there, gloves the two gloves, palm their size, asked the hands asked for, names whether to write colours on the circles. */
@@ -134,23 +123,6 @@ export class PopView {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(mark.mark, mark.x, mark.y - mark.age * height * 0.12);
-    }
-    ctx.globalAlpha = 1;
-    for (const clap of this.claps) {
-      const t = clap.age / CLAP_SECONDS;
-      ctx.globalAlpha = 1 - t;
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = Math.max(3, height * 0.008);
-      ctx.lineCap = 'round';
-      for (let index = 0; index < 8; index += 1) {
-        const angle = (index / 8) * Math.PI * 2 + Math.PI / 8;
-        const from = height * (0.09 + t * 0.05);
-        const to = height * (0.13 + t * 0.07);
-        ctx.beginPath();
-        ctx.moveTo(clap.x + Math.cos(angle) * from, clap.y + Math.sin(angle) * from);
-        ctx.lineTo(clap.x + Math.cos(angle) * to, clap.y + Math.sin(angle) * to);
-        ctx.stroke();
-      }
     }
     ctx.globalAlpha = 1;
     if (gloves) {
@@ -213,7 +185,7 @@ export class PopView {
     const x = at.x + wobble;
     const { y } = at;
     if (circle.kind === 'balloon') {
-      this.drawBalloon(x, y, r, alpha);
+      this.drawBalloon(x, y, r, alpha, circle);
       return;
     }
     ctx.save();
@@ -314,13 +286,22 @@ export class PopView {
 
   /**
    * A big balloon for both hands: red on the left, for the left hand, and green on the right, for the right hand, a
-   * little taller than wide, with its knot and a string hanging from it.
+   * little taller than wide, with its knot and a string hanging from it. Squeezed by two fists it goes a little wider
+   * and shorter, and while the hands can open on it to pop it, a white ring stands round it.
    */
-  drawBalloon(x, y, r, alpha) {
+  drawBalloon(x, y, wide, alpha, balloon = {}) {
     const { ctx } = this;
-    const tall = r * 1.08;
+    const r = balloon.squeezed ? wide * 1.07 : wide;
+    const tall = wide * (balloon.squeezed ? 0.92 : 1.08);
     ctx.save();
     ctx.globalAlpha = alpha;
+    if (balloon.ready && !balloon.squeezed) {
+      ctx.strokeStyle = 'rgb(255 255 255 / 0.9)';
+      ctx.lineWidth = Math.max(4, wide * 0.07);
+      ctx.beginPath();
+      ctx.ellipse(x, y, r * 1.16, tall * 1.14, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     // The string, swaying a little.
