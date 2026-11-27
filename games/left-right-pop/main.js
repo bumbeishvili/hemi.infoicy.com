@@ -3,7 +3,7 @@
 // the hand: "Left hand!", and from level 3, when the circle moves, just "Left!". From level 6 there are circles of
 // every colour, and the card at the top shows which colour to pop, big, with which hand, which the voice says: "Open
 // your left hand to pop it!". At every level a big balloon comes now and then, and both hands shown open at once pop
-// it, wherever they are: "Open both hands!". Both hands
+// it, wherever they are: "Show me both hands!". Both hands
 // play, so telling left from right is half of it, and using the hand that's asked for, the weaker one too, is the
 // other half. The rules are in rules.js, and view.js draws them.
 import { Glove } from '../../core/glove.js';
@@ -19,7 +19,7 @@ const byId = (id) => document.getElementById(id);
 const HAND_LINE = { left: 'Left hand!', right: 'Right hand!' }; // Levels 1 and 2.
 const SHORT_LINE = { left: 'Left!', right: 'Right!' }; // Levels 3 to 5.
 const OPEN_TO_POP = { left: 'Open your left hand to pop it!', right: 'Open your right hand to pop it!' }; // From level 6.
-const BOTH_LINE = 'Open both hands!'; // A big balloon, at any level.
+const BOTH_LINE = 'Show me both hands!'; // A big balloon, at any level: all that's said for it.
 const PRAISE = ['Great job!', 'Nice one!', 'Way to go!'];
 const FINISH = 'You popped them all!';
 // On the card when too many circles faded away. It's only shown, not said: the voice says what it says after any
