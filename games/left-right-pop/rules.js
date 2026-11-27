@@ -41,6 +41,10 @@ export const REACHES = {
 };
 export const REACH_NAMES = Object.keys(REACHES);
 export const GOAL_CHOICES = [8, 12, 16]; // Circles to pop to win.
+// The playing speed a grown-up can choose: a new circle every so many seconds, from 3 to 15, each waiting as long on
+// the clock. Without one, the level sets the pace: see popLevel.
+export const EVERY_CHOICES = Array.from({ length: 13 }, (_, index) => index + 3);
+export const everyFrom = (value) => (EVERY_CHOICES.includes(Number(value)) ? Number(value) : null);
 // Which hand is asked for, as a grown-up chooses: each as often as the other, the hand in play twice as often as the
 // other, or only the hand in play.
 export const HAND_MODES = ['even', 'more', 'only'];
@@ -157,12 +161,15 @@ const between = (random, [low, high]) => low + random() * (high - low);
 export class PopRules {
   /**
    * goal is how many to pop, reach how far to reach, clock 'clock' or 'gentle', hands which hand is asked for (see
-   * HAND_MODES), side the hand in play, and aspect the screen's width over its height. random is for the tests.
+   * HAND_MODES), side the hand in play, every the playing speed a grown-up chose, in seconds, or null for the level's,
+   * and aspect the screen's width over its height. random is for the tests.
    */
-  constructor({ level = 1, goal = 12, reach = 'middle', clock = 'clock', hands = 'even', side = 'right', aspect = 16 / 9, random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ level = 1, goal = 12, reach = 'middle', clock = 'clock', hands = 'even', side = 'right', every = null, aspect = 16 / 9, random = Math.random, onEvent = () => {} } = {}) {
     this.level = clampLevel(level);
     this.gentle = clock === 'gentle';
     this.plan = popLevel(this.level, { gentle: this.gentle });
+    this.turnStartedAt = -Infinity;
+    this.setEvery(every);
     this.goal = GOAL_CHOICES.includes(Number(goal)) ? Number(goal) : 12;
     this.toLose = this.gentle ? Infinity : fadesToLose(this.level, this.goal);
     this.reachName = REACH_NAMES.includes(reach) ? reach : 'middle';
@@ -367,6 +374,7 @@ export class PopRules {
   newTurn() {
     this.fill();
     const { plan } = this;
+    this.turnStartedAt = this.time;
     if (this.balloonTurn()) {
       const balloon = this.addCircle({ colour: 'balloon', kind: 'balloon', r: EXTRAS.balloonSize });
       // opened is how far the ring round it has filled, with both hands open, and oneFor how long one has been open alone.
@@ -622,11 +630,15 @@ export class PopRules {
     this.endTurn();
   }
 
+  /**
+   * What's asked for is popped, or faded: the next comes a moment later, or with a playing speed chosen, that many
+   * seconds after the last one came, if that's later still.
+   */
   endTurn() {
     this.turn = null;
     for (const circle of this.live) circle.ask = null;
     this.fill();
-    this.askIn = NEXT_ASK_AFTER;
+    this.askIn = Math.max(NEXT_ASK_AFTER, this.every ? this.turnStartedAt + this.every - this.time : 0);
   }
 
   /** Circles growing, popping, fading, wobbling, moving, hopping and swapping places. */
@@ -753,6 +765,16 @@ export class PopRules {
       circle.glide = null;
       this.clampInto(circle);
     }
+  }
+
+  /**
+   * The playing speed: a new circle every so many seconds, each waiting that long on the clock, or null for the pace
+   * the level sets. It goes on at once, from the next circle asked for.
+   */
+  setEvery(every) {
+    this.every = everyFrom(every);
+    const levelWait = popLevel(this.level, { gentle: this.gentle }).wait;
+    this.plan.wait = this.every && !this.gentle ? this.every : levelWait;
   }
 
   /** The hand in play, which is the one asked for more often, or only, if a grown-up chose that. */

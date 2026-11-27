@@ -123,6 +123,21 @@ body[data-screen='playing'] .pop-ask:not([data-count='0']) { display: flex; }
 .pop-hand-ink { fill: none; stroke: var(--ink); stroke-width: 14; stroke-linecap: round; }
 .pop-hand-finger { fill: none; stroke: var(--good); stroke-width: 7; stroke-linecap: round; }
 
+/* ---------- the playing speed, in the grown-ups' panel: a list to choose from ---------- */
+.pop-every select {
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--surface-soft);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 12px;
+  max-width: 100%;
+  cursor: pointer;
+}
+.pop-every select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.pop-every-note { flex-basis: 100%; margin: 0; font-size: 14px; color: var(--ink-soft); }
+
 /* What the child is told goes along the bottom, so it never hides a circle near the top. */
 body[data-screen='playing'] .prompt { top: auto; bottom: 18px; }
 

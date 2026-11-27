@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  ALL_COLOURS, BOTH_OPEN, CLOCKS, COLOURS, EXTRAS, FADE_SECONDS, GOAL_CHOICES, HAND_COLOURS, HAND_MODES, HOLD_SECONDS, LOST_SECONDS,
+  ALL_COLOURS, BOTH_OPEN, CLOCKS, COLOURS, EVERY_CHOICES, EXTRAS, everyFrom, FADE_SECONDS, GOAL_CHOICES, HAND_COLOURS, HAND_MODES, HOLD_SECONDS, LOST_SECONDS,
   NEWS, NEXT_ASK_AFTER, PARTY_SECONDS, POP_SECONDS, PopRules, REACHES, REACH_NAMES, SIMPLE_UP_TO, fadesToLose, popLevel, popNewAt,
 } from '../../games/left-right-pop/rules.js';
 
@@ -421,6 +421,87 @@ test('popping enough wins the game, after a moment to see it, at every level', (
   }
 });
 
+/* ---------- the playing speed ---------- */
+
+/** When each thing was asked for, in the game's seconds. */
+function askTimes(rules) {
+  const times = [];
+  const onEvent = rules.onEvent;
+  rules.onEvent = (event) => {
+    if (event.type === 'ask') times.push(rules.time);
+    onEvent(event);
+  };
+  return times;
+}
+
+test('a playing speed from 3 to 15 seconds can be chosen, and without one the level sets the pace', () => {
+  assert.deepEqual(EVERY_CHOICES, [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+  assert.equal(everyFrom('7'), 7);
+  for (const odd of ['level', 2, 16, 'fast', null, undefined]) assert.equal(everyFrom(odd), null, String(odd));
+  assert.equal(makeRules({ level: 1 }).plan.wait, popLevel(1).wait);
+  assert.equal(makeRules({ level: 10, every: 'level' }).plan.wait, popLevel(10).wait);
+  assert.equal(makeRules({ level: 1, every: 13 }).plan.wait, 13);
+  assert.equal(makeRules({ level: 1, every: 13, clock: 'gentle' }).plan.wait, Infinity);
+});
+
+test('with a playing speed chosen, a new circle comes every so many seconds, however quickly the last was popped', () => {
+  for (const every of [3, 6, 15]) {
+    const rules = makeRules({ every, goal: 16 });
+    const times = askTimes(rules);
+    rules.begin();
+    play(rules, every * 4 + 1, rightOn);
+    assert.ok(times.length >= 4, `every ${every}: ${times.length} asked`);
+    for (let index = 1; index < times.length; index += 1) {
+      assert.ok(Math.abs(times[index] - times[index - 1] - every) < 0.05, `every ${every}: ${(times[index] - times[index - 1]).toFixed(2)} s apart`);
+    }
+    assert.equal(rules.stats.faded, 0);
+  }
+  // Without one, the next comes a moment after the last was popped.
+  const level = makeRules({ goal: 16 });
+  const times = askTimes(level);
+  level.begin();
+  play(level, 6, rightOn);
+  assert.ok(times[1] - times[0] < 1.5);
+});
+
+test('with a playing speed chosen, a circle that isn\'t popped waits that long and fades, and the next comes then', () => {
+  const rules = makeRules({ every: 4 });
+  const times = askTimes(rules);
+  rules.begin();
+  untilAsked(rules);
+  assert.equal(rules.turn.wait, 4);
+  play(rules, 3.9, away);
+  assert.equal(rules.stats.faded, 0);
+  play(rules, 0.2, away);
+  assert.equal(rules.stats.faded, 1);
+  play(rules, 1, away);
+  assert.equal(times.length, 2);
+  assert.ok(times[1] - times[0] < 4 + 0.7, 'a moment after it faded');
+  // In the gentle game nothing fades, and the pace still holds.
+  const gentle = makeRules({ every: 5, clock: 'gentle', goal: 16 });
+  const gentleTimes = askTimes(gentle);
+  gentle.begin();
+  play(gentle, 21, rightOn);
+  assert.equal(gentle.stats.faded, 0);
+  for (let index = 1; index < gentleTimes.length; index += 1) assert.ok(Math.abs(gentleTimes[index] - gentleTimes[index - 1] - 5) < 0.05);
+});
+
+test('the playing speed changed in the middle of a game goes on from the next circle', () => {
+  const rules = makeRules({ every: 10, goal: 16 });
+  const times = askTimes(rules);
+  rules.begin();
+  untilAsked(rules);
+  rules.setEvery(3);
+  assert.equal(rules.turn.wait, 10, 'the circle that is waiting keeps its time');
+  play(rules, 10, rightOn);
+  assert.ok(times.length >= 3);
+  assert.ok(Math.abs(times[2] - times[1] - 3) < 0.05);
+  assert.equal(rules.turn?.wait ?? 3, 3);
+  rules.setEvery('level');
+  assert.equal(rules.every, null);
+  assert.equal(rules.plan.wait, popLevel(1).wait);
+});
+
 /* ---------- which hand ---------- */
 
 test('each hand is asked for about as often as the other, and never three times in a row', () => {
@@ -638,7 +719,7 @@ test('the lines it borrows are ones every game has, with English and Georgian vo
 
 test('the grown-ups\' settings for this game have names of their own, as every game\'s are kept together', () => {
   const source = readFileSync(new URL('../../games/left-right-pop/main.js', import.meta.url), 'utf8');
-  assert.match(source, /defaults: \{ popHands: 'even', popClock: 'clock', popReach: 'middle', popGoal: 12, popNames: 'off' \}/);
-  assert.match(source, /choices: \{ popHands: String, popClock: String, popReach: String, popGoal: Number, popNames: String \}/);
-  assert.match(source, /atOnce: \['popReach', 'popNames'\]/);
+  assert.match(source, /defaults: \{ popHands: 'even', popClock: 'clock', popReach: 'middle', popGoal: 12, popNames: 'off', popEvery: 'level' \}/);
+  assert.match(source, /choices: \{ popHands: String, popClock: String, popReach: String, popGoal: Number, popNames: String, popEvery: String \}/);
+  assert.match(source, /atOnce: \['popReach', 'popNames', 'popEvery'\]/);
 });

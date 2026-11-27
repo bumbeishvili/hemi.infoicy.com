@@ -9,7 +9,7 @@
 import { Glove } from '../../core/glove.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
-import { CLOCKS, COLOURS, GOAL_CHOICES, HAND_COLOURS, HAND_MODES, PopRules, popNewAt, REACH_NAMES } from './rules.js';
+import { CLOCKS, COLOURS, EVERY_CHOICES, everyFrom, GOAL_CHOICES, HAND_COLOURS, HAND_MODES, PopRules, popNewAt, REACH_NAMES } from './rules.js';
 import { PopView } from './view.js';
 
 const byId = (id) => document.getElementById(id);
@@ -102,13 +102,14 @@ class PopGame {
   }
 
   newRules(level) {
-    const { popGoal, popReach, popClock, popHands, hands } = this.settings;
+    const { popGoal, popReach, popClock, popHands, popEvery, hands } = this.settings;
     return new PopRules({
       level,
       goal: GOAL_CHOICES.includes(Number(popGoal)) ? Number(popGoal) : 12,
       reach: REACH_NAMES.includes(popReach) ? popReach : 'middle',
       clock: CLOCKS.includes(popClock) ? popClock : 'clock',
       hands: HAND_MODES.includes(popHands) ? popHands : 'even',
+      every: everyFrom(popEvery),
       side: hands,
       aspect: this.view.aspect,
       onEvent: (event) => this.onRules(event),
@@ -135,6 +136,8 @@ class PopGame {
 
   settingChanged(change) {
     if ('popReach' in change) this.rules.setReach(this.settings.popReach);
+    // The playing speed goes on at once, from the next circle asked for.
+    if ('popEvery' in change) this.rules.setEvery(everyFrom(this.settings.popEvery));
     // How many to pop, the clock and which hand is asked for start the next game, and the title shows it now.
     const { screen } = this.session;
     const between = screen !== 'playing' && screen !== 'countdown';
@@ -517,6 +520,17 @@ new GameSession({
         ${choice('popHands', 'more', 'The hand in play twice as often as the other')}
         ${choice('popHands', 'only', 'Only the hand in play, and no big balloons for both hands')}
       </fieldset>
+      <fieldset class="choice pop-every">
+        <legend>Playing speed: how often a new circle or balloon comes</legend>
+        <label>
+          <span class="visually-hidden">Playing speed</span>
+          <select name="popEvery">
+            <option value="level">By the level: every 10 seconds at level 1, down to 5 at level 10</option>
+            ${EVERY_CHOICES.map((seconds) => `<option value="${seconds}">Every ${seconds} seconds</option>`).join('\n            ')}
+          </select>
+        </label>
+        <p class="pop-every-note">Each one waits that long too, before it fades away, unless the circles are Gentle, below.</p>
+      </fieldset>
       <fieldset class="choice">
         <legend>Circles that fade away</legend>
         ${choice('popClock', 'clock', 'They count: each waits so long, and too many fading away ends the game')}
@@ -540,10 +554,10 @@ new GameSession({
         ${choice('popNames', 'on', 'Each circle has its colour written on it')}
       </fieldset>`,
   },
-  defaults: { popHands: 'even', popClock: 'clock', popReach: 'middle', popGoal: 12, popNames: 'off' },
-  choices: { popHands: String, popClock: String, popReach: String, popGoal: Number, popNames: String },
+  defaults: { popHands: 'even', popClock: 'clock', popReach: 'middle', popGoal: 12, popNames: 'off', popEvery: 'level' },
+  choices: { popHands: String, popClock: String, popReach: String, popGoal: Number, popNames: String, popEvery: String },
   // These go on to a game that's being played at once. The rest, and the level, start it again: see core/settings.js.
-  atOnce: ['popReach', 'popNames'],
+  atOnce: ['popReach', 'popNames', 'popEvery'],
   tagline: () => 'Pop the circle with the hand you’re told: red for your left hand, green for your right, and later every colour. A big balloon pops when you show both hands open!',
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),
